@@ -6,16 +6,29 @@
 
 import { rovy } from "../rovy";
 import type { Ctor } from "../contract";
+import { CommandsImpl } from "./commands";
+import { flush } from "./flush";
 import { RovyWorld } from "./world";
 
 export class App {
 	readonly world = new RovyWorld();
+	readonly commands: CommandsImpl;
 	private started = false;
 	/** Overrides supplied before start(); applied after resource registration. */
 	private resourceOverrides = new Map<Ctor, object>();
 
 	/** Plugin support is Phase 11 — accepted now, build() invoked at start. */
 	private plugins: Array<{ build(app: App): void }> = [];
+
+	constructor() {
+		this.commands = new CommandsImpl(this.world);
+	}
+
+	/** Apply queued commands to convergence (escape hatch; scheduler flushes at set boundaries in Phase 4). */
+	flush(): this {
+		flush(this.commands);
+		return this;
+	}
 
 	addPlugin(plugin: { build(app: App): void }): this {
 		this.plugins.push(plugin);

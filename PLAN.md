@@ -64,13 +64,13 @@ Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-run
 - [x] **Exit:** `test/specs/phase2.luau` 6/6 green — spawn/get round-trip, tag add/remove, resource default, insertResource override before+after start, unregistered-component error
 - Files: `src/runtime/world.ts`, `src/runtime/app.ts` (resources folded into world/app; no separate resources.ts)
 
-## ⬜ Phase 3 — Commands buffer + flush
+## ✅ Phase 3 — Commands buffer + flush
 
-- [ ] `Commands`: `spawn/despawn/insert/set/remove` (real); `send/trigger/relate/unrelate/runSchedule` queued-but-stubbed
-- [ ] Spawn bundle instance-vs-tag detection (doc 20)
-- [ ] `flush()` convergence loop at boundaries
-- [ ] **Exit:** deferred spawn/set invisible until `app.flush()`, then materialized; ordering verified
-- Files: `src/runtime/commands.ts`, `src/runtime/flush.ts`
+- [x] `CommandsImpl`: `spawn/despawn/insert/set/remove` real; `send/trigger/relate/unrelate/runSchedule` queue via swappable `deferred*` hooks (wired in phases 4/6/10)
+- [x] Spawn bundle instance-vs-tag detection reuses `RovyWorld.applyBundle` (doc 20)
+- [x] `flush()` FIFO drain + convergence loop w/ cycle cap; `App.flush()` wired
+- [x] **Exit:** `test/specs/phase3.luau` 6/6 green — deferred set/spawn/despawn invisible until flush then materialized; FIFO order; queued send/trigger/relate harmless pre-phase; converges
+- Files: `src/runtime/commands.ts`, `src/runtime/flush.ts`, `src/runtime/app.ts`
 
 ## ⬜ Phase 4 — Schedules + sets + scheduler + param resolver (the spine)
 
