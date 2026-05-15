@@ -56,13 +56,13 @@ Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-run
 - [x] **Exit:** `test/specs/phase1.luau` 7/7 green under Lune (`rovy:__*` populates registries, `loadPaths` delegates to injected provider, `traitToken` handle); `src/__typecheck.ts` mirrors doc-13 sigs, `rbxtsc` 0 errors
 - Files: `src/index.ts`, `src/decorators.ts`, `src/macros.ts`, `src/types/index.ts`, `src/rovy.ts`, `src/contract.ts`, `src/__typecheck.ts`
 
-## ⬜ Phase 2 — World wrapper + component & resource registry + finalize skeleton
+## ✅ Phase 2 — World wrapper + component & resource registry + finalize skeleton
 
-- [ ] `World` wrapper over jecs `World()`: `spawn/despawn/insert/set/remove/has/get`, `componentMap` (TS ctor → jecs id)
-- [ ] `App.start()` finalize steps 1–2: components → ids; resources → ids + auto-instantiate `ctor.new()` on `RESOURCE_ENTITY`; `app.insertResource` override; `world.resource(C)`
-- [ ] Empty-registry assertion in `start()`
-- [ ] **Exit:** hand-register 2 components + 1 resource → `start()` → spawn/get round-trips; resource default returned; `insertResource` overrides
-- Files: `src/runtime/world.ts`, `src/runtime/app.ts`, `src/runtime/resources.ts`
+- [x] `RovyWorld` over jecs `world()`: `spawn/despawn/insert/set/remove/has/get`, `componentMap`/`resourceMap` (ctor→jecs id), instance-vs-tag bundle classify via `getmetatable`
+- [x] `App.start()` finalize 1–2: components→ids; resources→ids + auto-instantiate default ctor on sentinel resource entity; `app.insertResource` override (pre- + post-start); `world.resource(C)`
+- [x] Empty-registry assertion in `start()`; double-start guard; idOf errors on unregistered
+- [x] **Exit:** `test/specs/phase2.luau` 6/6 green — spawn/get round-trip, tag add/remove, resource default, insertResource override before+after start, unregistered-component error
+- Files: `src/runtime/world.ts`, `src/runtime/app.ts` (resources folded into world/app; no separate resources.ts)
 
 ## ⬜ Phase 3 — Commands buffer + flush
 

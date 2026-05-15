@@ -35,5 +35,9 @@ export { trait, query } from "./macros";
 export { rovy } from "./rovy";
 export type { TraitToken, ModuleProvider } from "./rovy";
 
+// Runtime (Phase 2+).
+export { App } from "./runtime/app";
+export { RovyWorld } from "./runtime/world";
+
 // Frozen transformer↔runtime contract.
 export * from "./contract";
