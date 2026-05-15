@@ -26,17 +26,21 @@ Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-run
 
 # Milestone 1 — Usable Core (Phases 0–6)
 
-## ⬜ Phase 0 — Scaffold + jecs spike + test harness
+## ✅ Phase 0 — Scaffold + jecs spike + test harness
 
-- [ ] `package.json` (`name @rovy/core`, `main out/init.lua`, `types out/index.d.ts`, scripts `build: rbxtsc`, `dev: rbxtsc -w`, `test`)
-- [ ] `tsconfig.json` (roblox-ts standard, `outDir out`, `rootDir src`, `plugins: []`)
-- [ ] `.gitignore` (`/node_modules /out /include *.tsbuildinfo`)
-- [ ] Rojo `default.project.json` + test place project
-- [ ] Deps: `@rbxts/jecs`; dev: `roblox-ts`, `@rbxts/compiler-types`, `@rbxts/types`, `@rbxts/jest`, `@rbxts/jest-globals`; Lune runner
-- [ ] **jecs API spike** → `test/spike-report.md`: symbol table {public-typed / public-untyped / internal / missing → mitigation} for `world:component/entity/add/set/get/remove/delete`, `world:query():with():without()`, query iteration, `query:archetypes()`, `world:added/removed/changed` **with exact callback arities** (esp. 4th `srcArchetype` on `added`), `world.observable[EcsOnArchetypeCreate/Delete]`, `jecs.record().archetype`, `jecs.archetype_traverse_remove`, `world.ROOT_ARCHETYPE`, `pair()`, `jecs.Wildcard`, `jecs.Or`
-- [ ] Vendored `src/types/jecs-internal.d.ts` from spike
-- [ ] Harness: Lune + `@rbxts/jest` green on trivial `world:entity()` spec
-- [ ] **Exit:** `npm run build` emits Luau; trivial spec passes under Lune; spike report committed (**gates Phases 7–9**)
+- [x] `package.json` (`name @rovy/core`, `main out/init.luau`, `types out/index.d.ts`, scripts `build/dev/test/spike`)
+- [x] `tsconfig.json` (roblox-ts standard, `outDir out`, `rootDir src`, `plugins: []`)
+- [x] `.gitignore` (`/node_modules /out /out-test /include *.tsbuildinfo`)
+- [x] Rojo `default.project.json`; `mise.toml` pins lune 0.10.4 + rojo 7.6.1
+- [x] Deps installed: `@rbxts/jecs@0.11.0`; dev: `roblox-ts@3.0.0`, `@rbxts/compiler-types@3.0.0-types.0`, `@rbxts/types`, `@rbxts/jest@3.16.0-ts.1`, `@rbxts/jest-globals`; lune via mise
+- [x] **jecs API spike** → `test/spike-report.md` (full symbol table + mitigations)
+- [x] Vendored `src/types/jecs-internal.d.ts` (minimal: `added/changed` 4th `oldarchetype` arg; `InternalWorld` view)
+- [x] Substrate harness: `test/smoke.luau` green under Lune — jecs round-trip, with/without, **cached `has()`**, `record()`, **empirically confirms spike's 4-arg `added` claim**
+- [x] **Exit:** `npm run build` emits `out/init.luau`; smoke spec passes under Lune; spike report committed
+
+**Spike outcome (gates 7–9):** no ❌ blockers. `archetype_traverse_remove`/`EcsOnArchetypeCreate` are unexported internals → **monitors redesigned around public `query:cached():has()` + per-run reconcile** (strictly better than docs 18/20 internal-traversal; docs to update when Phase 8 lands). `added/changed` 4th `oldarchetype` arg confirmed real (untyped → vendored). No `jecs.Or` → `HasTrait` = unioned sub-queries. Native `OnDelete/OnDeleteTarget/Delete/Remove/Exclusive` map 1:1 to `@relation` options.
+
+**Scope note (carried to Phase 1):** full `@rbxts/jest`(jest-lua)-under-Lune adapter needs a roblox-ts RuntimeLib require shim — non-trivial, no real specs exist yet. Phase 0 proves the substrate (TS→Luau build + jecs headless under Lune). Wiring jest-lua + the roblox-ts-output require shim is the **first Phase 1 task** (fallback: `run-in-roblox`).
 
 ## ⬜ Phase 1 — Type surface + decorator/macro stubs + `rovy` skeleton (CONTRACT FREEZE)
 
@@ -46,6 +50,8 @@ Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-run
 - [ ] `rovy` object: registry tables + `__component/__resource/__event/__system/__observer/__monitor/__relation/__schedule/__traitImpl/__query/__traitQuery` + `loadPaths` (provider-injectable) + `traitToken` — pure data push
 - [ ] **Frozen descriptor interfaces**; `param.kind ∈ {commands,world,query,res,resMut,optRes,eventReader,eventWriter,event,entity,term,local}`; `local` = `{kind:"local",index,init?}`; query param optional `filters`
 - [ ] Freeze: `@observer` stacking → one entry+instance per decorator; `runIf` zero-arg v1
+- [ ] First task: wire `@rbxts/jest`(jest-lua)-under-Lune + roblox-ts RuntimeLib require shim (carried from Phase 0; fallback `run-in-roblox`)
+- [ ] Evaluate `@rbxts/reflection` — runtime type metadata transformer (`Reflect`, generic type tokens, `implements` discovery). Decide: adopt for rovy-transformer param/trait resolution vs hand-roll. Affects contract shape → decide before freeze.
 - [ ] **Exit:** hand-call `rovy.__*` populates registries; `loadPaths` over module array fires side effects; doc-13 `Query<[...],...F>` signatures type-check
 - Files: `src/index.ts`, `src/decorators.ts`, `src/macros.ts`, `src/types/*.ts`, `src/rovy.ts`, `src/contract.ts`
 
