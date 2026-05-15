@@ -42,18 +42,19 @@ Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-run
 
 **Scope note (carried to Phase 1):** full `@rbxts/jest`(jest-lua)-under-Lune adapter needs a roblox-ts RuntimeLib require shim — non-trivial, no real specs exist yet. Phase 0 proves the substrate (TS→Luau build + jecs headless under Lune). Wiring jest-lua + the roblox-ts-output require shim is the **first Phase 1 task** (fallback: `run-in-roblox`).
 
-## ⬜ Phase 1 — Type surface + decorator/macro stubs + `rovy` skeleton (CONTRACT FREEZE)
+## ✅ Phase 1 — Type surface + decorator/macro stubs + `rovy` skeleton (CONTRACT FREEZE)
 
-- [ ] Type-only exports: `Query`, `Res`, `ResMut`, `OptRes`, `Trait`, `HasTrait`, `AllTraits`, `Pair`, `HasPair`, `Optional`, `With`, `Without`, `Changed`, `Added`, `Removed`, `Entity`, `Commands`, `World`, `EventReader`, `EventWriter`, `Local`, `SystemSet`
-- [ ] Decorators = no-op markers
-- [ ] `trait<T>()` / `query<...>()` = loud-throw stubs (doc 21 guard message)
-- [ ] `rovy` object: registry tables + `__component/__resource/__event/__system/__observer/__monitor/__relation/__schedule/__traitImpl/__query/__traitQuery` + `loadPaths` (provider-injectable) + `traitToken` — pure data push
-- [ ] **Frozen descriptor interfaces**; `param.kind ∈ {commands,world,query,res,resMut,optRes,eventReader,eventWriter,event,entity,term,local}`; `local` = `{kind:"local",index,init?}`; query param optional `filters`
-- [ ] Freeze: `@observer` stacking → one entry+instance per decorator; `runIf` zero-arg v1
-- [ ] First task: wire `@rbxts/jest`(jest-lua)-under-Lune + roblox-ts RuntimeLib require shim (carried from Phase 0; fallback `run-in-roblox`)
-- [ ] Evaluate `@rbxts/reflection` — runtime type metadata transformer (`Reflect`, generic type tokens, `implements` discovery). Decide: adopt for rovy-transformer param/trait resolution vs hand-roll. Affects contract shape → decide before freeze.
-- [ ] **Exit:** hand-call `rovy.__*` populates registries; `loadPaths` over module array fires side effects; doc-13 `Query<[...],...F>` signatures type-check
-- Files: `src/index.ts`, `src/decorators.ts`, `src/macros.ts`, `src/types/*.ts`, `src/rovy.ts`, `src/contract.ts`
+- [x] Type-only exports (`src/types/index.ts`): full list incl `Query`/`Res`/`Trait`/filters/`Entity`/`Commands`/`World`/`SystemSet`
+- [x] Decorators = no-op markers (`src/decorators.ts`); `relation`/`schedule` dual via overloads; `set:` accepts `AbstractCtor`
+- [x] `trait<T>()` / `query<...>()` = loud-throw stubs (doc 21 guard) (`src/macros.ts`)
+- [x] `rovy` object (`src/rovy.ts`): registry tables + all `__*` push fns + `loadPaths` (provider-injectable via `setModuleProvider`) + `traitToken` + `__reset` — pure data push
+- [x] **Frozen descriptor interfaces** (`src/contract.ts`, `CONTRACT_VERSION=1`); `param.kind` enum; `local`=`{kind,index,init?}`; query `handle`; all `*Reg`/`QueryDescriptor` shapes
+- [x] **Calling convention recorded**: roblox-ts object methods take implicit `self` → transformer must emit `rovy:__x(...)` (colon). Noted in `contract.ts`.
+- [x] Freeze: `@observer` stacking → one entry+instance per decorator; `runIf` zero-arg v1
+- [x] Lune harness from Phase 0 reused (`test/harness/runtime.luau` RuntimeLib shim + `expect.luau`); jest-lua adapter still deferred
+- [x] Evaluated `@rbxts/reflection@1.0.1` — defer, not a blocker (contract producer-agnostic)
+- [x] **Exit:** `test/specs/phase1.luau` 7/7 green under Lune (`rovy:__*` populates registries, `loadPaths` delegates to injected provider, `traitToken` handle); `src/__typecheck.ts` mirrors doc-13 sigs, `rbxtsc` 0 errors
+- Files: `src/index.ts`, `src/decorators.ts`, `src/macros.ts`, `src/types/index.ts`, `src/rovy.ts`, `src/contract.ts`, `src/__typecheck.ts`
 
 ## ⬜ Phase 2 — World wrapper + component & resource registry + finalize skeleton
 
