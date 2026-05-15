@@ -1,8 +1,8 @@
 # Systems and Parameter Injection
 
-> **Compile-time.** `@system`, `@set`, and all `Query<...>` param types are processed by the transformer at build time. It reads the decorator args and `run` param types via TypeScript `TypeChecker`, emits pre-built query descriptors and system metadata into the manifest, and rewrites injection call sites. The `run` signature is the authoring surface — the runtime receives resolved handles, not the raw type annotations.
+> **Compile-time.** `@system`, `@set`, and all `Query<...>` param types are processed by the transformer at build time. It reads the decorator args and `run` param types via TypeScript `TypeChecker`, hoists pre-built query descriptors, and injects a `rovy.__system` registration call after the class. The `run` signature is the authoring surface — the runtime receives resolved handles, not the raw type annotations.
 
-Systems are classes decorated with `@system`. The decorator carries scheduling config. The transformer reads param types on `run`, builds query descriptors, and emits everything into the metadata manifest. No manual `addSystems` calls.
+Systems are classes decorated with `@system`. The decorator carries scheduling config. The transformer reads param types on `run`, builds query descriptors, and injects a `rovy.__system` registration after the class. No manual `addSystems` calls.
 
 ## Sets
 
@@ -162,6 +162,7 @@ Query<
 | `HasTrait<T>` | filter: must have any impl of T |
 | `Changed<C>` | filter: C added or set since last run |
 | `Added<C>` | filter: C added since last run |
+| `Removed<C>` | filter: C removed since last run (binds `Entity` only) |
 
 ## Set ordering
 
@@ -172,14 +173,14 @@ Sets declared once in a plugin. Systems sorted within set by `after`/`before`.
 class BattlePlugin {
 	build(app: App) {
 		app.configureSets(Update, [
-			"Clock",
-			"Targeting",
-			"Movement",
-			"Casting",
-			"Status",
-			"Damage",
-			"Death",
-			"Cleanup",
+			ClockSet,
+			TargetingSet,
+			MovementSet,
+			CastingSet,
+			StatusSet,
+			DamageSet,
+			DeathSet,
+			CleanupSet,
 		]);
 	}
 }
@@ -187,21 +188,22 @@ class BattlePlugin {
 
 ## Boot — no manual addSystems
 
-Transformer collects all `@system`-decorated classes into the manifest:
+Transformer injects a `rovy.__system` call after each `@system` class:
 
 ```ts
-export const EcsMetadata = {
-	components: [Position, Velocity, Health, Unit, Dead, Poisoned],
-	systems: [
-		{ ctor: SpawnInitialUnits, schedule: Startup, set: undefined, after: [], before: [] },
-		{ ctor: FaceTargets,       schedule: Update,  set: MovementSet, after: [], before: [MoveUnits] },
-		{ ctor: MoveUnits,         schedule: Update,  set: MovementSet, after: [FaceTargets], before: [] },
-		{ ctor: ExpirePoison,      schedule: Update,  set: StatusSet,   after: [], before: [] },
+class MoveUnits { run(...) {} }
+rovy.__system(MoveUnits, {
+	id: "src/systems/MoveUnits",
+	schedule: Update,
+	set: MovementSet,
+	after: [FaceTargets],
+	before: [],
+	params: [
+		{ kind: "commands" },
+		{ kind: "query", handle: _q_MoveUnits_0 },
+		{ kind: "res", ctor: BattleClock },
 	],
-	traits: [...],
-	events: [...],
-	resources: [BattleClock],
-};
+});
 ```
 
 App boot:
@@ -209,9 +211,11 @@ App boot:
 ```ts
 const app = new App();
 app.addPlugin(BattlePlugin);
-app.addMetadata(EcsMetadata);
+rovy.loadPaths(script.Parent.systems, script.Parent.components);
 app.start();
 ```
+
+`rovy.loadPaths(...)` requires the modules so every injected `rovy.__system` runs; `app.start()` instantiates systems, sorts by `after`/`before`, and places them in their schedule/set. See [Compiled output](19-compiled-output.md) and [Runtime lifecycle](20-runtime-lifecycle.md).
 
 ## Execution per step
 
@@ -272,12 +276,12 @@ Single-threaded Roblox doesn't enforce access conflicts, but metadata is recorde
 
 - Generic system classes (`class Healer<T> extends ...`) — forbid in v1, transformer can't materialise stable ids.
 - `runIf` referencing world state — needs world reference at schedule build time; may need lazy eval or resource-based condition helpers.
-- Hot reload — re-decorating should replace manifest entry and reset `lastRunTick`.
+- Hot reload — re-running a module's `rovy.__system` should replace the prior registry entry and reset `lastRunTick`.
 
 ## See also
 
 - [Queries](03-queries.md)
 - [Commands](04-commands.md)
-- [Change detection](18-change-detection.md)
-- [Transformer](11-transformer.md)
+- [Change detection](16-change-detection.md)
+- [Transformer](10-transformer.md)
 - [Schedules](07-schedules.md)

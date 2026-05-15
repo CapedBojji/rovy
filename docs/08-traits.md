@@ -1,6 +1,6 @@
 # Traits
 
-> **Compile-time.** Traits are interfaces. The transformer discovers them from `trait<T>()` macro calls, `Trait<T>` / `HasTrait<T>` / `AllTraits<T>` type references, and `implements` clauses on `@component` classes. Interfaces have no runtime identity — `trait<T>()` is the compile-time macro that bridges type-level interface to value-level token for use in decorator args and other value positions.
+> **Compile-time.** Traits are interfaces. The transformer discovers them from `trait<T>()` macro calls, `Trait<T>` / `HasTrait<T>` / `AllTraits<T>` type references, and `implements` clauses on `@component` classes. Interfaces have no runtime identity — `trait<T>()` is the compile-time macro that bridges type-level interface to value-level token for use in variables and runtime helpers. Decorator args never need it: `@monitor` match uses the `query<...>()` macro (`Trait<T>` in type position).
 
 Traits group multiple component classes under a shared interface. A query against a trait returns matching components from any of its implementers.
 
@@ -98,10 +98,10 @@ Two contexts, two syntaxes:
 
 | Context | Syntax | Example |
 |---------|--------|---------|
-| Type position (query params, run params) | `Trait<T>` / `HasTrait<T>` / `AllTraits<T>` | `Query<[Entity, Trait<CrowdControl>]>` |
-| Value position (decorator args, variables) | `trait<T>()` | `@observer({ on: "add", trait: trait<CrowdControl>() })` |
+| Type position (query params, run params, `query<...>()` match) | `Trait<T>` / `HasTrait<T>` / `AllTraits<T>` | `Query<[Entity, Trait<CrowdControl>]>` |
+| Value position (variables, runtime APIs) | `trait<T>()` | `const ccToken = trait<CrowdControl>();` |
 
-`trait<T>()` is a compile-time macro. Transformer resolves `T` via `TypeChecker`, replaces with a stable runtime token. Only needed where TS requires a value.
+`trait<T>()` is a compile-time macro. Transformer resolves `T` via `TypeChecker`, replaces with a stable runtime token (`rovy.traitToken("stable/path")`). Only needed where TS requires a value — e.g. passing a trait handle to a runtime helper. Type positions (queries, `@monitor` match) use `Trait<T>` directly and never need the macro.
 
 ## Rules
 
@@ -142,4 +142,4 @@ An interface that is never referenced by any of the above is not registered as a
 ## See also
 
 - [Trait runtime](09-trait-runtime.md)
-- [Trait observers](10-trait-observers.md)
+- [Trait lifecycle (monitors)](18-monitors.md)

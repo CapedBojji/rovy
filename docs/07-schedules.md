@@ -1,86 +1,110 @@
 # Schedules, Sets, Flush
 
-## Schedules
+> **Compile-time.** `@schedule` decorator and `@system({ schedule: X })` references are read by the transformer, which injects a `rovy.__schedule` side-effect call after the class. Set ordering is declared via `app.configureSets`. The library provides no built-in schedules — all schedules are user-defined.
 
-Top-level groups that run in order each step.
+## Defining schedules
 
 ```ts
-Startup
-PreUpdate
-Update
-PostUpdate
-Cleanup
+@schedule
+class Startup {}
+
+@schedule
+class Update {}
+
+@schedule
+class Physics {}
+
+@schedule
+class Cutscene {}
 ```
 
-`Startup` runs once. The rest run every step.
+## Wiring to Roblox loop
+
+```ts
+app.start(); // fires all @schedule({ runOnStart: true }) once
+
+RunService.Heartbeat.Connect((dt) => {
+	world.runSchedule(Update);
+	world.runSchedule(Physics);
+});
+
+// conditional
+if (inCutscene) {
+	world.runSchedule(Cutscene);
+}
+```
+
+`app.start()` is just a convenience for one-shot schedules. Equivalent to calling `world.runSchedule(Startup)` yourself.
+
+## One-shot schedules
+
+Mark `runOnStart: true` to fire automatically on `app.start()`:
+
+```ts
+@schedule({ runOnStart: true })
+class Startup {}
+```
+
+Or fire manually:
+
+```ts
+world.runSchedule(Startup);
+```
+
+## Deferred schedule run
+
+From inside a system or observer:
+
+```ts
+commands.runSchedule(Physics);
+```
+
+Runs at next flush.
 
 ## Sets
 
-Ordered phases inside a schedule. Each set runs all its systems then flushes.
+Ordered phases inside a schedule. Flush runs after each set.
 
 ```ts
-app
-	.addSystems(Startup, [
-		spawnInitialUnits,
-	])
-	.configureSets(Update, [
-		"Clock",
-		"Targeting",
-		"Movement",
-		"Casting",
-		"Status",
-		"Damage",
-		"Death",
-		"Cleanup",
-	])
-	.addSystems(Update, [
-		system(incrementBattleClock).inSet("Clock"),
+app.configureSets(Update, [
+	InputSet,
+	MovementSet,
+	CombatSet,
+	CleanupSet,
+]);
 
-		system(acquireTargets).inSet("Targeting"),
-
-		system(faceTargets).inSet("Movement"),
-		system(moveUnits).inSet("Movement"),
-
-		system(startCasts).inSet("Casting"),
-		system(updateCasts).inSet("Casting"),
-		system(completeCasts).inSet("Casting"),
-
-		system(tickPoison).inSet("Status"),
-		system(expireStatuses).inSet("Status"),
-
-		system(processDamageEvents).inSet("Damage"),
-
-		system(processDeaths).inSet("Death"),
-
-		system(cleanupDeadUnits).inSet("Cleanup"),
-	]);
+app.configureSets(Physics, [
+	BroadphaseSet,
+	NarrowphaseSet,
+	ResolutionSet,
+]);
 ```
+
+Systems register into a set:
+
+```ts
+@system({ schedule: Update, set: MovementSet })
+class MoveUnits { ... }
+
+@system({ schedule: Physics, set: ResolutionSet })
+class ResolveCollisions { ... }
+```
+
+Sets are classes extending `SystemSet`. See [Systems and injection](17-systems-and-injection.md#sets).
 
 ## Flush semantics
 
-Do not flush after every system by default. Flush at schedule/set boundaries.
+Flush runs after every set — not after every system.
 
 ```txt
-Clock set      → flush
-Targeting set  → flush
-Movement set   → flush
-Casting set    → flush
-Status set     → flush
-Damage set     → flush
-Death set      → flush
-Cleanup set    → flush
+Set A systems run
+  → flush (apply commands, dispatch triggers, repeat until empty)
+Set B systems run
+  → flush
+...
 ```
 
-A flush performs:
-
-```txt
-1. apply queued commands
-2. dispatch queued triggers to observers
-3. apply commands produced by observers
-4. repeat until no pending commands/triggers
-```
-
-Pseudo:
+Flush algorithm:
 
 ```ts
 function flush(world: World) {
@@ -91,26 +115,46 @@ function flush(world: World) {
 }
 ```
 
-## Driving the app
+Fixed-order sets + deferred mutation = same input → same output. Essential for deterministic simulations.
 
-Normal use:
+## StandardPlugin (optional)
+
+Ships as a separate optional plugin. Adds common schedules and wires `app.step()` to drive them:
 
 ```ts
-app.step();
+app.addPlugin(StandardPlugin);
+
+// now available:
+// Startup (runOnStart: true)
+// PreUpdate, Update, PostUpdate, Cleanup
+// app.step(dt) drives PreUpdate → Update → PostUpdate → Cleanup
 ```
 
-Manual escape hatch:
+Not included by default. Zero built-ins in the core library.
+
+## Manual flush escape hatch
 
 ```ts
 app.flush();
 world.flush();
 ```
 
-## Determinism note
+## Registration
 
-Fixed-order sets + deferred mutation = same input → same output. Required for the battle sim use case.
+Transformer injects a side-effect call after each `@schedule` class:
+
+```ts
+class Startup {}
+rovy.__schedule(Startup, { runOnStart: true });
+
+class Update {}
+rovy.__schedule(Update, { runOnStart: false });
+```
+
+`rovy.loadPaths(...)` makes these run; `app.start()` builds the schedule objects and fires `runOnStart` ones. See [Compiled output](19-compiled-output.md).
 
 ## See also
 
 - [Commands](04-commands.md)
 - [Observers](06-observers.md)
+- [Systems and injection](17-systems-and-injection.md)

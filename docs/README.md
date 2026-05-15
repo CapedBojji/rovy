@@ -6,27 +6,29 @@ Goal: High-level Bevy-inspired ECS authoring layer over jecs as storage/query ba
 
 ## Reading order
 
-Read in order for first pass. Skip around after.
+Read in order for first pass. Skip around after. For project setup / package split, read [Packages](21-packages.md) right after Overview.
 
 1. [Overview](01-overview.md) — goals, architecture.
-2. [Components](02-components.md) — components, tags, resources.
-3. [Queries](03-queries.md) — entity term, filters, optional, change/added.
+2. [Components & Resources](02-components.md) — `@component`, `@resource`, tags.
+3. [Queries](03-queries.md) — `Query<...>` terms, filters, change/added/removed.
 4. [Commands](04-commands.md) — deferred mutations.
-5. [Events](05-events.md) — send vs trigger, world vs commands.
-6. [Observers](06-observers.md) — event + lifecycle observers.
-7. [Schedules](07-schedules.md) — schedules, sets, flush semantics.
-8. [Traits](08-traits.md) — trait authoring, `implements` rule.
+5. [Events](05-events.md) — `@event`, send vs trigger, `EventReader`/`EventWriter`.
+6. [Observers](06-observers.md) — event-only reactions.
+7. [Schedules](07-schedules.md) — custom schedules, sets, flush.
+8. [Traits](08-traits.md) — interface traits, `trait<T>()` macro.
 9. [Trait runtime](09-trait-runtime.md) — discovery, query lowering, semantics.
-10. [Trait observers](10-trait-observers.md) — trait lifecycle.
-11. [Transformer](11-transformer.md) — duties, manifest, stable IDs.
-12. [Relationships](12-relationships.md) — jecs relationship wrapper.
-13. [API reference](13-api-reference.md) — full public surface.
-14. [Examples](14-examples.md) — battle components/events/flow.
-15. [Decisions](15-decisions.md) — locked decisions.
-16. [Open questions](16-open-questions.md) — unresolved.
-17. [Roadmap](17-roadmap.md) — next work items.
-18. [Change detection](18-change-detection.md) — how `.changed/.added/.removed` work on jecs hooks.
-19. [Systems and injection](19-systems-and-injection.md) — `System` class + transformer-driven param injection.
+10. [Transformer](10-transformer.md) — duties, registration injection, stable IDs.
+11. [Relationships](11-relationships.md) — `@relation`, pairs.
+12. [API reference](12-api-reference.md) — full public surface.
+13. [Examples](13-examples.md) — combat-system worked examples.
+14. [Decisions](14-decisions.md) — locked decisions + open questions.
+15. [Roadmap](15-roadmap.md) — implementation order.
+16. [Change detection](16-change-detection.md) — `Changed`/`Added`/`Removed` on jecs hooks.
+17. [Systems and injection](17-systems-and-injection.md) — `@system` + param injection.
+18. [Monitors](18-monitors.md) — query-level lifecycle: `onEnter`/`onExit`/`onChange`.
+19. [Compiled output](19-compiled-output.md) — what the transformer emits per construct.
+20. [Runtime lifecycle](20-runtime-lifecycle.md) — register → finalize → run; how the runtime uses it all.
+21. [Packages](21-packages.md) — `@rovy/core` vs `rovy-transformer`, setup, the two-package split.
 
 ## What jecs handles
 
@@ -35,21 +37,19 @@ Read in order for first pass. Skip around after.
 - component storage
 - normal queries
 - relationships
-- change/add/remove detection where available
+- change/add/remove hooks
 
 ## What this layer adds
 
-- class-based component authoring
-- interface-based traits
-- transformer-derived trait metadata
-- trait queries
-- observers
-- lifecycle observers
+- decorator-based authoring (`@component`, `@resource`, `@event`, `@system`, `@observer`, `@monitor`, `@relation`, `@schedule`)
+- interface-based traits with transformer-derived metadata
+- compile-time queries with param injection
+- event observers
+- query-level monitors (lifecycle)
 - commands
-- schedules
-- flush points
-- events/triggers
+- custom schedules + flush points
+- transformer-injected registration (`rovy.__*` side effects + `rovy.loadPaths`)
 
-## Primary use case
+## Use cases
 
-Deterministic server-side battle ECS for an auto-battler.
+Any Roblox-TS game that benefits from structured ECS: simulations, combat systems, AI, physics, resource management.

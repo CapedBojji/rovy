@@ -1,13 +1,13 @@
 # Trait Runtime — Discovery, Lowering, Semantics
 
-> **Compile-time.** All trait resolution happens at build time. The transformer resolves interface types via `TypeChecker`, builds the trait registry from `@component` `implements` clauses, and emits everything into the manifest. `Trait<T>` in type positions is read directly. `trait<T>()` in value positions is rewritten to a stable runtime token.
+> **Compile-time.** All trait resolution happens at build time. The transformer resolves interface types via `TypeChecker` and injects a `rovy.__traitImpl(traitId, C)` call for each `@component` `implements` clause. `app.start()` builds the trait registry from those calls. `Trait<T>` in type positions is read directly. `trait<T>()` in value positions is rewritten to a stable runtime token.
 
 ## Discovery
 
 Transformer finds traits from:
 
-1. `trait<T>()` macro calls — value position, e.g. decorator args.
-2. `Trait<T>`, `AllTraits<T>`, `HasTrait<T>` — type position in `Query<...>` params.
+1. `trait<T>()` macro calls — value position (variables, runtime helpers).
+2. `Trait<T>`, `AllTraits<T>`, `HasTrait<T>` — type position in `Query<...>` params and `query<...>()` monitor match.
 3. `implements T` on `@component` classes — cross-referenced with above.
 
 Result:
@@ -97,29 +97,26 @@ Results merged into one iteration.
 | `AllTraits<T>` | per entity | `T[]` | no — type position |
 | `HasTrait<T>` | filter | nothing | no — type position |
 
-## Manifest output
+## Registration output
+
+Each `@component` that `implements` a trait gets an injected `rovy.__traitImpl` call keyed by the trait's stable module path:
 
 ```ts
-export const EcsMetadata = {
-	traits: [
-		{
-			id: "src/battle/traits/CrowdControl",
-			impls: [Stunned, Rooted, Frozen, Silenced],
-		},
-		{
-			id: "src/battle/traits/Expirable",
-			impls: [Stunned, Rooted],
-		},
-	],
-	// ...
-};
+class Stunned { ... }
+rovy.__component(Stunned, "src/components/Stunned");
+rovy.__traitImpl("src/battle/traits/CrowdControl", Stunned);
+rovy.__traitImpl("src/battle/traits/Expirable", Stunned);
+
+class Silenced { ... }
+rovy.__component(Silenced, "src/components/Silenced");
+rovy.__traitImpl("src/battle/traits/CrowdControl", Silenced);
 ```
 
-Stable ID = canonical module path. Runtime key = the manifest entry index or generated token.
+Stable ID = canonical module path of the interface. `app.start()` resolves each implementer to its jecs ID and builds the trait registry. See [Runtime lifecycle § Traits](20-runtime-lifecycle.md#traits).
 
 ## See also
 
 - [Traits](08-traits.md)
-- [Trait observers](10-trait-observers.md)
-- [Transformer](11-transformer.md)
+- [Trait lifecycle (monitors)](18-monitors.md)
+- [Transformer](10-transformer.md)
 - [Queries](03-queries.md)

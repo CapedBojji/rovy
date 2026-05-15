@@ -165,10 +165,11 @@ for (const [entity, pos] of q) { /* ... */ } // iterable
 | `HasTrait<T>` | must have any impl of T |
 | `Changed<C>` | C added or set since last run |
 | `Added<C>` | C added since last run |
+| `Removed<C>` | C removed since last run (binds `Entity` only) |
 
 ## See also
 
 - [Trait queries](09-trait-runtime.md)
 - [Commands](04-commands.md)
-- [Change detection](18-change-detection.md)
-- [Systems and injection](19-systems-and-injection.md)
+- [Change detection](16-change-detection.md)
+- [Systems and injection](17-systems-and-injection.md)

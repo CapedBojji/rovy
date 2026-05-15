@@ -1,6 +1,6 @@
 # Events
 
-> **Compile-time.** `@event` decorator marks a class as an event and attaches metadata. The transformer registers all decorated event classes into the manifest. Only `@event`-decorated classes can be used with `commands.send`, `commands.trigger`, `world.trigger`, and `EventReader<E>`.
+> **Compile-time.** `@event` decorator marks a class as an event and attaches metadata. The transformer injects a `rovy.__event` side-effect call after the class. Only `@event`-decorated classes can be used with `commands.send`, `commands.trigger`, `world.trigger`, and `EventReader<E>`.
 
 Events are messages. Two paths:
 
@@ -130,27 +130,24 @@ commands.send(...)    = buffered event for systems (via EventReader)
 | Cause-effect chain (damage → death → loot) | `trigger` |
 | Inside an observer, react before next system runs | `world.trigger` |
 
-## Manifest output
+## Registration
 
-Transformer collects all `@event`-decorated classes:
+Transformer injects a side-effect call after each `@event` class:
 
 ```ts
-export const EcsMetadata = {
-	events: [
-		{ ctor: DamageTaken, capacity: 256 },
-		{ ctor: UnitDied, capacity: undefined },
-		{ ctor: TryCastAbility, capacity: undefined },
-		{ ctor: CastStarted, capacity: undefined },
-		{ ctor: CastCompleted, capacity: undefined },
-	],
-	// ...
-};
+class DamageTaken { ... }
+rovy.__event(DamageTaken, { capacity: 256 });
+
+class UnitDied { ... }
+rovy.__event(UnitDied, { capacity: undefined });
 ```
+
+`rovy.loadPaths(...)` makes these run; `app.start()` builds the buffers. See [Compiled output](19-compiled-output.md).
 
 Undecorated class passed to `commands.send` or `EventReader<E>` → transformer error.
 
 ## See also
 
 - [Observers](06-observers.md)
-- [Systems and injection](19-systems-and-injection.md)
+- [Systems and injection](17-systems-and-injection.md)
 - [Commands](04-commands.md)
