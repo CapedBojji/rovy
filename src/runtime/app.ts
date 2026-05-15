@@ -8,11 +8,13 @@ import { rovy } from "../rovy";
 import type { Ctor } from "../contract";
 import { CommandsImpl } from "./commands";
 import { flush } from "./flush";
+import { Scheduler } from "./schedule";
 import { RovyWorld } from "./world";
 
 export class App {
 	readonly world = new RovyWorld();
 	readonly commands: CommandsImpl;
+	readonly scheduler: Scheduler;
 	private started = false;
 	/** Overrides supplied before start(); applied after resource registration. */
 	private resourceOverrides = new Map<Ctor, object>();
@@ -22,11 +24,28 @@ export class App {
 
 	constructor() {
 		this.commands = new CommandsImpl(this.world);
+		this.scheduler = new Scheduler(this.world, this.commands);
+		// wire deferred command → scheduler / world hooks
+		this.commands.deferredRunSchedule = (s) => this.scheduler.run(s);
+		this.world.runScheduleImpl = (s) => this.scheduler.run(s);
+		this.world.flushImpl = () => flush(this.commands);
 	}
 
-	/** Apply queued commands to convergence (escape hatch; scheduler flushes at set boundaries in Phase 4). */
+	/** Apply queued commands to convergence (escape hatch; scheduler flushes at set boundaries). */
 	flush(): this {
 		flush(this.commands);
+		return this;
+	}
+
+	/** Declare set order within a schedule. Call before start() (e.g. in a plugin). */
+	configureSets(schedule: Ctor, order: ReadonlyArray<Ctor>): this {
+		this.scheduler.configureSets(schedule, order);
+		return this;
+	}
+
+	/** Run a schedule now (drives the game loop). */
+	runSchedule(schedule: Ctor): this {
+		this.scheduler.run(schedule);
 		return this;
 	}
 
@@ -85,7 +104,12 @@ export class App {
 			}
 		}
 
+		// 3. build scheduler (schedules → sets → systems), then fire runOnStart
+		this.scheduler.build(reg);
 		this.started = true;
+		for (const s of this.scheduler.runOnStartList()) {
+			this.scheduler.run(s);
+		}
 		return this;
 	}
 

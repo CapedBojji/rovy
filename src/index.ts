@@ -39,6 +39,7 @@ export type { TraitToken, ModuleProvider } from "./rovy";
 export { App } from "./runtime/app";
 export { RovyWorld } from "./runtime/world";
 export { CommandsImpl } from "./runtime/commands";
+export { Scheduler } from "./runtime/schedule";
 
 // Frozen transformer↔runtime contract.
 export * from "./contract";

@@ -72,15 +72,16 @@ Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-run
 - [x] **Exit:** `test/specs/phase3.luau` 6/6 green — deferred set/spawn/despawn invisible until flush then materialized; FIFO order; queued send/trigger/relate harmless pre-phase; converges
 - Files: `src/runtime/commands.ts`, `src/runtime/flush.ts`, `src/runtime/app.ts`
 
-## ⬜ Phase 4 — Schedules + sets + scheduler + param resolver (the spine)
+## ✅ Phase 4 — Schedules + sets + scheduler + param resolver (the spine)
 
-- [ ] `@schedule` finalize; `SystemSet`; `app.configureSets`
-- [ ] `Schedule.run`: intra-set after/before topo sort; flush at set boundaries; `world.changeTick += 1` per schedule run
-- [ ] `resolveParam` for `commands/world/res/resMut/optRes/local/entity`
-- [ ] `runOnStart` fires in `start()`
-- [ ] `commands.runSchedule` re-entrancy (nested run reuses flush loop, no extra changeTick bump until outer completes)
-- [ ] **Exit:** system runs with resolved `Commands`/`Res`; after/before order across 3 systems; `Local<T>` persists; `runOnStart` fires once
-- Files: `src/runtime/schedule.ts`, `src/runtime/system-set.ts`, `src/runtime/resolve-param.ts`
+- [x] `@schedule` finalize → `Scheduler.build`; `SystemSet` (types); `app.configureSets`
+- [x] `Scheduler.run`: configured-set order + implicit ungrouped bucket; intra-set after/before Kahn topo sort (stable by reg index); flush at set boundaries; `world.changeTick += 1` per outer run
+- [x] `resolveParam` for `commands/world/res/resMut/optRes/local/entity/term/event`; query/event-channel throw "not until phase N"
+- [x] `runOnStart` fires in `start()` after scheduler.build
+- [x] `commands.runSchedule` + `world.runSchedule` wired; re-entrancy via depth (tick bump only at depth 0)
+- [x] **Calling note:** scheduler invokes `instance.run(instance, ...args)` (explicit self) — roblox-ts compiles `{run}` plain-type call as dot (no self injection)
+- [x] **Exit:** `test/specs/phase4.luau` 6/6 green — resolved Commands+Res, after/before order A,B,C, Local persists across 3 runs, runOnStart once, changeTick/run, re-entrancy
+- Files: `src/runtime/schedule.ts`, `src/runtime/resolve-param.ts`, `src/runtime/app.ts`, `src/runtime/world.ts` (SystemSet base in `src/types`)
 
 ## ⬜ Phase 5 — Query runtime: structural terms + filters
 

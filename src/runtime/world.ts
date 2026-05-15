@@ -119,6 +119,13 @@ export class RovyWorld implements World {
 		return value;
 	}
 
+	/** Like `resource` but returns undefined instead of asserting (OptRes<T>). */
+	optResource<T extends object>(resource: Ctor<T>): T | undefined {
+		const id = this.resourceMap.get(resource as unknown as Ctor);
+		if (id === undefined) return undefined;
+		return this.jecs.get(this.resourceEntity, id) as T | undefined;
+	}
+
 	insertResource(instance: object): void {
 		const cls = getmetatable(instance) as unknown as Ctor;
 		// allow override before or after start: register lazily if needed
@@ -145,10 +152,16 @@ export class RovyWorld implements World {
 	trigger(): void {
 		error("[rovy] world.trigger not implemented until Phase 6");
 	}
-	runSchedule(): void {
-		error("[rovy] world.runSchedule not implemented until Phase 4");
+	/** Set by App to delegate into the scheduler. */
+	runScheduleImpl?: (schedule: Ctor) => void;
+	runSchedule(schedule: Ctor): void {
+		assert(this.runScheduleImpl !== undefined, "[rovy] world.runSchedule unavailable (App not constructed?)");
+		this.runScheduleImpl(schedule);
 	}
+	/** Set by App to delegate into the command flush. */
+	flushImpl?: () => void;
 	flush(): void {
-		error("[rovy] world.flush not implemented until Phase 3");
+		assert(this.flushImpl !== undefined, "[rovy] world.flush unavailable (App not constructed?)");
+		this.flushImpl();
 	}
 }
