@@ -93,14 +93,18 @@ Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-run
 - **roblox-ts gotchas captured:** (1) `table.pack(it())`→`table.pack({it()})` mangles multi-return → use archetypes; (2) loosely-typed jecs method call drops `self` → keep jecs types; (3) LuaTuple stored in a var collapses → return directly
 - Files: `src/runtime/query.ts`, `src/runtime/resolve-param.ts`, `src/runtime/app.ts`, `src/runtime/schedule.ts`
 
-## ⬜ Phase 6 — Events + observers
+## ✅ Phase 6 — Events + observers
 
-- [ ] `@event` finalize → capacity-ring buffers; `EventReader`/`EventWriter`; `commands.send`
-- [ ] `commands.trigger` deferred + `world.trigger` immediate
-- [ ] Observer dispatch tables, priority sort at finalize; `dispatchToObservers` in `flush`
-- [ ] Observer-produced triggers re-enter flush to convergence
-- [ ] **Exit:** `send`→`EventReader` drains for run; priority order; trigger chain converges one flush; `world.trigger` inline; capacity drops oldest
-- Files: `src/runtime/events.ts`, `src/runtime/observers.ts` (extend `flush.ts`, `resolve-param.ts`)
+- [x] `@event` finalize → capacity-ring `EventBuffer`; `EventReaderHandle`/`EventWriterHandle`; `commands.send`/`EventWriter.send`
+- [x] `commands.trigger` deferred (via `CommandsImpl.deferredTrigger`) + `world.trigger` immediate (`triggerImpl`)
+- [x] Observer dispatch table per event, priority sort at finalize (stable, higher-first); `dispatch` runs through resolved params (`event/commands/world/query/res`)
+- [x] Observer-produced triggers re-enter flush to convergence (existing flush loop)
+- [x] Event buffers drained at schedule-run boundary (depth-0, with changeTick bump)
+- [x] Empty-registry assert broadened (observer-only apps valid)
+- [x] **Exit:** `test/specs/phase6.luau` 5/5 — send→reader drains+clears, priority order, param injection, deferred trigger chain converges, capacity drops oldest
+- Files: `src/runtime/events.ts`, `src/runtime/app.ts`, `src/runtime/schedule.ts`, `src/runtime/world.ts`, `src/runtime/resolve-param.ts`
+
+> **✅ Milestone 1 COMPLETE (Phases 0–6).** Usable core: spawn/query/scheduled-systems/events/observers green under Lune. 33/33 specs. Commits `3bbe6e3`→`<phase6>`.
 
 > **✅ Milestone 1 complete when Phases 0–6 done:** spawn, query, scheduled systems, events/observers working under Lune.
 

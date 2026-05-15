@@ -7,6 +7,7 @@
 import { rovy } from "../rovy";
 import type { Ctor } from "../contract";
 import { CommandsImpl } from "./commands";
+import { EventReaderHandle, EventRegistry, EventWriterHandle, wireEvents } from "./events";
 import { flush } from "./flush";
 import { buildQueryHandle } from "./query";
 import { Scheduler } from "./schedule";
@@ -16,6 +17,7 @@ export class App {
 	readonly world = new RovyWorld();
 	readonly commands: CommandsImpl;
 	readonly scheduler: Scheduler;
+	readonly eventRegistry = new EventRegistry();
 	private started = false;
 	/** Overrides supplied before start(); applied after resource registration. */
 	private resourceOverrides = new Map<Ctor, object>();
@@ -73,7 +75,12 @@ export class App {
 		assert(!this.started, "[rovy] app.start called twice");
 		const reg = rovy.registry;
 		assert(
-			reg.components.size() > 0 || reg.systems.size() > 0 || reg.resources.size() > 0,
+			reg.components.size() > 0 ||
+				reg.systems.size() > 0 ||
+				reg.resources.size() > 0 ||
+				reg.events.size() > 0 ||
+				reg.observers.size() > 0 ||
+				reg.schedules.size() > 0,
 			"[rovy] empty registry — call rovy.loadPaths(...) before app.start()",
 		);
 
@@ -110,7 +117,29 @@ export class App {
 			this.scheduler.queries.set(id, buildQueryHandle(this.world, descriptor));
 		}
 
-		// 4. build scheduler (schedules → sets → systems), then fire runOnStart
+		// 4. events + observers
+		for (const e of reg.events) {
+			this.eventRegistry.registerEvent(e.ctor, e.capacity);
+		}
+		for (const o of reg.observers) {
+			this.eventRegistry.registerObserver(o);
+		}
+		const makeReader = (r: EventRegistry, ev: Ctor) => new EventReaderHandle(r, ev);
+		const makeWriter = (r: EventRegistry, ev: Ctor) => new EventWriterHandle(r, ev);
+		this.eventRegistry.resolveBase = () => ({
+			world: this.world,
+			commands: this.commands,
+			queries: this.scheduler.queries,
+			events: this.eventRegistry,
+			makeReader,
+			makeWriter,
+		});
+		this.scheduler.events = this.eventRegistry;
+		this.scheduler.makeReader = makeReader;
+		this.scheduler.makeWriter = makeWriter;
+		wireEvents(this.eventRegistry, this.commands, this.world);
+
+		// 5. build scheduler (schedules → sets → systems), then fire runOnStart
 		this.scheduler.build(reg);
 		this.started = true;
 		for (const s of this.scheduler.runOnStartList()) {

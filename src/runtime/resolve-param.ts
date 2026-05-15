@@ -6,8 +6,9 @@
  * gaps surface loudly instead of as nil.
  */
 
-import type { ParamDescriptor } from "../contract";
+import type { Ctor, ParamDescriptor } from "../contract";
 import type { CommandsImpl } from "./commands";
+import type { EventReaderHandle, EventRegistry, EventWriterHandle } from "./events";
 import type { QueryHandle } from "./query";
 import type { RovyWorld } from "./world";
 
@@ -26,6 +27,11 @@ export interface ResolveCtx {
 	event?: unknown;
 	/** Hoisted query handles by descriptor id. */
 	queries: Map<string, QueryHandle>;
+	/** Event buffers/observers registry. */
+	events: EventRegistry;
+	/** Factories so each resolve builds a fresh handle bound to the ctx event ctor. */
+	makeReader: (registry: EventRegistry, event: Ctor) => EventReaderHandle;
+	makeWriter: (registry: EventRegistry, event: Ctor) => EventWriterHandle;
 }
 
 export function resolveParam(p: ParamDescriptor, ctx: ResolveCtx): unknown {
@@ -63,8 +69,9 @@ export function resolveParam(p: ParamDescriptor, ctx: ResolveCtx): unknown {
 			return h;
 		}
 		case "eventReader":
+			return ctx.makeReader(ctx.events, p.ctor);
 		case "eventWriter":
-			return error("[rovy] event channels not implemented until Phase 6");
+			return ctx.makeWriter(ctx.events, p.ctor);
 	}
 }
 

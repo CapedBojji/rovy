@@ -149,8 +149,11 @@ export class RovyWorld implements World {
 	getRelation<T extends object>(): T | undefined {
 		return error("[rovy] world.getRelation not implemented until Phase 10");
 	}
-	trigger(): void {
-		error("[rovy] world.trigger not implemented until Phase 6");
+	/** Set by App to dispatch to observers immediately. */
+	triggerImpl?: (event: object) => void;
+	trigger(event: object): void {
+		assert(this.triggerImpl !== undefined, "[rovy] world.trigger unavailable (App not started?)");
+		this.triggerImpl(event);
 	}
 	/** Set by App to delegate into the scheduler. */
 	runScheduleImpl?: (schedule: Ctor) => void;

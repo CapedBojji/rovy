@@ -9,6 +9,7 @@
 
 import type { Ctor, RovyRegistry, SystemReg } from "../contract";
 import type { CommandsImpl } from "./commands";
+import type { EventReaderHandle, EventRegistry, EventWriterHandle } from "./events";
 import { flush } from "./flush";
 import type { QueryHandle } from "./query";
 import type { LocalStore } from "./resolve-param";
@@ -42,6 +43,10 @@ export class Scheduler {
 	private depth = 0;
 	/** Hoisted query handles (set by App after finalize). */
 	queries = new Map<string, QueryHandle>();
+	/** Event registry + handle factories (set by App after finalize). */
+	events!: EventRegistry;
+	makeReader!: (registry: EventRegistry, event: Ctor) => EventReaderHandle;
+	makeWriter!: (registry: EventRegistry, event: Ctor) => EventWriterHandle;
 
 	constructor(
 		private world: RovyWorld,
@@ -118,6 +123,9 @@ export class Scheduler {
 					commands: this.commands,
 					locals: sr.locals,
 					queries: this.queries,
+					events: this.events,
+					makeReader: this.makeReader,
+					makeWriter: this.makeWriter,
 				});
 				sr.instance.run(sr.instance, ...args);
 				this.lastRunTick.set(sr.reg.ctor, this.world.changeTick);
@@ -128,6 +136,7 @@ export class Scheduler {
 		this.depth -= 1;
 		if (this.depth === 0) {
 			this.world.changeTick += 1;
+			this.events.clearAll(); // event buffers live for one schedule run
 		}
 	}
 
