@@ -8,6 +8,7 @@
 
 import type { ParamDescriptor } from "../contract";
 import type { CommandsImpl } from "./commands";
+import type { QueryHandle } from "./query";
 import type { RovyWorld } from "./world";
 
 /** Per-instance Local<T> slots, keyed by the descriptor's index. */
@@ -23,6 +24,8 @@ export interface ResolveCtx {
 	terms?: ReadonlyArray<unknown>;
 	/** Observer-only: the triggering event instance (Phase 6). */
 	event?: unknown;
+	/** Hoisted query handles by descriptor id. */
+	queries: Map<string, QueryHandle>;
 }
 
 export function resolveParam(p: ParamDescriptor, ctx: ResolveCtx): unknown {
@@ -54,8 +57,11 @@ export function resolveParam(p: ParamDescriptor, ctx: ResolveCtx): unknown {
 		case "event":
 			assert(ctx.event !== undefined, "[rovy] 'event' param outside an observer context");
 			return ctx.event;
-		case "query":
-			return error("[rovy] query injection not implemented until Phase 5");
+		case "query": {
+			const h = ctx.queries.get(p.handle);
+			assert(h !== undefined, `[rovy] no hoisted query for handle '${p.handle}'`);
+			return h;
+		}
 		case "eventReader":
 		case "eventWriter":
 			return error("[rovy] event channels not implemented until Phase 6");

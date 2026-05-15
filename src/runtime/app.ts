@@ -8,6 +8,7 @@ import { rovy } from "../rovy";
 import type { Ctor } from "../contract";
 import { CommandsImpl } from "./commands";
 import { flush } from "./flush";
+import { buildQueryHandle } from "./query";
 import { Scheduler } from "./schedule";
 import { RovyWorld } from "./world";
 
@@ -104,7 +105,12 @@ export class App {
 			}
 		}
 
-		// 3. build scheduler (schedules → sets → systems), then fire runOnStart
+		// 3. hoisted query handles
+		for (const [id, descriptor] of reg.queries) {
+			this.scheduler.queries.set(id, buildQueryHandle(this.world, descriptor));
+		}
+
+		// 4. build scheduler (schedules → sets → systems), then fire runOnStart
 		this.scheduler.build(reg);
 		this.started = true;
 		for (const s of this.scheduler.runOnStartList()) {

@@ -10,6 +10,7 @@
 import type { Ctor, RovyRegistry, SystemReg } from "../contract";
 import type { CommandsImpl } from "./commands";
 import { flush } from "./flush";
+import type { QueryHandle } from "./query";
 import type { LocalStore } from "./resolve-param";
 import { resolveParams } from "./resolve-param";
 import type { RovyWorld } from "./world";
@@ -39,6 +40,8 @@ export class Scheduler {
 	private instances = new Map<Ctor, SystemInstance>();
 	private lastRunTick = new Map<Ctor, number>();
 	private depth = 0;
+	/** Hoisted query handles (set by App after finalize). */
+	queries = new Map<string, QueryHandle>();
 
 	constructor(
 		private world: RovyWorld,
@@ -114,6 +117,7 @@ export class Scheduler {
 					world: this.world,
 					commands: this.commands,
 					locals: sr.locals,
+					queries: this.queries,
 				});
 				sr.instance.run(sr.instance, ...args);
 				this.lastRunTick.set(sr.reg.ctor, this.world.changeTick);
