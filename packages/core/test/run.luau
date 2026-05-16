@@ -1,7 +1,7 @@
 --!nocheck
 -- Phase 1+ spec runner. Builds the library, then runs every test/specs/*.luau
 -- against the compiled `out/`. Exits nonzero on any failure.
--- Usage: `npm test`  (= rbxtsc && lune run test/run)
+-- Usage: `pnpm --filter @rovy/core test`  (= rbxtsc && lune run test/run)
 
 local fs = require("@lune/fs")
 local process = require("@lune/process")

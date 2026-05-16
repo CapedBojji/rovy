@@ -32,8 +32,9 @@ export interface TraitToken {
 
 /**
  * Forces module side effects to run so injected `rovy.__*` calls execute.
- * Default provider walks Roblox Instance trees; tests inject an array-based
- * provider to stay Lune-pure (no Instance tree needed).
+ * Authored TS passes string paths; the transformer lowers them to Roblox
+ * Instance roots. Default provider walks those Instance trees; tests may swap
+ * in any resolver they want.
  */
 export type ModuleProvider = (roots: ReadonlyArray<unknown>) => void;
 
@@ -121,10 +122,11 @@ export const rovy = {
 
 	/**
 	 * Force-require module trees so injected `rovy.__*` side effects run.
-	 * Must be called before `app.start()`.
+	 * TS authoring passes string paths like `"src/client/systems"`; the
+	 * transformer lowers them to Roblox Instance roots before runtime.
 	 */
-	loadPaths(...roots: ReadonlyArray<unknown>): void {
-		moduleProvider(roots);
+	loadPaths(...paths: ReadonlyArray<string>): void {
+		moduleProvider(paths);
 	},
 
 	/** Swap the module-loading strategy (tests inject an array-based provider). */

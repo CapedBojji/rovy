@@ -1,5 +1,6 @@
 {
   "workbench.editorAssociations": {
     "*.md": "vscode.markdown.preview.editor"
-  }
+  },
+  "js/ts.tsdk.path": "node_modules/typescript/lib"
 }

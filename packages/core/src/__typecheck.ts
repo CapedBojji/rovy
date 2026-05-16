@@ -94,7 +94,6 @@ class MoveUnits {
 		_clock: Res<Health>,
 	) {
 		_units.forEach((_e, _pos, _shield) => {});
-		
 	}
 }
 
@@ -105,8 +104,7 @@ class ReactChange {
 
 @observer({ event: DamageTaken, priority: 10 })
 class ApplyDamage {
-	run(_e: DamageTaken, _commands: Commands, _hp: Query<[Entity, Health]>) {
-	}
+	run(_e: DamageTaken, _commands: Commands, _hp: Query<[Entity, Health]>) {}
 }
 
 @monitor({ match: query<[Health, Position], With<Unit>, Without<Dead>>() })

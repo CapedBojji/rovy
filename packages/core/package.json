@@ -1,0 +1,32 @@
+{
+  "name": "@rovy/core",
+  "version": "0.0.0",
+  "description": "Bevy-like ECS authoring layer over jecs for roblox-ts (runtime package)",
+  "main": "out/init.luau",
+  "types": "out/index.d.ts",
+  "license": "MIT",
+  "scripts": {
+    "build": "rbxtsc",
+    "dev": "rbxtsc -w",
+    "test": "rbxtsc -p tsconfig.test.json && lune run test/run",
+    "spike": "lune run test/spike"
+  },
+  "files": [
+    "out",
+    "!**/*.tsbuildinfo"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@rbxts/jecs": "^0.11.0",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@rbxts/compiler-types": "3.0.0-types.0",
+    "@rbxts/jest": "^3.16.0-ts.1",
+    "@rbxts/jest-globals": "^3.16.0-ts.1",
+    "@rbxts/types": "^1.0.920",
+    "roblox-ts": "^3.0.0"
+  }
+}

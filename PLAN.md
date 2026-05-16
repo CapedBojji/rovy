@@ -11,6 +11,8 @@
 
 `/Users/reikan404/Documents/rovy` is spec-only: 21 design docs in `docs/`, no code yet. Design is frozen (registration-injection model: transformer injects `rovy.__*` side-effect calls, `rovy.loadPaths` force-requires modules, `app.start()` finalizes). Build the **runtime package `@rovy/core` first**, before `rovy-transformer`.
 
+Repo note: runtime now lives under `packages/core` in workspace layout, with transformer package at `packages/transformer`. Historical phase notes below still refer to old pre-workspace root paths.
+
 **Enabling insight:** core is fully buildable/testable WITHOUT the transformer — the `rovy.__*` API (docs 19/20) is a hand-writable contract; tests hand-write the calls the transformer would inject. That surface is the transformer↔runtime boundary, **frozen at Phase 1**.
 
 Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-runtime-lifecycle.md`, `docs/16-change-detection.md`, `docs/18-monitors.md`, per-feature docs 02–11/17.
@@ -36,7 +38,7 @@ Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-run
 - [x] **jecs API spike** → `test/spike-report.md` (full symbol table + mitigations)
 - [x] Vendored `src/types/jecs-internal.d.ts` (minimal: `added/changed` 4th `oldarchetype` arg; `InternalWorld` view)
 - [x] Substrate harness: `test/smoke.luau` green under Lune — jecs round-trip, with/without, **cached `has()`**, `record()`, **empirically confirms spike's 4-arg `added` claim**
-- [x] **Exit:** `npm run build` emits `out/init.luau`; smoke spec passes under Lune; spike report committed
+- [x] **Exit:** build emits `out/init.luau`; smoke spec passes under Lune; spike report committed
 
 **Spike outcome (gates 7–9):** no ❌ blockers. `archetype_traverse_remove`/`EcsOnArchetypeCreate` are unexported internals → **monitors redesigned around public `query:cached():has()` + per-run reconcile** (strictly better than docs 18/20 internal-traversal; docs to update when Phase 8 lands). `added/changed` 4th `oldarchetype` arg confirmed real (untyped → vendored). No `jecs.Or` → `HasTrait` = unioned sub-queries. Native `OnDelete/OnDeleteTarget/Delete/Remove/Exclusive` map 1:1 to `@relation` options.
 
@@ -182,7 +184,7 @@ Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-run
 
 ## Verification
 
-- Per phase: `@rbxts/jest` specs under Lune meeting that phase's exit criteria; `npm run build` clean
+- Per phase: `@rbxts/jest` specs under Lune meeting that phase's exit criteria; build clean
 - Milestone 1: hand-wired spawn→query→scheduled-system→event/observer scenario green under Lune
 - Milestone 2 / Phase 12: full doc-13 combat integration deterministic across N ticks; Phase 11 TestEZ/run-in-roblox confirms real Instance-tree `loadPaths` + boot
 - Phase 0 spike report reviewed before starting Phase 7
