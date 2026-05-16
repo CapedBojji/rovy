@@ -168,7 +168,7 @@ Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-run
 - [x] **Exit:** `test/specs/phase12.luau` 1/1 (combat) green
 - Files: `test/specs/phase12.luau`, `src/runtime/schedule.ts` (final flush)
 
-> **✅ Milestone 2 COMPLETE (Phases 7–12). ✅ `@rovy/core` COMPLETE (Phases 0–12).** 56/56 specs green under Lune. Commits `3bbe6e3`→`<phase12>`.
+> **✅ Milestone 2 COMPLETE (Phases 7–12). ✅ `@rovy/core` COMPLETE (Phases 0–12).** 56/56 specs green under Lune. Commits `3bbe6e3`→`5400bd4`.
 
 ---
 
