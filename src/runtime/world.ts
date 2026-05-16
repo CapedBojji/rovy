@@ -20,11 +20,66 @@ export class RovyWorld implements World {
 	/** Bumped once per schedule run (Phase 4); change detection reads it. */
 	changeTick = 0;
 
+	// ── change detection stores (Phase 7), keyed by jecs component id ────────
+	/** entity → tick of last add OR set. */
+	private changeStore = new Map<JecsEntity, Map<Entity, number>>();
+	/** entity → tick of last add only (Added ⊂ Changed). */
+	private addedStore = new Map<JecsEntity, Map<Entity, number>>();
+	/** removed records since last drain. */
+	private removedBuf = new Map<JecsEntity, Array<{ entity: Entity; value: unknown; tick: number }>>();
+
 	private resourceEntity: JecsEntity;
 
 	constructor() {
 		this.jecs = createJecsWorld();
 		this.resourceEntity = this.jecs.entity();
+	}
+
+	// ── change detection ────────────────────────────────────────────────────
+
+	/** Install jecs add/change/remove listeners for a component (App.start). */
+	registerChangeDetection(jecsId: JecsEntity): void {
+		const changed = new Map<Entity, number>();
+		const added = new Map<Entity, number>();
+		const removed: Array<{ entity: Entity; value: unknown; tick: number }> = [];
+		this.changeStore.set(jecsId, changed);
+		this.addedStore.set(jecsId, added);
+		this.removedBuf.set(jecsId, removed);
+
+		this.jecs.added(jecsId as never, (e: Entity) => {
+			changed.set(e, this.changeTick);
+			added.set(e, this.changeTick);
+		});
+		this.jecs.changed(jecsId as never, (e: Entity) => {
+			changed.set(e, this.changeTick);
+		});
+		this.jecs.removed(jecsId as never, (e: Entity) => {
+			// on_remove fires before the archetype move → value still readable
+			const value = this.jecs.get(e, jecsId as never);
+			removed.push({ entity: e, value, tick: this.changeTick });
+			changed.delete(e);
+			added.delete(e);
+		});
+	}
+
+	changedTickOf(jecsId: JecsEntity, entity: Entity): number | undefined {
+		return this.changeStore.get(jecsId)?.get(entity);
+	}
+	addedTickOf(jecsId: JecsEntity, entity: Entity): number | undefined {
+		return this.addedStore.get(jecsId)?.get(entity);
+	}
+	removedSince(jecsId: JecsEntity, lastRunTick: number): Array<Entity> {
+		const buf = this.removedBuf.get(jecsId);
+		if (buf === undefined) return [];
+		const out: Array<Entity> = [];
+		for (const rec of buf) if (rec.tick > lastRunTick) out.push(rec.entity);
+		return out;
+	}
+	/** Drain removed buffers at the schedule-run boundary. */
+	clearRemoved(): void {
+		for (const [, buf] of this.removedBuf) {
+			while (buf.size() > 0) buf.pop();
+		}
 	}
 
 	// ── id resolution ───────────────────────────────────────────────────────

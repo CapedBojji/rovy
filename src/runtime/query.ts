@@ -55,12 +55,26 @@ export class QueryHandle {
 		};
 		for (const c of f.with ?? []) this.withIds.push(map(c));
 		for (const c of f.without ?? []) this.withoutIds.push(map(c));
-		if ((f.changed ?? []).size() + (f.added ?? []).size() + (f.removed ?? []).size() > 0) {
-			error("[rovy] Changed/Added/Removed filters not implemented until Phase 7");
-		}
+		// Changed<C>/Added<C> imply the entity HAS C → structural With so the
+		// jecs query constrains correctly even when C isn't a bound term.
+		// (Removed<C> is the opposite — handled entirely by FilteredQueryHandle.)
+		for (const c of f.changed ?? []) this.withIds.push(map(c));
+		for (const c of f.added ?? []) this.withIds.push(map(c));
 		if ((f.hasTrait ?? []).size() + (f.hasPair ?? []).size() > 0) {
 			error("[rovy] HasTrait/HasPair not implemented until phases 9/10");
 		}
+	}
+
+	getDescriptor(): QueryDescriptor {
+		return this.descriptor;
+	}
+
+	/** Public row iteration for FilteredQueryHandle. */
+	iterate(visit: (entity: Entity, arch: AnyArchetype, row: number) => boolean): void {
+		this.each(visit);
+	}
+	buildRow(entity: Entity, arch: AnyArchetype, row: number): Row {
+		return this.assemble(entity, this.requiredValues(arch, row));
 	}
 
 	private cached?: AnyCached;
@@ -74,8 +88,16 @@ export class QueryHandle {
 			assert(id !== undefined, `[rovy] query on unregistered component: ${tostring(c)}`);
 			ids.push(id);
 		}
+		// jecs requires ≥1 positional component. If nothing is bound (e.g.
+		// Entity-only + Changed<C>), promote the first With id to a query arg
+		// (still constrains; its value is never read).
+		const withList = [...this.withIds];
+		if (ids.size() === 0) {
+			assert(withList.size() > 0, "[rovy] query has no terms or constraints");
+			ids.push(withList.shift()!);
+		}
 		let q = this.world.jecs.query(...(ids as never[]));
-		if (this.withIds.size() > 0) q = q.with(...(this.withIds as never[]));
+		if (withList.size() > 0) q = q.with(...(withList as never[]));
 		if (this.withoutIds.size() > 0) q = q.without(...(this.withoutIds as never[]));
 		this.cached = q.cached() as unknown as AnyCached;
 		return this.cached;
@@ -183,4 +205,141 @@ export class QueryHandle {
 
 export function buildQueryHandle(world: RovyWorld, descriptor: QueryDescriptor): QueryHandle {
 	return new QueryHandle(world, descriptor);
+}
+
+/**
+ * Per-consumer tick-filtered view over a base QueryHandle. Built fresh each
+ * param resolution because `Changed/Added/Removed` are relative to the
+ * consuming system's `lastRunTick`. `Removed<C>` ignores the live query
+ * (component is gone) and drains the removed buffer; the row binds Entity only.
+ */
+export class FilteredQueryHandle {
+	private changedIds: Array<Entity> = [];
+	private addedIds: Array<Entity> = [];
+	private removedId?: Entity;
+
+	constructor(
+		private base: QueryHandle,
+		private world: RovyWorld,
+		private descriptor: QueryDescriptor,
+		private lastRunTick: number,
+	) {
+		const f = descriptor.filters;
+		const idOf = (c: Ctor): Entity => {
+			const id = world.componentMap.get(c);
+			assert(id !== undefined, `[rovy] tick filter on unregistered component: ${tostring(c)}`);
+			return id;
+		};
+		for (const c of f.changed ?? []) this.changedIds.push(idOf(c));
+		for (const c of f.added ?? []) this.addedIds.push(idOf(c));
+		const rem = f.removed ?? [];
+		if (rem.size() > 0) {
+			assert(rem.size() === 1, "[rovy] only one Removed<C> per query");
+			this.removedId = idOf(rem[0]);
+		}
+	}
+
+	private tickPass(entity: Entity): boolean {
+		for (const id of this.changedIds) {
+			const tk = this.world.changedTickOf(id, entity);
+			if (tk === undefined || tk <= this.lastRunTick) return false;
+		}
+		for (const id of this.addedIds) {
+			const tk = this.world.addedTickOf(id, entity);
+			if (tk === undefined || tk <= this.lastRunTick) return false;
+		}
+		return true;
+	}
+
+	/** Removed row = Entity only, in declared term order. */
+	private removedRow(entity: Entity): { values: { [k: number]: unknown }; n: number } {
+		const values: { [k: number]: unknown } = {};
+		let n = 0;
+		for (const term of this.descriptor.terms) {
+			n += 1;
+			assert(term.t === "entity", "[rovy] Removed<C> query may only bind Entity");
+			values[n] = entity;
+		}
+		if (n === 0) {
+			n = 1;
+			values[1] = entity;
+		}
+		return { values, n };
+	}
+
+	forEach(cb: (...row: Array<unknown>) => void): void {
+		if (this.removedId !== undefined) {
+			for (const e of this.world.removedSince(this.removedId, this.lastRunTick)) {
+				const r = this.removedRow(e);
+				cb(...table.unpack(r.values, 1, r.n));
+			}
+			return;
+		}
+		this.base.iterate((entity, arch, rowIdx) => {
+			if (this.tickPass(entity)) {
+				const r = this.base.buildRow(entity, arch, rowIdx);
+				cb(...table.unpack(r.values, 1, r.n));
+			}
+			return true;
+		});
+	}
+
+	size(): number {
+		let count = 0;
+		this.forEach(() => {
+			count += 1;
+		});
+		return count;
+	}
+
+	first(): LuaTuple<Array<unknown>> | undefined {
+		if (this.removedId !== undefined) {
+			const list = this.world.removedSince(this.removedId, this.lastRunTick);
+			if (list.size() > 0) {
+				const r = this.removedRow(list[0]);
+				return table.unpack(r.values, 1, r.n);
+			}
+			return undefined;
+		}
+		let found: { values: { [k: number]: unknown }; n: number } | undefined;
+		this.base.iterate((entity, arch, rowIdx) => {
+			if (this.tickPass(entity)) {
+				found = this.base.buildRow(entity, arch, rowIdx);
+				return false;
+			}
+			return true;
+		});
+		if (found === undefined) return undefined;
+		return table.unpack(found.values, 1, found.n);
+	}
+
+	withTarget(_t: Entity): this {
+		return error("[rovy] withTarget on a filtered query — Phase 10");
+	}
+
+	iter(): IterableFunction<LuaTuple<Array<unknown>>> {
+		const rows: Array<{ values: { [k: number]: unknown }; n: number }> = [];
+		if (this.removedId !== undefined) {
+			for (const e of this.world.removedSince(this.removedId, this.lastRunTick)) {
+				rows.push(this.removedRow(e));
+			}
+		} else {
+			this.base.iterate((entity, arch, rowIdx) => {
+				if (this.tickPass(entity)) rows.push(this.base.buildRow(entity, arch, rowIdx));
+				return true;
+			});
+		}
+		let i = 0;
+		return (() => {
+			i += 1;
+			if (i > rows.size()) return undefined;
+			const r = rows[i - 1];
+			return table.unpack(r.values, 1, r.n);
+		}) as unknown as IterableFunction<LuaTuple<Array<unknown>>>;
+	}
+}
+
+export function hasTickFilters(d: QueryDescriptor): boolean {
+	const f = d.filters;
+	return (f.changed ?? []).size() + (f.added ?? []).size() + (f.removed ?? []).size() > 0;
 }

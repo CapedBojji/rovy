@@ -112,14 +112,14 @@ Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-run
 
 # Milestone 2 — Full Surface (Phases 7–12)
 
-## ⬜ Phase 7 — Change detection (`Changed`/`Added`/`Removed`) — spike-gated
+## ✅ Phase 7 — Change detection (`Changed`/`Added`/`Removed`)
 
-- [ ] Per-component `registerChangeDetection` at finalize (`changeStores`/`addedStores`/`removedBuffers`) on jecs `added/changed/removed`
-- [ ] `FilteredQueryHandle` tick check vs `consumer.lastRunTick`
-- [ ] `Removed<C>` drains buffer (Entity-only bind); prune at schedule-run boundary
-- [ ] First-run `lastRunTick=-1` Bevy parity
-- [ ] **Exit:** `Changed<Health>` only post-`set`; `Added`≠`Changed`; `Removed` once per removal/despawn; first run yields all
-- Files: `src/runtime/change-detection.ts` (extend `query-handle.ts`)
+- [x] `RovyWorld.registerChangeDetection(id)` at finalize: changeStore/addedStore/removedBuf on jecs `added`(+addedStore)/`changed`/`removed`
+- [x] `FilteredQueryHandle` per-resolve view, tick check vs `ctx.lastRunTick`; `Changed/Added` imply structural `With<C>` (entity-only queries constrained correctly; empty-args promotes a With id)
+- [x] `Removed<C>` drains `removedSince(id,lastRunTick)`, Entity-only bind; `world.clearRemoved()` at schedule-run boundary (with events.clearAll + changeTick bump)
+- [x] First-run `lastRunTick=-1` → all (Bevy parity); deferred writes visible cross-set same run via set-boundary flush
+- [x] **Exit:** `test/specs/phase7.luau` 3/3 — Changed first-all/quiet-none/set-again, Added≠Changed, Removed once; fixed stale phase5 assertion (Changed now valid → HasTrait used)
+- Files: `src/runtime/world.ts`, `src/runtime/query.ts`, `src/runtime/resolve-param.ts`, `src/runtime/schedule.ts`, `src/runtime/app.ts`
 
 ## ⬜ Phase 8 — Monitors (archetype tracking + lifecycle) — highest risk, spike-gated
 

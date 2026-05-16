@@ -126,6 +126,7 @@ export class Scheduler {
 					events: this.events,
 					makeReader: this.makeReader,
 					makeWriter: this.makeWriter,
+					lastRunTick: this.lastRunTick.get(sr.reg.ctor) ?? -1,
 				});
 				sr.instance.run(sr.instance, ...args);
 				this.lastRunTick.set(sr.reg.ctor, this.world.changeTick);
@@ -137,6 +138,7 @@ export class Scheduler {
 		if (this.depth === 0) {
 			this.world.changeTick += 1;
 			this.events.clearAll(); // event buffers live for one schedule run
+			this.world.clearRemoved(); // removed buffers drained per run
 		}
 	}
 

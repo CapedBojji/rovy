@@ -40,7 +40,7 @@ export { App } from "./runtime/app";
 export { RovyWorld } from "./runtime/world";
 export { CommandsImpl } from "./runtime/commands";
 export { Scheduler } from "./runtime/schedule";
-export { QueryHandle } from "./runtime/query";
+export { QueryHandle, FilteredQueryHandle } from "./runtime/query";
 export { EventRegistry, EventReaderHandle, EventWriterHandle } from "./runtime/events";
 
 // Frozen transformer↔runtime contract.

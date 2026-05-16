@@ -9,6 +9,7 @@
 import type { Ctor, ParamDescriptor } from "../contract";
 import type { CommandsImpl } from "./commands";
 import type { EventReaderHandle, EventRegistry, EventWriterHandle } from "./events";
+import { FilteredQueryHandle, hasTickFilters } from "./query";
 import type { QueryHandle } from "./query";
 import type { RovyWorld } from "./world";
 
@@ -27,6 +28,8 @@ export interface ResolveCtx {
 	event?: unknown;
 	/** Hoisted query handles by descriptor id. */
 	queries: Map<string, QueryHandle>;
+	/** Consuming system's last-run tick (drives Changed/Added/Removed). -1 first run. */
+	lastRunTick: number;
 	/** Event buffers/observers registry. */
 	events: EventRegistry;
 	/** Factories so each resolve builds a fresh handle bound to the ctx event ctor. */
@@ -66,6 +69,10 @@ export function resolveParam(p: ParamDescriptor, ctx: ResolveCtx): unknown {
 		case "query": {
 			const h = ctx.queries.get(p.handle);
 			assert(h !== undefined, `[rovy] no hoisted query for handle '${p.handle}'`);
+			const d = h.getDescriptor();
+			if (hasTickFilters(d)) {
+				return new FilteredQueryHandle(h, ctx.world, d, ctx.lastRunTick);
+			}
 			return h;
 		}
 		case "eventReader":

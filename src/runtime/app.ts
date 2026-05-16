@@ -88,9 +88,10 @@ export class App {
 			plugin.build(this);
 		}
 
-		// 1. components → jecs ids
+		// 1. components → jecs ids + change-detection hooks
 		for (const entry of reg.components) {
-			this.world.registerComponent(entry.ctor);
+			const id = this.world.registerComponent(entry.ctor);
+			this.world.registerChangeDetection(id);
 		}
 
 		// 2. resources → jecs ids + auto-instantiate default ctor (or override)
@@ -133,6 +134,7 @@ export class App {
 			events: this.eventRegistry,
 			makeReader,
 			makeWriter,
+			lastRunTick: -1,
 		});
 		this.scheduler.events = this.eventRegistry;
 		this.scheduler.makeReader = makeReader;

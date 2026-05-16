@@ -131,13 +131,13 @@ return function(TS, t)
 			t.expect(nb).toBe(1)
 		end)
 
-		t.it("Changed/HasTrait terms rejected loudly (later phases)", function()
+		t.it("HasTrait filter rejected loudly (phases 9/10)", function()
 			rovy:__reset()
 			rovy:__component(Position, "t/Position")
 			rovy:__schedule(Update, { runOnStart = false })
-			rovy:__query({ id = "qc", terms = { { t = "component", ctor = Position } }, filters = { changed = { Position } } })
+			rovy:__query({ id = "qc", terms = { { t = "component", ctor = Position } }, filters = { hasTrait = { "t/SomeTrait" } } })
 			local app = App.new()
-			-- handle is built at start(); constructing it must throw
+			-- QueryHandle built at start(); HasTrait must throw
 			t.expect(function() app:start() end).toThrow()
 		end)
 	end)
