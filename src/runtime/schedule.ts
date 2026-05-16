@@ -137,6 +137,12 @@ export class Scheduler {
 			if (this.onFlush !== undefined) this.onFlush(); // monitor reconcile
 		}
 
+		// final flush + reconcile: trailing commands from the last set's
+		// reconcile (e.g. a monitor onEnter despawn) must apply this run, even
+		// when later sets are empty/skipped.
+		flush(this.commands);
+		if (this.onFlush !== undefined) this.onFlush();
+
 		this.depth -= 1;
 		if (this.depth === 0) {
 			this.world.changeTick += 1;

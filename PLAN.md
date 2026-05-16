@@ -160,14 +160,15 @@ Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-run
 - [x] **Exit:** `test/specs/phase11.luau` 5/5 — plugin configures sets + inserts resource pre-finalize; unregistered @resource/@event throw named; OptRes tolerant; loadPaths delegates
 - Files: `src/runtime/app.ts` (validation + plugin order), `src/runtime/events.ts` (`hasEvent`), `src/decorators.ts` (`plugin`)
 
-## ⬜ Phase 12 — Integration / example app
+## ✅ Phase 12 — Integration / example app
 
-- [ ] Hand-write doc-13 combat example's `rovy.__*` calls (proves transformer unneeded for core)
-- [ ] `Heartbeat`-style loop; assert end-to-end deterministic state across N ticks
-- [ ] **Exit:** cast → damage → death monitor → despawn → deterministic expected state
-- Files: `test/integration/combat.spec.ts`
+- [x] Hand-wired combat scenario (`rovy.__*`, no transformer): components + `@resource` Clock + `@event` DamageTaken + 3 systems across ordered sets (Clock/Attack/Damage/Death) + EventWriter/Reader + deferred commands + 2 monitors (death-count + reaper-despawn)
+- [x] N-tick deterministic run: 25hp / 10dmg → dies tick 3, monitor onEnter once, target despawned, resMut clock = 3, further ticks no-op
+- [x] Fixed scheduler: final flush+reconcile per run so trailing commands from the last set's reconcile (monitor despawn) apply same run even when later sets are empty/skipped
+- [x] **Exit:** `test/specs/phase12.luau` 1/1 (combat) green
+- Files: `test/specs/phase12.luau`, `src/runtime/schedule.ts` (final flush)
 
-> **✅ Milestone 2 complete when Phases 7–12 done.**
+> **✅ Milestone 2 COMPLETE (Phases 7–12). ✅ `@rovy/core` COMPLETE (Phases 0–12).** 56/56 specs green under Lune. Commits `3bbe6e3`→`<phase12>`.
 
 ---
 
