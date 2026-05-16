@@ -301,12 +301,12 @@ No `app.addMetadata(...)`. Modules self-register via injected side effects; you 
 const app = new App();
 app.addPlugin(BattlePlugin);          // configures sets, custom schedules
 
-rovy.loadPaths(                       // recursively require → side effects run
-    script.Parent.components,
-    script.Parent.resources,
-    script.Parent.systems,
-    script.Parent.observers,
-    script.Parent.monitors,
+rovy.loadPaths(                       // authored TS strings
+    "src/client/components",
+    "src/client/resources",
+    "src/client/systems",
+    "src/client/observers",
+    "src/client/monitors",
 );
 
 app.start();                          // finalize + fire runOnStart schedules
@@ -322,6 +322,7 @@ Compiled boot (conceptual):
 local app = App.new()
 app:addPlugin(BattlePlugin)
 
+-- transformer lowers string paths to Roblox Instance roots
 rovy.loadPaths(
     script.Parent.components,
     script.Parent.resources,
@@ -340,7 +341,7 @@ RunService.Heartbeat:Connect(function()
 end)
 ```
 
-`rovy.loadPaths` before `app.start()` is mandatory — start over empty registries errors.
+`rovy.loadPaths` before `app.start()` is mandatory — start over empty registries errors. TS authoring passes strings; compiled Luau receives Instance roots.
 
 ---
 

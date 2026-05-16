@@ -211,11 +211,11 @@ App boot:
 ```ts
 const app = new App();
 app.addPlugin(BattlePlugin);
-rovy.loadPaths(script.Parent.systems, script.Parent.components);
+rovy.loadPaths("src/client/systems", "src/client/components");
 app.start();
 ```
 
-`rovy.loadPaths(...)` requires the modules so every injected `rovy.__system` runs; `app.start()` instantiates systems, sorts by `after`/`before`, and places them in their schedule/set. See [Compiled output](19-compiled-output.md) and [Runtime lifecycle](20-runtime-lifecycle.md).
+`rovy.loadPaths(...)` requires the modules so every injected `rovy.__system` runs; in TS authoring the args are string paths, and the transformer maps them to Roblox Instance roots before runtime. `app.start()` instantiates systems, sorts by `after`/`before`, and places them in their schedule/set. See [Compiled output](19-compiled-output.md) and [Runtime lifecycle](20-runtime-lifecycle.md).
 
 ## Execution per step
 

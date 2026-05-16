@@ -40,7 +40,7 @@ Available in `run` (systems/observers) and `onEnter`/`onExit`/`onChange` (monito
 Decorators inject these — you call only `loadPaths`.
 
 ```ts
-rovy.loadPaths(...instances);   // recursively require module trees → side effects run
+rovy.loadPaths(...paths);   // `paths: string[]`; transformer lowers to Instance roots
 rovy.traitToken<T>();           // value-position trait handle (see Traits)
 // rovy.__component / __resource / __event / __system / __observer
 // / __monitor / __relation / __schedule / __traitImpl / __query
@@ -60,7 +60,7 @@ app.start();                 // finalize registries + fire @schedule({ runOnStar
 app.flush();                 // manual flush escape hatch
 ```
 
-No `addMetadata` / `addSystems` / `addObserver` / `onAdd*` / `step`. Systems/observers/monitors self-register via transformer-injected `rovy.__*` calls; `rovy.loadPaths(...)` must run before `app.start()`. Resources auto-register from `@resource` defaults — `insertResource` only needed to override. `app.step()` lives in the optional `StandardPlugin` (see [Schedules](07-schedules.md#standardplugin-optional)).
+No `addMetadata` / `addSystems` / `addObserver` / `onAdd*` / `step`. Systems/observers/monitors self-register via transformer-injected `rovy.__*` calls; `rovy.loadPaths(...)` takes authored TS string paths and must run before `app.start()`. Resources auto-register from `@resource` defaults — `insertResource` only needed to override. `app.step()` lives in the optional `StandardPlugin` (see [Schedules](07-schedules.md#standardplugin-optional)).
 
 ## World
 

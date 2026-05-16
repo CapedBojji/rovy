@@ -98,13 +98,13 @@ Each `rovy.__*` call only **pushes into a global registry**. No jecs IDs, no hoo
 
 Roblox ModuleScripts do not run unless required. A self-registering module is silently absent if no game code requires it.
 
-`rovy.loadPaths(...)` solves this — at runtime it recursively requires every `ModuleScript` under the given instances, so every injected `rovy.__*` side effect runs.
+`rovy.loadPaths(...)` solves this — authored TS passes string paths like `"src/client/systems"`. The transformer resolves each string to the matching Roblox Instance root via Rojo, then runtime recursively requires every `ModuleScript` under that instance so every injected `rovy.__*` side effect runs.
 
 ```ts
 rovy.loadPaths(
-	script.Parent.components,
-	script.Parent.systems,
-	script.Parent.observers,
+	"src/client/components",
+	"src/client/systems",
+	"src/client/observers",
 );
 
 app.start();   // finalize: allocate jecs IDs, wire hooks, sort observers, fire runOnStart

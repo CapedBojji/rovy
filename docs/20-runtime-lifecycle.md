@@ -43,7 +43,7 @@ end
 -- ...one per construct
 ```
 
-`rovy.loadPaths(...instances)` makes these run:
+`rovy.loadPaths(...)` makes these run. Authored TS passes string paths; the transformer lowers them to Instance roots before Luau runtime sees them:
 
 ```luau
 function rovy.loadPaths(...)

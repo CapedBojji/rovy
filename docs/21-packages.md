@@ -9,6 +9,8 @@ Rovy ships as two packages, mirroring the Flamework split (`@flamework/core` + `
 
 You only ever author against `@rovy/core`. `rovy-transformer` runs silently at build time and rewrites your decorated code into the `rovy.__*` registration calls the bundled runtime consumes.
 
+Inside this repo, those packages live in a pnpm workspace at `packages/core` and `packages/transformer`. That split is implementation-only; the published package boundary stays the same.
+
 ## What lives in `@rovy/core`
 
 Everything you import:
@@ -17,7 +19,7 @@ Everything you import:
 - **Macros** — `trait<T>()`, `query<...>()`
 - **Type-only helpers** — `Query<...>`, `Res<T>`, `ResMut<T>`, `OptRes<T>`, `Trait<T>`, `HasTrait<T>`, `AllTraits<T>`, `Pair<R>`, `Optional<C>`, `With<C>`, `Without<C>`, `Changed<C>`, `Added<C>`, `Removed<C>`, `Entity`, `Commands`, `World`, `EventReader<E>`, `EventWriter<E>`, `Local<T>`, `SystemSet`
 - **Runtime** — `App`, the `World` wrapper, `Commands`, scheduler, observer/monitor dispatch, event buffers, resource store, change-detection stores, trait registry
-- **The `rovy` registry object** — `rovy.loadPaths(...)` (public) plus the `rovy.__component` / `__resource` / `__event` / `__system` / `__observer` / `__monitor` / `__relation` / `__schedule` / `__traitImpl` / `__query` / `rovy.traitToken` entry points (transformer-only — never hand-called)
+- **The `rovy` registry object** — `rovy.loadPaths(...)` (public; authored TS passes string paths that the transformer lowers to Instance roots) plus the `rovy.__component` / `__resource` / `__event` / `__system` / `__observer` / `__monitor` / `__relation` / `__schedule` / `__traitImpl` / `__query` / `rovy.traitToken` entry points (transformer-only — never hand-called)
 
 ```ts
 import { App, component, system, Query, Res, rovy } from "@rovy/core";

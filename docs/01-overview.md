@@ -33,7 +33,7 @@ Do not fork jecs unless absolutely necessary. Wrap; do not rewrite.
 
 ## Packages
 
-Rovy ships as two packages, Flamework-style: `@rovy/core` (decorators, types, **and the packaged runtime** — what you import) and `rovy-transformer` (build-time roblox-ts plugin, listed once in `tsconfig.json`). You author only against `@rovy/core`. See [Packages](21-packages.md).
+Rovy ships as two packages, Flamework-style: `@rovy/core` (decorators, types, **and the packaged runtime** — what you import) and `rovy-transformer` (build-time roblox-ts plugin, listed once in `tsconfig.json`). You author only against `@rovy/core`, including string-path `rovy.loadPaths("src/client/systems")`. See [Packages](21-packages.md).
 
 ## See also
 
