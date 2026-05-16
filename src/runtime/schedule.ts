@@ -11,7 +11,7 @@ import type { Ctor, RovyRegistry, SystemReg } from "../contract";
 import type { CommandsImpl } from "./commands";
 import type { EventReaderHandle, EventRegistry, EventWriterHandle } from "./events";
 import { flush } from "./flush";
-import type { QueryHandle } from "./query";
+import type { QueryLike } from "./query";
 import type { LocalStore } from "./resolve-param";
 import { resolveParams } from "./resolve-param";
 import type { RovyWorld } from "./world";
@@ -42,7 +42,7 @@ export class Scheduler {
 	private lastRunTick = new Map<Ctor, number>();
 	private depth = 0;
 	/** Hoisted query handles (set by App after finalize). */
-	queries = new Map<string, QueryHandle>();
+	queries = new Map<string, QueryLike>();
 	/** Event registry + handle factories (set by App after finalize). */
 	events!: EventRegistry;
 	makeReader!: (registry: EventRegistry, event: Ctor) => EventReaderHandle;

@@ -6,11 +6,14 @@
 
 import { rovy } from "../rovy";
 import type { Ctor } from "../contract";
+import type { Entity } from "../types";
 import { CommandsImpl } from "./commands";
 import { EventReaderHandle, EventRegistry, EventWriterHandle, wireEvents } from "./events";
 import { flush } from "./flush";
 import { MonitorRegistry } from "./monitors";
 import { buildQueryHandle } from "./query";
+import { TraitQueryHandle, descriptorUsesTraits } from "./traits";
+import type { ResolvedTraits } from "./traits";
 import { Scheduler } from "./schedule";
 import { RovyWorld } from "./world";
 
@@ -119,9 +122,24 @@ export class App {
 			}
 		}
 
-		// 3. hoisted query handles
+		// 3a. resolve trait registry (stable id → implementer ctors+jecs ids)
+		const resolvedTraits: ResolvedTraits = new Map();
+		for (const [traitId, impls] of reg.traits) {
+			const list: Array<{ ctor: Ctor; jecsId: Entity }> = [];
+			for (const implCtor of impls) {
+				const jid = this.world.componentMap.get(implCtor);
+				assert(jid !== undefined, `[rovy] trait ${traitId} impl not a registered @component: ${tostring(implCtor)}`);
+				list.push({ ctor: implCtor, jecsId: jid });
+			}
+			resolvedTraits.set(traitId, list);
+		}
+
+		// 3b. hoisted query handles (trait-using → TraitQueryHandle)
 		for (const [id, descriptor] of reg.queries) {
-			this.scheduler.queries.set(id, buildQueryHandle(this.world, descriptor));
+			const handle = descriptorUsesTraits(descriptor)
+				? new TraitQueryHandle(this.world, descriptor, resolvedTraits)
+				: buildQueryHandle(this.world, descriptor);
+			this.scheduler.queries.set(id, handle);
 		}
 
 		// 4. events + observers

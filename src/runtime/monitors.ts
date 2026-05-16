@@ -13,13 +13,13 @@
 import type { Ctor, MonitorReg, QueryDescriptor } from "../contract";
 import type { ResolveCtx } from "./resolve-param";
 import { resolveParams } from "./resolve-param";
-import type { QueryHandle } from "./query";
+import type { QueryLike } from "./query";
 import type { Entity } from "../types";
 import type { RovyWorld } from "./world";
 
 interface MonitorState {
 	instance: { [m: string]: ((self: unknown, ...a: Array<unknown>) => void) | undefined };
-	base: QueryHandle;
+	base: QueryLike;
 	descriptor: QueryDescriptor;
 	methods: Set<string>;
 	params: MonitorReg["params"];
@@ -35,7 +35,7 @@ export class MonitorRegistry {
 		private resolveBase: () => Omit<ResolveCtx, "event" | "locals" | "entity" | "terms">,
 	) {}
 
-	register(reg: MonitorReg, base: QueryHandle): void {
+	register(reg: MonitorReg, base: QueryLike): void {
 		const factory = reg.ctor as unknown as new () => MonitorState["instance"];
 		const state: MonitorState = {
 			instance: new factory(),

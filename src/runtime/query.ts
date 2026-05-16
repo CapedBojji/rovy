@@ -28,7 +28,19 @@ declare const table: {
 type AnyCached = CachedQuery<Array<Id>>;
 type AnyArchetype = Archetype<Array<Id>>;
 
-export class QueryHandle {
+/** Common surface of QueryHandle / FilteredQueryHandle / TraitQueryHandle. */
+export interface QueryLike {
+	forEach(cb: (...row: Array<unknown>) => void): void;
+	size(): number;
+	first(): LuaTuple<Array<unknown>> | undefined;
+	iter(): IterableFunction<LuaTuple<Array<unknown>>>;
+	withTarget(target: Entity): QueryLike;
+	has(entity: Entity): boolean;
+	members(): Array<Entity>;
+	getDescriptor(): QueryDescriptor;
+}
+
+export class QueryHandle implements QueryLike {
 	/** Required component ctors in jecs-arg order (drives result interleaving). */
 	private required: Array<Ctor> = [];
 	private withIds: Array<Entity> = [];

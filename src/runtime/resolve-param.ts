@@ -9,8 +9,8 @@
 import type { Ctor, ParamDescriptor } from "../contract";
 import type { CommandsImpl } from "./commands";
 import type { EventReaderHandle, EventRegistry, EventWriterHandle } from "./events";
-import { FilteredQueryHandle, hasTickFilters } from "./query";
-import type { QueryHandle } from "./query";
+import { FilteredQueryHandle, hasTickFilters, QueryHandle } from "./query";
+import type { QueryLike } from "./query";
 import type { RovyWorld } from "./world";
 
 /** Per-instance Local<T> slots, keyed by the descriptor's index. */
@@ -27,7 +27,7 @@ export interface ResolveCtx {
 	/** Observer-only: the triggering event instance (Phase 6). */
 	event?: unknown;
 	/** Hoisted query handles by descriptor id. */
-	queries: Map<string, QueryHandle>;
+	queries: Map<string, QueryLike>;
 	/** Consuming system's last-run tick (drives Changed/Added/Removed). -1 first run. */
 	lastRunTick: number;
 	/** Event buffers/observers registry. */
@@ -71,6 +71,10 @@ export function resolveParam(p: ParamDescriptor, ctx: ResolveCtx): unknown {
 			assert(h !== undefined, `[rovy] no hoisted query for handle '${p.handle}'`);
 			const d = h.getDescriptor();
 			if (hasTickFilters(d)) {
+				assert(
+					h instanceof QueryHandle,
+					"[rovy] tick filters (Changed/Added/Removed) on a trait query unsupported",
+				);
 				return new FilteredQueryHandle(h, ctx.world, d, ctx.lastRunTick);
 			}
 			return h;

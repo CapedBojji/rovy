@@ -131,14 +131,15 @@ Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-run
 - Note: docs 18/20 internal-mechanism sections to be updated to the cached-query design (tracked, non-blocking)
 - Files: `src/runtime/monitors.ts`, `src/runtime/query.ts` (`has`/`members`), `src/runtime/app.ts`, `src/runtime/schedule.ts`
 
-## ⬜ Phase 9 — Traits runtime
+## ✅ Phase 9 — Traits runtime
 
-- [ ] `traitRegistry` at finalize; `__traitImpl/__traitQuery`
-- [ ] `buildTraitQuery`→N sub-queries; `TraitQueryHandle` (row/impl)
-- [ ] `AllTraits` (row/entity+array); `HasTrait` (Or of impl ids — `jecs.Or` from spike); `traitToken`
-- [ ] Trait-monitor expansion (one wired monitor per implementer)
-- [ ] **Exit:** `Stunned`+`Rooted`→2 rows `Trait<CC>`, 1 row+array `AllTraits`; trait monitor fires per impl
-- Files: `src/runtime/traits.ts` (extend `monitors.ts`, `query.ts`)
+- [x] `ResolvedTraits` (stable id → impl ctor+jecsId) built at finalize from `rovy.registry.traits` + componentMap
+- [x] `TraitQueryHandle` (implements `QueryLike`): candidates = union of impl-bearing entities ∩ structural (no `jecs.Or`); `Trait<T>` → one row per present impl; `AllTraits<T>` → one row/entity + array; `HasTrait<T>` filter
+- [x] `QueryLike` interface unifies QueryHandle/Filtered/Trait; App routes trait-using descriptors via `descriptorUsesTraits`; tick+trait combo asserts unsupported
+- [x] Trait monitors work through reconcile over `TraitQueryHandle.members()` (per-entity; public-API design, not per-impl wiring)
+- [x] `traitToken` already in `rovy` (Phase 1)
+- [x] **Exit:** `test/specs/phase9.luau` 4/4 — Stunned+Rooted→2 `Trait` rows, AllTraits 1 row/entity+array, HasTrait filter, trait monitor enter/exit; fixed stale phase5 (→ HasPair)
+- Files: `src/runtime/traits.ts`, `src/runtime/query.ts` (`QueryLike`), `src/runtime/app.ts`, resolve-param/scheduler/monitors typing
 
 ## ⬜ Phase 10 — Relationships
 
