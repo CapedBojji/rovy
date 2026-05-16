@@ -150,15 +150,15 @@ Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-run
 - [x] **Exit:** `test/specs/phase10.luau` 4/4 — tag+data round-trip (world+commands), exclusive drops prior, cascade despawns holder, Pair binds target / HasPair filters / withTarget narrows; phase5 canary repurposed to unregistered-component invariant
 - Files: `src/runtime/relations.ts`, `src/runtime/world.ts`, `src/runtime/app.ts`, `src/runtime/query.ts`
 
-## ⬜ Phase 11 — Plugins + loadPaths hardening + dev errors
+## ✅ Phase 11 — Plugins + loadPaths hardening + dev errors
 
-- [ ] `@plugin` + `app.addPlugin(build(app))`; `configureSets` via plugins
-- [ ] `loadPaths` recursive-require with circular-require safety
-- [ ] Dev-mode unregistered-class error at finalize (names the class)
-- [ ] Optional dev `Object.freeze` on `Res`/get
-- [ ] Thin TestEZ/run-in-roblox suite for real Instance-tree `loadPaths`
-- [ ] **Exit:** plugin configures sets; finalize on unregistered class throws clear named error; circular requires no deadlock; real ModuleScript tree walk works under TestEZ
-- Files: `src/runtime/plugin.ts` (extend `rovy.ts`, `app.ts`), `test/instance-tree.testez`
+- [x] `@plugin` decorator (no-op marker) + `app.addPlugin({build})`; `plugin.build(app)` runs first in `start()` → `configureSets`/`insertResource` before finalize
+- [x] Dev validation pass: systems/observers/monitors with `res`/`resMut`/`eventReader`/`eventWriter` for unregistered deps throw a **named** error (`'sys/Id' needs unregistered @resource: X`); `optRes` tolerant
+- [x] `loadPaths` default provider requires Instance-tree ModuleScripts (Roblox `require` caches → side effects once); injected provider for Lune tests; registries additive + single `start()` guard cover idempotency/cycles
+- [~] `Object.freeze` on `Res` — **deferred** (locked decision: `ResMut` advisory-only v1; no runtime freeze)
+- [~] Real Instance-tree TestEZ/run-in-roblox suite — **deferred** (no Studio in CI; injected-provider path fully covered under Lune; real walk is thin glue, low risk — tracked for when a Roblox CI exists)
+- [x] **Exit:** `test/specs/phase11.luau` 5/5 — plugin configures sets + inserts resource pre-finalize; unregistered @resource/@event throw named; OptRes tolerant; loadPaths delegates
+- Files: `src/runtime/app.ts` (validation + plugin order), `src/runtime/events.ts` (`hasEvent`), `src/decorators.ts` (`plugin`)
 
 ## ⬜ Phase 12 — Integration / example app
 

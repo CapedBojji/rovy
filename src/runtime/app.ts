@@ -193,6 +193,32 @@ export class App {
 		this.monitors = monitors;
 		this.scheduler.onFlush = () => monitors.reconcileAll();
 
+		// 5b. dev validation — fail loudly + named for missing deps
+		const checkParams = (
+			kind: string,
+			id: string,
+			params: ReadonlyArray<import("../contract").ParamDescriptor>,
+		) => {
+			for (const p of params) {
+				if (p.kind === "res" || p.kind === "resMut" || p.kind === "optRes") {
+					if (p.kind !== "optRes") {
+						assert(
+							this.world.resourceMap.get(p.ctor) !== undefined,
+							`[rovy] ${kind} '${id}' needs unregistered @resource: ${tostring(p.ctor)} — is it decorated + under rovy.loadPaths?`,
+						);
+					}
+				} else if (p.kind === "eventReader" || p.kind === "eventWriter") {
+					assert(
+						this.eventRegistry.hasEvent(p.ctor),
+						`[rovy] ${kind} '${id}' needs unregistered @event: ${tostring(p.ctor)}`,
+					);
+				}
+			}
+		};
+		for (const s of reg.systems) checkParams("system", s.id, s.params);
+		for (const o of reg.observers) checkParams("observer", tostring(o.ctor), o.params);
+		for (const m of reg.monitors) checkParams("monitor", tostring(m.ctor), m.params);
+
 		// 6. build scheduler (schedules → sets → systems), then fire runOnStart
 		this.scheduler.build(reg);
 		this.started = true;

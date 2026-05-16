@@ -35,6 +35,10 @@ export class EventRegistry {
 		}
 	}
 
+	hasEvent(ctor: Ctor): boolean {
+		return this.buffers.has(ctor);
+	}
+
 	registerObserver(reg: ObserverReg): void {
 		const buf = this.buffers.get(reg.event);
 		assert(
