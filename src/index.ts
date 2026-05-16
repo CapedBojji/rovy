@@ -42,6 +42,7 @@ export { CommandsImpl } from "./runtime/commands";
 export { Scheduler } from "./runtime/schedule";
 export { QueryHandle, FilteredQueryHandle } from "./runtime/query";
 export { EventRegistry, EventReaderHandle, EventWriterHandle } from "./runtime/events";
+export { MonitorRegistry } from "./runtime/monitors";
 
 // Frozen transformer↔runtime contract.
 export * from "./contract";

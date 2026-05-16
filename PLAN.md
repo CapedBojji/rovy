@@ -121,13 +121,15 @@ Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-run
 - [x] **Exit:** `test/specs/phase7.luau` 3/3 — Changed first-all/quiet-none/set-again, Added≠Changed, Removed once; fixed stale phase5 assertion (Changed now valid → HasTrait used)
 - Files: `src/runtime/world.ts`, `src/runtime/query.ts`, `src/runtime/resolve-param.ts`, `src/runtime/schedule.ts`, `src/runtime/app.ts`
 
-## ⬜ Phase 8 — Monitors (archetype tracking + lifecycle) — highest risk, spike-gated
+## ✅ Phase 8 — Monitors (lifecycle via public cached-query reconcile)
 
-- [ ] Initial set via `query:archetypes()`; `observeArchetypes` via `world.observable`
-- [ ] `onEnter/onExit/onChange` via `world:added/removed/changed` src/dst asymmetry (`jecs.record`, `archetype_traverse_remove`, `ROOT_ARCHETYPE`)
-- [ ] Inverted `Without` logic; param resolution vs match terms
-- [ ] **Exit:** gain `[Health,Position]+Unit`→`onEnter` once; lose `Health`→`onExit`; `set`→`onChange`; gain `Dead`(Without)→`onExit`; despawn→`onExit` via ROOT; new runtime archetype tracked live
-- Files: `src/runtime/monitors.ts`
+- [x] **Spike redesign used:** per-monitor `was: Set<Entity>` reconciled vs `QueryHandle.members()`/`has()` at flush + every set-boundary + start (NOT internal `archetype_traverse_remove`/`observable`). Covers enter/exit incl gain-Without + despawn + lost-excluded-enter the hook path can't see pre-move.
+- [x] `onChange` immediate via jecs `changed` hook per term component, gated on `was.has(e) && base.has(e)`
+- [x] Param resolution `entity`/`term[index]` (1-based Lua-table to survive Optional holes); `commands`/`res`/etc via shared baseCtx
+- [x] `scheduler.onFlush` + `App.flush`/`world.flush` + post-start drive `reconcileAll`
+- [x] **Exit:** `test/specs/phase8.luau` 6/6 — enter-once+idempotent, exit on lost-required / gained-Without / despawn, onChange while matching not after exit, re-enter after exit
+- Note: docs 18/20 internal-mechanism sections to be updated to the cached-query design (tracked, non-blocking)
+- Files: `src/runtime/monitors.ts`, `src/runtime/query.ts` (`has`/`members`), `src/runtime/app.ts`, `src/runtime/schedule.ts`
 
 ## ⬜ Phase 9 — Traits runtime
 

@@ -47,6 +47,8 @@ export class Scheduler {
 	events!: EventRegistry;
 	makeReader!: (registry: EventRegistry, event: Ctor) => EventReaderHandle;
 	makeWriter!: (registry: EventRegistry, event: Ctor) => EventWriterHandle;
+	/** Monitor reconcile, run after every set-boundary flush (set by App). */
+	onFlush?: () => void;
 
 	constructor(
 		private world: RovyWorld,
@@ -132,6 +134,7 @@ export class Scheduler {
 				this.lastRunTick.set(sr.reg.ctor, this.world.changeTick);
 			}
 			flush(this.commands); // set boundary
+			if (this.onFlush !== undefined) this.onFlush(); // monitor reconcile
 		}
 
 		this.depth -= 1;

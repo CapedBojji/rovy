@@ -9,6 +9,7 @@ import type { Ctor } from "../contract";
 import { CommandsImpl } from "./commands";
 import { EventReaderHandle, EventRegistry, EventWriterHandle, wireEvents } from "./events";
 import { flush } from "./flush";
+import { MonitorRegistry } from "./monitors";
 import { buildQueryHandle } from "./query";
 import { Scheduler } from "./schedule";
 import { RovyWorld } from "./world";
@@ -18,6 +19,7 @@ export class App {
 	readonly commands: CommandsImpl;
 	readonly scheduler: Scheduler;
 	readonly eventRegistry = new EventRegistry();
+	private monitors?: MonitorRegistry;
 	private started = false;
 	/** Overrides supplied before start(); applied after resource registration. */
 	private resourceOverrides = new Map<Ctor, object>();
@@ -31,12 +33,16 @@ export class App {
 		// wire deferred command → scheduler / world hooks
 		this.commands.deferredRunSchedule = (s) => this.scheduler.run(s);
 		this.world.runScheduleImpl = (s) => this.scheduler.run(s);
-		this.world.flushImpl = () => flush(this.commands);
+		this.world.flushImpl = () => {
+			flush(this.commands);
+			this.monitors?.reconcileAll();
+		};
 	}
 
 	/** Apply queued commands to convergence (escape hatch; scheduler flushes at set boundaries). */
 	flush(): this {
 		flush(this.commands);
+		this.monitors?.reconcileAll();
 		return this;
 	}
 
@@ -127,7 +133,7 @@ export class App {
 		}
 		const makeReader = (r: EventRegistry, ev: Ctor) => new EventReaderHandle(r, ev);
 		const makeWriter = (r: EventRegistry, ev: Ctor) => new EventWriterHandle(r, ev);
-		this.eventRegistry.resolveBase = () => ({
+		const baseCtx = () => ({
 			world: this.world,
 			commands: this.commands,
 			queries: this.scheduler.queries,
@@ -136,14 +142,26 @@ export class App {
 			makeWriter,
 			lastRunTick: -1,
 		});
+		this.eventRegistry.resolveBase = baseCtx;
 		this.scheduler.events = this.eventRegistry;
 		this.scheduler.makeReader = makeReader;
 		this.scheduler.makeWriter = makeWriter;
 		wireEvents(this.eventRegistry, this.commands, this.world);
 
-		// 5. build scheduler (schedules → sets → systems), then fire runOnStart
+		// 5. monitors (public cached-query reconcile; see monitors.ts)
+		const monitors = new MonitorRegistry(this.world, baseCtx);
+		for (const m of reg.monitors) {
+			const base = this.scheduler.queries.get(m.match);
+			assert(base !== undefined, `[rovy] @monitor match query not hoisted: ${m.match}`);
+			monitors.register(m, base);
+		}
+		this.monitors = monitors;
+		this.scheduler.onFlush = () => monitors.reconcileAll();
+
+		// 6. build scheduler (schedules → sets → systems), then fire runOnStart
 		this.scheduler.build(reg);
 		this.started = true;
+		monitors.reconcileAll(); // initial membership (pre-start spawns)
 		for (const s of this.scheduler.runOnStartList()) {
 			this.scheduler.run(s);
 		}

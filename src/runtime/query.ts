@@ -69,6 +69,21 @@ export class QueryHandle {
 		return this.descriptor;
 	}
 
+	/** Live archetype membership test (jecs cached query). */
+	has(entity: Entity): boolean {
+		return (this.buildJecsQuery() as unknown as CachedQuery<Array<Id>>).has(entity);
+	}
+
+	/** All currently-matching entities (for monitor reconcile). */
+	members(): Array<Entity> {
+		const out: Array<Entity> = [];
+		this.each((entity) => {
+			out.push(entity);
+			return true;
+		});
+		return out;
+	}
+
 	/** Public row iteration for FilteredQueryHandle. */
 	iterate(visit: (entity: Entity, arch: AnyArchetype, row: number) => boolean): void {
 		this.each(visit);
