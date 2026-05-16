@@ -14,6 +14,7 @@ import { MonitorRegistry } from "./monitors";
 import { buildQueryHandle } from "./query";
 import { TraitQueryHandle, descriptorUsesTraits } from "./traits";
 import type { ResolvedTraits } from "./traits";
+import { RelationQueryHandle, descriptorUsesRelations } from "./relations";
 import { Scheduler } from "./schedule";
 import { RovyWorld } from "./world";
 
@@ -35,6 +36,8 @@ export class App {
 		this.scheduler = new Scheduler(this.world, this.commands);
 		// wire deferred command → scheduler / world hooks
 		this.commands.deferredRunSchedule = (s) => this.scheduler.run(s);
+		this.commands.deferredRelate = (s, r, t, d) => this.world.relate(s, r, t, d);
+		this.commands.deferredUnrelate = (s, r, t) => this.world.unrelate(s, r, t);
 		this.world.runScheduleImpl = (s) => this.scheduler.run(s);
 		this.world.flushImpl = () => {
 			flush(this.commands);
@@ -122,6 +125,15 @@ export class App {
 			}
 		}
 
+		// 2c. relations → jecs relation ids + cleanup/exclusive policies
+		for (const r of reg.relations) {
+			this.world.registerRelation(r.ctor, {
+				exclusive: r.exclusive,
+				onTargetDelete: r.onTargetDelete,
+				onDelete: r.onDelete,
+			});
+		}
+
 		// 3a. resolve trait registry (stable id → implementer ctors+jecs ids)
 		const resolvedTraits: ResolvedTraits = new Map();
 		for (const [traitId, impls] of reg.traits) {
@@ -136,9 +148,14 @@ export class App {
 
 		// 3b. hoisted query handles (trait-using → TraitQueryHandle)
 		for (const [id, descriptor] of reg.queries) {
-			const handle = descriptorUsesTraits(descriptor)
-				? new TraitQueryHandle(this.world, descriptor, resolvedTraits)
-				: buildQueryHandle(this.world, descriptor);
+			let handle;
+			if (descriptorUsesRelations(descriptor)) {
+				handle = new RelationQueryHandle(this.world, descriptor);
+			} else if (descriptorUsesTraits(descriptor)) {
+				handle = new TraitQueryHandle(this.world, descriptor, resolvedTraits);
+			} else {
+				handle = buildQueryHandle(this.world, descriptor);
+			}
 			this.scheduler.queries.set(id, handle);
 		}
 

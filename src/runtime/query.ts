@@ -52,9 +52,18 @@ export class QueryHandle implements QueryLike {
 	) {
 		for (const term of descriptor.terms) {
 			if (term.t === "component") {
+				assert(
+					world.componentMap.get(term.ctor) !== undefined,
+					`[rovy] query term on unregistered @component: ${tostring(term.ctor)}`,
+				);
 				this.required.push(term.ctor);
-			} else if (term.t === "entity" || term.t === "optional") {
-				// entity: jecs-implicit; optional: fetched per row
+			} else if (term.t === "optional") {
+				assert(
+					world.componentMap.get(term.ctor) !== undefined,
+					`[rovy] Optional<> on unregistered @component: ${tostring(term.ctor)}`,
+				);
+			} else if (term.t === "entity") {
+				// jecs-implicit
 			} else {
 				error(`[rovy] query term '${term.t}' not implemented until a later phase`);
 			}

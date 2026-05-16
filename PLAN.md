@@ -141,13 +141,14 @@ Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-run
 - [x] **Exit:** `test/specs/phase9.luau` 4/4 — Stunned+Rooted→2 `Trait` rows, AllTraits 1 row/entity+array, HasTrait filter, trait monitor enter/exit; fixed stale phase5 (→ HasPair)
 - Files: `src/runtime/traits.ts`, `src/runtime/query.ts` (`QueryLike`), `src/runtime/app.ts`, resolve-param/scheduler/monitors typing
 
-## ⬜ Phase 10 — Relationships
+## ✅ Phase 10 — Relationships
 
-- [ ] `@relation` finalize → pair ids; `commands.relate/unrelate` + `world.relate/unrelate/hasRelation/getRelation`
-- [ ] `exclusive`/`onTargetDelete`/`onDelete` policies
-- [ ] `Pair<R>` binds `{target,data?}`; `HasPair<R>`; `q.withTarget(e)`; relationship monitors
-- [ ] **Exit:** tag+data relations round-trip; `exclusive` auto-removes prior; `cascade` despawns holder on target delete; `Pair<ChildOf>` binds target; `withTarget` narrows
-- Files: `src/runtime/relationships.ts` (extend `commands.ts`, `query.ts`, `monitors.ts`)
+- [x] `registerRelation` → jecs relation id; native `Exclusive` + `pair(OnDelete/OnDeleteTarget, Delete/Remove)` for policies; `world.relate/unrelate/hasRelation/getRelation/relationTarget`; `commands.relate/unrelate` deferred hooks wired
+- [x] `RelationQueryHandle` (QueryLike): candidates via `jecs.each(pair(Rel,Wildcard))`; `Pair<R>` binds `{target,data}`; `HasPair<R>` filter; `withTarget(e)` clones pinned to target; relationship monitors via reconcile/members
+- [x] App routes pair/hasPair descriptors → RelationQueryHandle (before trait/structural)
+- [x] QueryHandle constructor now asserts component/Optional terms are registered (caught at start)
+- [x] **Exit:** `test/specs/phase10.luau` 4/4 — tag+data round-trip (world+commands), exclusive drops prior, cascade despawns holder, Pair binds target / HasPair filters / withTarget narrows; phase5 canary repurposed to unregistered-component invariant
+- Files: `src/runtime/relations.ts`, `src/runtime/world.ts`, `src/runtime/app.ts`, `src/runtime/query.ts`
 
 ## ⬜ Phase 11 — Plugins + loadPaths hardening + dev errors
 

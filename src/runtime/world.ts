@@ -5,9 +5,18 @@
  * escape hatch and the substrate Commands flushes onto.
  */
 
-import { world as createJecsWorld } from "@rbxts/jecs";
+import {
+	world as createJecsWorld,
+	pair as jecsPair,
+	Wildcard,
+	OnDelete,
+	OnDeleteTarget,
+	Delete,
+	Remove,
+	Exclusive,
+} from "@rbxts/jecs";
 import type { Entity as JecsEntity, World as JecsWorld } from "@rbxts/jecs";
-import type { Ctor } from "../contract";
+import type { CleanupPolicy, Ctor } from "../contract";
 import type { Entity, World } from "../types";
 
 /** Sentinel entity that holds every resource singleton as a jecs component. */
@@ -192,17 +201,59 @@ export class RovyWorld implements World {
 
 	// ── relationship / trigger / schedule stubs (later phases) ──────────────
 
-	relate(): void {
-		error("[rovy] world.relate not implemented until Phase 10");
+	/** rovy relation class → jecs relation component id. */
+	readonly relationMap = new Map<Ctor, JecsEntity>();
+
+	registerRelation(
+		relation: Ctor,
+		opts: { exclusive: boolean; onTargetDelete: CleanupPolicy; onDelete: CleanupPolicy },
+	): JecsEntity {
+		let rid = this.relationMap.get(relation);
+		if (rid === undefined) {
+			rid = this.jecs.component();
+			this.relationMap.set(relation, rid);
+		}
+		if (opts.exclusive) this.jecs.add(rid, Exclusive);
+		const policy = (p: CleanupPolicy) => (p === "cascade" ? Delete : p === "remove" ? Remove : undefined);
+		const ondel = policy(opts.onDelete);
+		if (ondel !== undefined) this.jecs.add(rid, jecsPair(OnDelete, ondel) as never);
+		const ontgt = policy(opts.onTargetDelete);
+		if (ontgt !== undefined) this.jecs.add(rid, jecsPair(OnDeleteTarget, ontgt) as never);
+		return rid;
 	}
-	unrelate(): void {
-		error("[rovy] world.unrelate not implemented until Phase 10");
+
+	private relId(relation: Ctor): JecsEntity {
+		const rid = this.relationMap.get(relation);
+		assert(rid !== undefined, `[rovy] relation not registered: ${tostring(relation)}`);
+		return rid;
 	}
-	hasRelation(): boolean {
-		return error("[rovy] world.hasRelation not implemented until Phase 10");
+
+	/** jecs pair id for (relation, target). */
+	pairId(relation: Ctor, target: Entity): JecsEntity {
+		return jecsPair(this.relId(relation), target) as unknown as JecsEntity;
 	}
-	getRelation<T extends object>(): T | undefined {
-		return error("[rovy] world.getRelation not implemented until Phase 10");
+	/** jecs pair id for (relation, *) — wildcard. */
+	wildcardPairId(relation: Ctor): JecsEntity {
+		return jecsPair(this.relId(relation), Wildcard) as unknown as JecsEntity;
+	}
+
+	relate(source: Entity, relation: Ctor, target: Entity, data?: object): void {
+		const pid = this.pairId(relation, target);
+		if (data !== undefined) this.jecs.set(source, pid as never, data as never);
+		else this.jecs.add(source, pid as never);
+	}
+	unrelate(source: Entity, relation: Ctor, target: Entity): void {
+		this.jecs.remove(source, this.pairId(relation, target) as never);
+	}
+	hasRelation(source: Entity, relation: Ctor, target: Entity): boolean {
+		return this.jecs.has(source, this.pairId(relation, target) as never);
+	}
+	getRelation<T extends object>(source: Entity, relation: Ctor<T>, target: Entity): T | undefined {
+		return this.jecs.get(source, this.pairId(relation as unknown as Ctor, target) as never) as T | undefined;
+	}
+	/** First target of a relation on an entity (or undefined). */
+	relationTarget(source: Entity, relation: Ctor): Entity | undefined {
+		return this.jecs.target(source, this.relId(relation), 0);
 	}
 	/** Set by App to dispatch to observers immediately. */
 	triggerImpl?: (event: object) => void;

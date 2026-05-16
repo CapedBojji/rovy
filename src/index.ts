@@ -44,6 +44,7 @@ export { QueryHandle, FilteredQueryHandle } from "./runtime/query";
 export { EventRegistry, EventReaderHandle, EventWriterHandle } from "./runtime/events";
 export { MonitorRegistry } from "./runtime/monitors";
 export { TraitQueryHandle } from "./runtime/traits";
+export { RelationQueryHandle } from "./runtime/relations";
 
 // Frozen transformer↔runtime contract.
 export * from "./contract";
