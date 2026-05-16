@@ -125,7 +125,7 @@ export const rovy = {
 	 * TS authoring passes string paths like `"src/client/systems"`; the
 	 * transformer lowers them to Roblox Instance roots before runtime.
 	 */
-	loadPaths(...paths: ReadonlyArray<string>): void {
+	loadPaths(...paths: ReadonlyArray<string | Instance>): void {
 		moduleProvider(paths);
 	},
 

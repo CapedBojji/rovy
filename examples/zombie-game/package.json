@@ -1,0 +1,55 @@
+{
+  "name": "@rovy/example-zombie-game",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Rovy-driven zombie wave survival example (Flamework networking + egooe HUD).",
+  "main": "index.js",
+  "scripts": {
+    "build": "rbxtsc --type game",
+    "watch": "rbxtsc --type game -w",
+    "build:place": "pnpm run build && mkdir -p build && rojo build default.project.json -o build/rovy-zombie-game.rbxl",
+    "test:output": "node test/assert-output.js",
+    "test:luau": "lune run test/smoke",
+    "test:place": "node test/assert-place.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "^11.1.2",
+      "onFail": "download"
+    }
+  },
+  "type": "module",
+  "dependencies": {
+    "@flamework/core": "1.3.2",
+    "@flamework/networking": "1.3.2",
+    "@rbxts/egooe": "0.1.6",
+    "@rbxts/flamework-binary-serializer": "0.7.0",
+    "@rbxts/iris": "2.3.1-ts.1",
+    "@rbxts/jecs": "^0.11.0",
+    "@rbxts/maid": "^1.1.0",
+    "@rbxts/object-utils": "^1.0.4",
+    "@rbxts/services": "^1.6.0",
+    "@rbxts/signal": "^1.1.1",
+    "@rbxts/t": "^3.2.1",
+    "@rovy/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@rbxts/compiler-types": "3.0.0-types.0",
+    "@rbxts/types": "^1.0.920",
+    "@typescript-eslint/eslint-plugin": "^8.59.3",
+    "@typescript-eslint/parser": "^8.59.3",
+    "eslint": "^10.3.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "eslint-plugin-roblox-ts": "^1.4.0",
+    "prettier": "^3.8.3",
+    "rbxts-transformer-flamework": "1.3.2",
+    "roblox-ts": "^3.0.0",
+    "rovy-transformer": "workspace:*",
+    "typescript": "5.5.3"
+  }
+}

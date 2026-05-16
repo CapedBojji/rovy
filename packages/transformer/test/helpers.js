@@ -12,7 +12,7 @@ function createFixtureDir() {
 	const src = path.join(temp, "src");
 	fs.mkdirSync(src, { recursive: true });
 	fs.writeFileSync(
-		path.join(temp, "default.project.json"),
+		path.join(temp, "test.project.json"),
 		JSON.stringify({
 			name: "fixture",
 			tree: {
@@ -25,7 +25,7 @@ function createFixtureDir() {
 			},
 		}),
 	);
-	return { temp, src, rojo: path.join(temp, "default.project.json") };
+	return { temp, src, rojo: path.join(temp, "test.project.json") };
 }
 
 function createProgram(entryPath, rootDir, currentDirectory) {

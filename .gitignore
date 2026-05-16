@@ -8,3 +8,6 @@
 /packages/*/include
 *.tsbuildinfo
 .DS_Store
+**/*/**.rbxl
+/examples/**/**/node_modules
+/examples/**/**/out

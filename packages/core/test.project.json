@@ -1,0 +1,12 @@
+{
+  "name": "rovy-core-test",
+  "tree": {
+    "$className": "Folder",
+    "ReplicatedStorage": {
+      "$className": "Folder",
+      "rovy": {
+        "$path": "out"
+      }
+    }
+  }
+}

@@ -132,13 +132,37 @@ ${header}
 class HealthMonitor {
 	onEnter(entity: Entity, health: Health, commands: Commands) {}
 }
-`);
+	`);
 	assertNoDiagnostics(result, "monitor lowering");
-	assert.match(result.printed, /__query\(\{ id: "src\/main:match"/);
-	assert.match(result.printed, /__monitor\(HealthMonitor, \{ match: "src\/main:match"/);
+	assert.match(result.printed, /__query\(\{ id: "src\/main@HealthMonitor:match"/);
+	assert.match(result.printed, /__monitor\(HealthMonitor, \{ match: "src\/main@HealthMonitor:match"/);
 	assert.match(result.printed, /kind: "entity"/);
 	assert.match(result.printed, /kind: "term", index: 1/);
 	assert.match(result.printed, /kind: "commands"/);
+});
+
+runCase("query handles are unique across classes in one file", () => {
+	const result = compileFixture(`
+${header}
+	@schedule class Update {}
+	@component class Position {}
+	@component class Velocity {}
+	@component class Projectile {}
+	@component class Zombie {}
+	@system({ schedule: Update })
+	class StepZombieMovement {
+		run(zombies: Query<[Entity, Position], With<Zombie>>) {}
+	}
+	@system({ schedule: Update })
+	class StepProjectileMovement {
+		run(projectiles: Query<[Entity, Position, Velocity], With<Projectile>>) {}
+	}
+	`);
+	assertNoDiagnostics(result, "unique query handles");
+	assert.match(result.printed, /handle: "src\/main@StepZombieMovement:0"/);
+	assert.match(result.printed, /handle: "src\/main@StepProjectileMovement:0"/);
+	assert.match(result.printed, /id: "src\/main@StepZombieMovement:0"/);
+	assert.match(result.printed, /id: "src\/main@StepProjectileMovement:0"/);
 });
 
 runCase("observer event param lowers to kind event", () => {

@@ -154,7 +154,8 @@ function transformClass(
 
 	const stripped = removeRovyDecorators(state, sourceFile, node);
 	const transformedClass = ts.visitEachChild(stripped, visitor, state.context);
-	const classId = state.stableIdForNode(node);
+	const moduleId = state.stableIdForNode(node);
+	const classId = classScopedId(moduleId, className.text);
 
 	for (const decorator of decorators) {
 		switch (decorator.name) {
@@ -655,6 +656,10 @@ function emptyParams(): ParamBuild {
 
 function printExpression(expression: ts.Expression, sourceFile: ts.SourceFile): string {
 	return ts.createPrinter({ removeComments: true }).printNode(ts.EmitHint.Expression, expression, sourceFile);
+}
+
+function classScopedId(moduleId: string, className: string): string {
+	return `${moduleId}@${className}`;
 }
 
 export { TransformerConfig };

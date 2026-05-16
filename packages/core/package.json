@@ -9,7 +9,7 @@
     "build": "rbxtsc",
     "dev": "rbxtsc -w",
     "test": "rbxtsc -p tsconfig.test.json && lune run test/run",
-    "spike": "lune run test/spike"
+    "spike": "lune run test/smoke"
   },
   "files": [
     "out",
