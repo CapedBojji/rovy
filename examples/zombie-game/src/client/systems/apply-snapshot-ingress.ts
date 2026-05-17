@@ -18,7 +18,6 @@ import {
 	ClientPosition,
 	ClientProjectile,
 	ClientZombie,
-	Model,
 	ModelData,
 	NetworkId,
 	PreviousPosition,
@@ -68,8 +67,6 @@ export class ApplySnapshotIngress {
 			}
 			for (const [id, entity] of nem.zombies) {
 				if (!liveZombies.has(id)) {
-					const m = world.get(entity, Model);
-					if (m !== undefined) m.part.Destroy();
 					world.despawn(entity);
 					nem.zombies.delete(id);
 				}
@@ -100,8 +97,6 @@ export class ApplySnapshotIngress {
 			}
 			for (const [id, entity] of nem.projectiles) {
 				if (!liveProjectiles.has(id)) {
-					const m = world.get(entity, Model);
-					if (m !== undefined) m.part.Destroy();
 					world.despawn(entity);
 					nem.projectiles.delete(id);
 				}
