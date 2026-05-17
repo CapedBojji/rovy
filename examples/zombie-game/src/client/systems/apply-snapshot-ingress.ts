@@ -1,4 +1,4 @@
-import { EventReader, Res, ResMut, World, system } from "@rovy/core";
+import { Commands, EventReader, Res, ResMut, World, system } from "@rovy/core";
 import { WorldSnapshotPayload } from "shared/contracts";
 import { WorldSnapshotNet, fromWorldSnapshotNet } from "shared/network";
 import { ClientClock, HudState, NetworkEntityMap } from "../resources";
@@ -29,6 +29,7 @@ export class ApplySnapshotIngress {
 		ingress: EventReader<WorldSnapshotNet>,
 		clock: Res<ClientClock>,
 		world: World,
+		commands: Commands,
 		nem: ResMut<NetworkEntityMap>,
 		hud: ResMut<HudState>,
 	) {
@@ -57,17 +58,17 @@ export class ApplySnapshotIngress {
 					nem.zombies.set(z.id, entity);
 				} else {
 					const prev = world.get(existing, ClientPosition);
-					world.set(
+					commands.set(
 						existing,
 						PreviousPosition,
 						new PreviousPosition(prev !== undefined ? prev.value : z.position, clock.now),
 					);
-					world.set(existing, ClientPosition, new ClientPosition(z.position));
+					commands.set(existing, ClientPosition, new ClientPosition(z.position));
 				}
 			}
 			for (const [id, entity] of nem.zombies) {
 				if (!liveZombies.has(id)) {
-					world.despawn(entity);
+					commands.despawn(entity);
 					nem.zombies.delete(id);
 				}
 			}
@@ -87,17 +88,17 @@ export class ApplySnapshotIngress {
 					nem.projectiles.set(p.id, entity);
 				} else {
 					const prev = world.get(existing, ClientPosition);
-					world.set(
+					commands.set(
 						existing,
 						PreviousPosition,
 						new PreviousPosition(prev !== undefined ? prev.value : p.position, clock.now),
 					);
-					world.set(existing, ClientPosition, new ClientPosition(p.position));
+					commands.set(existing, ClientPosition, new ClientPosition(p.position));
 				}
 			}
 			for (const [id, entity] of nem.projectiles) {
 				if (!liveProjectiles.has(id)) {
-					world.despawn(entity);
+					commands.despawn(entity);
 					nem.projectiles.delete(id);
 				}
 			}
