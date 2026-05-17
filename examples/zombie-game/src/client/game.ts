@@ -1,5 +1,6 @@
 import { App } from "@rovy/core";
 import "./collectors";
+import "./components";
 import "./systems";
 
 export * from "./state";

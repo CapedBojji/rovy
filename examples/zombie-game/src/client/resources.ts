@@ -1,5 +1,6 @@
 import EgooE from "@rbxts/egooe";
 import { $collectRef, resource } from "@rovy/core";
+import type { Entity } from "@rovy/core";
 import { PLAYER_MAX_HEALTH, WavePhase } from "shared/contracts";
 import { LocalClientCollect } from "./collectors";
 
@@ -10,17 +11,14 @@ export class ClientClock {
 }
 
 @resource
-export class SnapshotBufferState {
-	previous?: import("shared/contracts").WorldSnapshotPayload;
-	current?: import("shared/contracts").WorldSnapshotPayload;
-	currentReceivedAt = 0;
+export class RenderRegistry {
+	rootFolder?: Folder;
 }
 
 @resource
-export class RenderRegistry {
-	rootFolder?: Folder;
-	zombieParts = new Map<number, Part>();
-	projectileParts = new Map<number, Part>();
+export class NetworkEntityMap {
+	zombies = new Map<number, Entity>();
+	projectiles = new Map<number, Entity>();
 }
 
 @resource

@@ -11,10 +11,15 @@ export class SnapshotSet extends SystemSet {}
 export class InputSet extends SystemSet {}
 export class RenderSet extends SystemSet {}
 
-const ZOMBIE_SIZE = new Vector3(4, 6, 4);
-const PROJECTILE_SIZE = new Vector3(1, 1, 1.5);
-const ZOMBIE_COLOR = Color3.fromRGB(60, 160, 60);
-const PROJECTILE_COLOR = Color3.fromRGB(245, 215, 55);
+export const ZOMBIE_SIZE = new Vector3(4, 6, 4);
+export const ZOMBIE_COLOR = Color3.fromRGB(60, 160, 60);
+export const ZOMBIE_MATERIAL = Enum.Material.SmoothPlastic;
+export const ZOMBIE_Y_OFFSET = ZOMBIE_SIZE.Y / 2;
+
+export const PROJECTILE_SIZE = new Vector3(1, 1, 1.5);
+export const PROJECTILE_COLOR = Color3.fromRGB(245, 215, 55);
+export const PROJECTILE_MATERIAL = Enum.Material.Neon;
+export const PROJECTILE_Y_OFFSET = 0;
 
 export function ensureRootFolder(reg: RenderRegistry): Folder {
 	if (reg.rootFolder !== undefined && reg.rootFolder.Parent !== undefined) return reg.rootFolder;
@@ -23,40 +28,6 @@ export function ensureRootFolder(reg: RenderRegistry): Folder {
 	folder.Parent = game.Workspace;
 	reg.rootFolder = folder;
 	return folder;
-}
-
-export function createZombiePart(reg: RenderRegistry, id: number, position: Vector3): Part {
-	const part = new Instance("Part");
-	part.Name = `Zombie_${id}`;
-	part.Anchored = true;
-	part.CanCollide = false;
-	part.CanQuery = false;
-	part.CanTouch = false;
-	part.Material = Enum.Material.SmoothPlastic;
-	part.Color = ZOMBIE_COLOR;
-	part.Size = ZOMBIE_SIZE;
-	part.CFrame = new CFrame(position.add(new Vector3(0, ZOMBIE_SIZE.Y / 2, 0)));
-	part.Parent = ensureRootFolder(reg);
-	return part;
-}
-
-export function createProjectilePart(reg: RenderRegistry, id: number, position: Vector3): Part {
-	const part = new Instance("Part");
-	part.Name = `Projectile_${id}`;
-	part.Anchored = true;
-	part.CanCollide = false;
-	part.CanQuery = false;
-	part.CanTouch = false;
-	part.Material = Enum.Material.Neon;
-	part.Color = PROJECTILE_COLOR;
-	part.Size = PROJECTILE_SIZE;
-	part.CFrame = new CFrame(position);
-	part.Parent = ensureRootFolder(reg);
-	return part;
-}
-
-export function lerpVector(a: Vector3, b: Vector3, alpha: number): Vector3 {
-	return a.add(b.sub(a).mul(alpha));
 }
 
 export function ensureHudNode(hudUi: HudUiState): ReturnType<typeof EgooE.new> {
