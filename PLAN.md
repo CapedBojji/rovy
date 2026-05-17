@@ -132,6 +132,7 @@ Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-run
 - [x] Param resolution `entity`/`term[index]` (1-based Lua-table to survive Optional holes); `commands`/`res`/etc via shared baseCtx
 - [x] `scheduler.onFlush` + `App.flush`/`world.flush` + post-start drive `reconcileAll`
 - [x] **Exit:** `test/specs/phase8.luau` 6/6 — enter-once+idempotent, exit on lost-required / gained-Without / despawn, onChange while matching not after exit, re-enter after exit
+- [x] Entity deletion triggers `onExit`: despawn removes entity from `members()` → reconcile detects exit; verified by `test/specs/phase8.luau` "onExit on despawn" (line 87-95)
 - Note: docs 18/20 internal-mechanism sections to be updated to the cached-query design (tracked, non-blocking)
 - Files: `src/runtime/monitors.ts`, `src/runtime/query.ts` (`has`/`members`), `src/runtime/app.ts`, `src/runtime/schedule.ts`
 

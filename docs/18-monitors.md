@@ -36,6 +36,20 @@ All three methods are optional. Implement only what you need.
 | `onExit` | entity transitions out of query match | yes — jecs fires `on_remove` before archetype transition |
 | `onChange` | any term component is `set()` while entity matches | yes — entity still in archetype |
 
+## Entity deletion
+
+Despawning an entity triggers `onExit` on every monitor that was tracking it — the same as removing all its components at once. Component values may be `undefined` in `onExit` when the entity has already been deleted.
+
+```ts
+@monitor({ match: query<[Health, Position], With<Unit>>() })
+class UnitMonitor {
+  onExit(entity: Entity, health: Health | undefined, position: Position | undefined) {
+    // fires on despawn, not just explicit component removal
+    print("entity removed from match (may be deleted):", entity);
+  }
+}
+```
+
 ## Match macro
 
 `query<Terms, ...Filters>()` in the decorator is a compile-time macro — same pattern as `trait<T>()`. Transformer resolves the generics, builds the descriptor.
