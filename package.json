@@ -4,14 +4,19 @@
   "packageManager": "pnpm@11.1.2",
   "scripts": {
     "build": "pnpm -r build",
-    "test": "pnpm --filter @rovy/core test && pnpm --filter rovy-transformer test",
+    "test": "pnpm --filter @rovy/core test && pnpm --filter @rovy/networking test && pnpm --filter rovy-transformer test",
     "build:core": "pnpm --filter @rovy/core build",
     "test:core": "pnpm --filter @rovy/core test",
+    "build:networking": "pnpm --filter @rovy/networking build",
+    "test:networking": "pnpm --filter @rovy/networking test",
     "build:transformer": "pnpm --filter rovy-transformer build",
     "test:transformer": "pnpm --filter rovy-transformer test",
     "build:example": "pnpm --filter rovy-transformer build && pnpm --filter @rovy/core build && pnpm --filter @rovy/example-game build:place",
     "test:integration": "pnpm run build:example && pnpm --filter @rovy/example-game test:output && pnpm --filter @rovy/example-game test:luau && pnpm --filter @rovy/example-game test:place",
-    "build:zombie": "pnpm --filter rovy-transformer build && pnpm --filter @rovy/core build && pnpm --filter @rovy/example-zombie-game build:place",
+    "build:zombie": "pnpm --filter rovy-transformer build && pnpm --filter @rovy/core build && pnpm --filter @rovy/networking build && pnpm --filter @rovy/example-zombie-game build:place",
     "test:zombie": "pnpm run build:zombie && pnpm --filter @rovy/example-zombie-game test:output && pnpm --filter @rovy/example-zombie-game test:luau && pnpm --filter @rovy/example-zombie-game test:place"
+  },
+  "devDependencies": {
+    "typescript": "5.5.3"
   }
 }

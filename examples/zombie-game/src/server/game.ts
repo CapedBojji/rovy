@@ -5,12 +5,9 @@ import {
 	PLAYER_MAX_HEALTH,
 	RestartRequestPayload,
 	SERVER_FIXED_DELTA,
-	WorldSnapshotPayload,
 	ZombieGameSmokeResult,
-	fireWeaponRequestSerializer,
-	restartRequestSerializer,
-	worldSnapshotSerializer,
 } from "shared/contracts";
+import { toFireWeaponRequestNet, toRestartRequestNet } from "shared/network";
 import "./components";
 import "./collectors";
 import "./systems";
@@ -21,17 +18,13 @@ export * from "./resources";
 export {
 	enqueueSmokeCharacterAdded,
 	enqueueSmokeCharacterRemoving,
-	enqueueSmokeFireRequest,
 	enqueueSmokePlayerAdded,
 	enqueueSmokePlayerRemoving,
-	enqueueSmokeRestartRequest,
 } from "./collectors";
 export { SnapshotState } from "./resources";
 
 import {
-	enqueueSmokeFireRequest,
 	enqueueSmokePlayerAdded,
-	enqueueSmokeRestartRequest,
 } from "./collectors";
 import { Health, Position } from "./components";
 import {
@@ -39,6 +32,7 @@ import {
 	CombatSet,
 	IngressSet,
 	MovementSet,
+	RemoteIngressSet,
 	SnapshotSet,
 	Update,
 	WaveSet,
@@ -47,7 +41,7 @@ import { ArenaState, PlayerRegistry, SmokeStats, SnapshotState, WaveState } from
 
 export function boot(): App {
 	const app = new App();
-	app.configureSets(Update, [IngressSet, WaveSet, MovementSet, CombatSet, CleanupSet, SnapshotSet]);
+	app.configureSets(Update, [IngressSet, RemoteIngressSet, WaveSet, MovementSet, CombatSet, CleanupSet, SnapshotSet]);
 	app.start();
 	return app;
 }
@@ -86,9 +80,10 @@ export function runZombieGameSmoke(): ZombieGameSmokeResult {
 	for (let attempt = 0; attempt < 240; attempt++) {
 		const stats = app.world.resource(SmokeStats);
 		if (stats.zombiesKilled > 0) break;
-		enqueueSmokeFireRequest(
-			userId,
-			new FireWeaponRequestPayload(userId, attempt, arena.center, new Vector3(1, 0, 0)),
+		app.commands.send(
+			toFireWeaponRequestNet(
+				new FireWeaponRequestPayload(userId, attempt, arena.center, new Vector3(1, 0, 0)),
+			),
 		);
 		stepN(8);
 	}
@@ -109,44 +104,13 @@ export function runZombieGameSmoke(): ZombieGameSmokeResult {
 	stepN(2);
 	const defeatReached = app.world.resource(WaveState).phase === "defeat";
 
-	enqueueSmokeRestartRequest(userId);
+	app.commands.send(toRestartRequestNet(new RestartRequestPayload(0)));
 	stepN(2);
 
 	const wave = app.world.resource(WaveState);
 	const stats = app.world.resource(SmokeStats);
 	const snap = app.world.resource(SnapshotState);
 	const playerHealth = app.world.get(playerEntity, Health);
-
-	const probe = new WorldSnapshotPayload(
-		7,
-		"wave",
-		3,
-		5,
-		42,
-		PLAYER_MAX_HEALTH,
-		new Vector3(1, 2, 3),
-		[{ id: 1, position: new Vector3(4, 5, 6), health: 10, maxHealth: 60 }],
-		[{ id: 2, position: new Vector3(7, 8, 9) }],
-	);
-	const serialized = worldSnapshotSerializer.serialize(probe);
-	const decoded = worldSnapshotSerializer.deserialize(serialized.buffer, serialized.blobs);
-
-	const fireBytes = fireWeaponRequestSerializer.serialize(
-		new FireWeaponRequestPayload(userId, 99, new Vector3(), new Vector3(1, 0, 0)),
-	);
-	const fireDecoded = fireWeaponRequestSerializer.deserialize(fireBytes.buffer, fireBytes.blobs);
-	const restartBytes = restartRequestSerializer.serialize(new RestartRequestPayload(0));
-	void restartBytes;
-	const requestsOk = fireDecoded.shooterUserId === userId && fireDecoded.shotSequence === 99;
-
-	const roundTripOk =
-		requestsOk &&
-		decoded.serverTick === probe.serverTick &&
-		decoded.phase === probe.phase &&
-		decoded.waveNumber === probe.waveNumber &&
-		decoded.enemiesRemaining === probe.enemiesRemaining &&
-		decoded.zombies.size() === probe.zombies.size() &&
-		decoded.projectiles.size() === probe.projectiles.size();
 
 	return {
 		started: app.isStarted(),
@@ -160,6 +124,5 @@ export function runZombieGameSmoke(): ZombieGameSmokeResult {
 		defeatReached,
 		restartApplied: stats.restartApplied,
 		snapshotCount: snap.snapshotCount,
-		serializerRoundTripOk: roundTripOk,
 	};
 }

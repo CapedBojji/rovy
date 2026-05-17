@@ -12,9 +12,10 @@
 		"experimentalDecorators": true,
 		"forceConsistentCasingInFileNames": true,
 		"moduleDetection": "force",
+		"skipLibCheck": true,
 		"strict": true,
 		"target": "ESNext",
-		"typeRoots": ["node_modules/@rbxts", "node_modules/@rovy", "node_modules/@flamework"],
+		"typeRoots": ["node_modules/@rbxts", "node_modules/@rovy"],
 		"rootDir": "src",
 		"outDir": "out",
 		"baseUrl": "src",
@@ -23,10 +24,7 @@
 		"plugins": [
 			{
 				"transform": "rovy-transformer",
-				"rojo": "default.project.json"
-			},
-			{
-				"transform": "rbxts-transformer-flamework"
+				"config": ".rovy.json"
 			}
 		]
 	},

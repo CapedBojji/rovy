@@ -69,7 +69,11 @@
 		"@rovy/example-zombie-game:out/server/systems/despawn-expired-projectiles@DespawnExpiredProjectiles": "@rovy/example-zombie-game:server/systems/despawn-expired-projectiles@DespawnExpiredProjectiles",
 		"@rovy/example-zombie-game:out/server/systems/build-snapshot@BuildSnapshot": "@rovy/example-zombie-game:server/systems/build-snapshot@BuildSnapshot",
 		"@rovy/example-zombie-game:out/shared/network@GlobalEvents": "@rovy/example-zombie-game:shared/network@GlobalEvents",
-		"@rovy/example-zombie-game:out/shared/network@GlobalFunctions": "@rovy/example-zombie-game:shared/network@GlobalFunctions"
+		"@rovy/example-zombie-game:out/shared/network@GlobalFunctions": "@rovy/example-zombie-game:shared/network@GlobalFunctions",
+		"@rovy/example-zombie-game:out/shared/network@FireWeaponRequestNet": "@rovy/example-zombie-game:shared/network@FireWeaponRequestNet",
+		"@rovy/example-zombie-game:out/shared/network@RestartRequestNet": "@rovy/example-zombie-game:shared/network@RestartRequestNet",
+		"@rovy/example-zombie-game:out/shared/network@WorldSnapshotNet": "@rovy/example-zombie-game:shared/network@WorldSnapshotNet",
+		"@rovy/example-zombie-game:out/server/state@RemoteIngressSet": "@rovy/example-zombie-game:server/state@RemoteIngressSet"
 	},
 	"metadata": {},
 	"identifierPrefix": "@rovy/example-zombie-game"

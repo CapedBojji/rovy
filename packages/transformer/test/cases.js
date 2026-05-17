@@ -44,6 +44,14 @@ import {
 	system,
 	trait,
 } from "@rovy/core";
+import {
+	NetClient,
+	NetEventContext,
+	NetId,
+	NetServer,
+	netEvent,
+	rovyNet,
+} from "@rovy/networking";
 `;
 
 runCase("bare decorators inject registry calls", () => {
@@ -63,6 +71,171 @@ ${header}
 	assert.match(result.printed, /__event\(DamageTaken,/);
 	assert.match(result.printed, /__relation\(ChildOf,/);
 	assert.match(result.printed, /__schedule\(Update,/);
+});
+
+runCase("netEvent injects core event and networking metadata", () => {
+	const result = compileFixture(`
+${header}
+@netEvent({ direction: "clientToServer", channel: "reliable", receive: "send" })
+class CastAbilityIntent {
+	constructor(
+		public caster: NetId,
+		public abilityId: string,
+		public target?: NetId,
+	) {}
+}
+`);
+	assertNoDiagnostics(result, "netEvent lowering");
+	assert.match(result.printed, /__event\(CastAbilityIntent\)/);
+	assert.match(result.printed, /rovyNet\.__netEvent\(CastAbilityIntent,/);
+	assert.match(result.printed, /direction: "clientToServer"/);
+	assert.match(result.printed, /channel: "reliable"/);
+	assert.match(result.printed, /receive: "send"/);
+	assert.match(result.printed, /event CastAbilityIntent/);
+	assert.match(result.printed, /caster: u32/);
+	assert.match(result.printed, /abilityId: string/);
+	assert.match(result.printed, /target: u32\?/);
+});
+
+runCase("networking params lower as external package params", () => {
+	const result = compileFixture(
+		`
+${header}
+@schedule class Update {}
+@netEvent({ direction: "serverToClient", channel: "unreliable", receive: "trigger" })
+class PlayHitEffect {
+	constructor(public target: NetId, public effectId: string) {}
+}
+@system({ schedule: Update })
+class SendEffects {
+	run(server: NetServer, client: NetClient, context: NetEventContext) {}
+}
+`,
+		{
+			rovyConfig: {
+				current: "dev",
+				environments: {
+					dev: {
+						rojo: "test.project.json",
+						net: {
+							strictBoundaryChecks: false,
+						},
+					},
+				},
+			},
+		},
+	);
+	assertNoDiagnostics(result, "net params");
+	assert.match(result.printed, /kind: "external", id: "@rovy\/networking\/NetServer"/);
+	assert.match(result.printed, /kind: "external", id: "@rovy\/networking\/NetClient"/);
+	assert.match(result.printed, /kind: "external", id: "@rovy\/networking\/NetEventContext"/);
+	assert.match(result.printed, /From: Server/);
+	assert.match(result.printed, /Type: Unreliable/);
+});
+
+runCase("networking files emit runtime config from .rovy.json", () => {
+	const result = compileFixture(
+		`
+${header}
+@schedule class Update {}
+@system({ schedule: Update })
+class SendEffects {
+	run(_client: NetClient) {}
+}
+`,
+		{
+			rovyConfig: {
+				current: "dev",
+				environments: {
+					dev: {
+						rojo: "test.project.json",
+						net: {
+							transport: "remote",
+							strictBoundaryChecks: false,
+						},
+					},
+				},
+			},
+		},
+	);
+	assertNoDiagnostics(result, "runtime config");
+	assert.match(result.printed, /rovyNet\.__configureRuntime\(\{ transport: "remote", strictBoundaryChecks: false \}\)/);
+});
+
+runCase("boundary checks use .rovy.json paths for NetServer", () => {
+	const result = compileFixture(
+		`
+${header}
+@schedule class Update {}
+@system({ schedule: Update })
+class SendEffects {
+	run(_server: NetServer) {}
+}
+`,
+		{
+			fileName: "client/main.ts",
+			rovyConfig: {
+				current: "dev",
+				environments: {
+					dev: {
+						rojo: "test.project.json",
+						boundaries: {
+							client: ["src/client"],
+							server: ["src/server"],
+							shared: ["src/shared"],
+						},
+						net: {
+							strictBoundaryChecks: true,
+						},
+					},
+				},
+			},
+		},
+	);
+	assert.match(result.diagnostics.join("\n"), /NetServer can only be injected from the server boundary/);
+});
+
+runCase("boundary checks use .rovy.json paths for NetClient", () => {
+	const result = compileFixture(
+		`
+${header}
+@schedule class Update {}
+@system({ schedule: Update })
+class SendEffects {
+	run(_client: NetClient) {}
+}
+`,
+		{
+			fileName: "server/main.ts",
+			rovyConfig: {
+				current: "dev",
+				environments: {
+					dev: {
+						rojo: "test.project.json",
+						boundaries: {
+							client: ["src/client"],
+							server: ["src/server"],
+							shared: ["src/shared"],
+						},
+						net: {
+							strictBoundaryChecks: true,
+						},
+					},
+				},
+			},
+		},
+	);
+	assert.match(result.diagnostics.join("\n"), /NetClient can only be injected from the client boundary/);
+});
+
+runCase("netEvent rejects duplicate event decorator", () => {
+	const result = compileFixture(`
+${header}
+@event()
+@netEvent({ direction: "clientToServer" })
+class DuplicateEvent {}
+`);
+	assert.match(result.diagnostics.join("\n"), /@netEvent implies @event/);
 });
 
 runCase("$collectRef resource fields lower into resource metadata", () => {

@@ -59,15 +59,24 @@ function createRegistry(): RovyRegistry {
 const registry: RovyRegistry = createRegistry();
 
 let moduleProvider: ModuleProvider = (roots) => {
+	const isAutoLoadedBlinkBoundaryModule = (module: Instance): boolean => {
+		if (!module.IsA("ModuleScript")) return false;
+		const parent = module.Parent;
+		if (parent === undefined || !parent.IsA("Folder") || parent.Name !== "generated") return false;
+		return module.Name === "RovyBlinkClient" || module.Name === "RovyBlinkServer";
+	};
+
 	// Default: treat each root as a Roblox Instance and require every
 	// descendant ModuleScript so its injected rovy.__* side effects run.
+	// Blink-generated boundary modules live under shared output, but they must
+	// only load when the networking plugin has already chosen a runtime side.
 	for (const root of roots) {
 		const inst = root as Instance;
 		if (inst === undefined || (inst as unknown as { GetDescendants?: unknown }).GetDescendants === undefined) {
 			continue;
 		}
 		for (const desc of inst.GetDescendants()) {
-			if (desc.IsA("ModuleScript")) {
+			if (desc.IsA("ModuleScript") && !isAutoLoadedBlinkBoundaryModule(desc)) {
 				require(desc);
 			}
 		}

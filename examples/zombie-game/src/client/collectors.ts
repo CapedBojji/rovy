@@ -1,9 +1,4 @@
 import { Collector, collect } from "@rovy/core";
-import {
-	WorldSnapshotPayload,
-	worldSnapshotSerializer,
-} from "shared/contracts";
-import { getGlobalClient } from "./network";
 
 const TOOL_NAME = "Block Blaster";
 
@@ -12,19 +7,6 @@ export type LocalClientIngress =
 	| { kind: "character"; character?: Model }
 	| { kind: "fire"; origin: Vector3; direction: Vector3 }
 	| { kind: "restart" };
-
-@collect
-export class SnapshotCollect extends Collector<WorldSnapshotPayload> {
-	constructor() {
-		super();
-		const [ok, client] = pcall(getGlobalClient);
-		if (!ok) return;
-
-		client.worldSnapshot.connect((bytes: buffer) => {
-			this.enqueue(worldSnapshotSerializer.deserialize(bytes, []) as WorldSnapshotPayload);
-		});
-	}
-}
 
 @collect
 export class LocalClientCollect extends Collector<LocalClientIngress> {

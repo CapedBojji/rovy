@@ -22,6 +22,7 @@ export type StableId = string;
 export type ParamKind =
 	| "commands"
 	| "world"
+	| "external"
 	| "query"
 	| "collect"
 	| "res"
@@ -39,6 +40,10 @@ export interface CommandsParam {
 }
 export interface WorldParam {
 	readonly kind: "world";
+}
+export interface ExternalParam {
+	readonly kind: "external";
+	readonly id: StableId;
 }
 export interface EventParam {
 	/** Observer first param — the triggering event instance. */
@@ -81,6 +86,7 @@ export interface LocalParam {
 export type ParamDescriptor =
 	| CommandsParam
 	| WorldParam
+	| ExternalParam
 	| EventParam
 	| EntityParam
 	| TermParam

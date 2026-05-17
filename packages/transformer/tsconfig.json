@@ -10,7 +10,8 @@
     "outDir": "dist",
     "incremental": true,
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["node"]
   },
   "include": ["src"]
 }

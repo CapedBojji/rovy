@@ -10,6 +10,7 @@ import type { Entity } from "../types";
 import { CommandsImpl } from "./commands";
 import { EventReaderHandle, EventRegistry, EventWriterHandle, wireEvents } from "./events";
 import { flush } from "./flush";
+import { runAppExtensions } from "./extensions";
 import { MonitorRegistry } from "./monitors";
 import { buildQueryHandle } from "./query";
 import { TraitQueryHandle, descriptorUsesTraits } from "./traits";
@@ -24,6 +25,7 @@ export class App {
 	readonly scheduler: Scheduler;
 	readonly eventRegistry = new EventRegistry();
 	private readonly collectors = new Map<Ctor, object>();
+	private readonly externalParams = new Map<string, unknown>();
 	private monitors?: MonitorRegistry;
 	private started = false;
 	/** Overrides supplied before start(); applied after resource registration. */
@@ -70,6 +72,13 @@ export class App {
 		return this;
 	}
 
+	/** Register a package/plugin-owned injected param value. */
+	insertParam(id: string, value: unknown): this {
+		this.externalParams.set(id, value);
+		if (this.started) this.scheduler.externalParams = this.externalParams;
+		return this;
+	}
+
 	/**
 	 * Override an auto-registered resource's default. Before start(): queued.
 	 * After start(): applied immediately.
@@ -101,6 +110,7 @@ export class App {
 		for (const plugin of this.plugins) {
 			plugin.build(this);
 		}
+		runAppExtensions(this, reg);
 
 		// 1. components → jecs ids + change-detection hooks
 		for (const entry of reg.components) {
@@ -199,6 +209,7 @@ export class App {
 			world: this.world,
 			commands: this.commands,
 			collectors: this.collectors,
+			externalParams: this.externalParams,
 			queries: this.scheduler.queries,
 			events: this.eventRegistry,
 			makeReader,
@@ -207,6 +218,7 @@ export class App {
 		});
 		this.eventRegistry.resolveBase = baseCtx;
 		this.scheduler.collectors = this.collectors;
+		this.scheduler.externalParams = this.externalParams;
 		this.scheduler.events = this.eventRegistry;
 		this.scheduler.makeReader = makeReader;
 		this.scheduler.makeWriter = makeWriter;

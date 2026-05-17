@@ -132,6 +132,47 @@ local function newNode(path: string, className: string?)
 	return setmetatable({ __path = normalize(path), __file = nil, __className = className or "Folder", children = {} }, Node)
 end
 
+local function newSignal()
+	local listeners = {}
+	return {
+		Connect = function(_self, fn)
+			table.insert(listeners, fn)
+			return {
+				Disconnect = function()
+					for i = #listeners, 1, -1 do
+						if listeners[i] == fn then
+							table.remove(listeners, i)
+							break
+						end
+					end
+				end,
+			}
+		end,
+		Fire = function(_self, ...)
+			for _, fn in listeners do
+				fn(...)
+			end
+		end,
+	}
+end
+
+local function newRemote(path: string, name: string)
+	local remote = newNode(path, "RemoteEvent")
+	remote.Name = name
+	remote.OnServerEvent = newSignal()
+	remote.OnClientEvent = newSignal()
+	function remote:FireServer(...)
+		self.OnServerEvent:Fire(nil, ...)
+	end
+	function remote:FireClient(_player, ...)
+		self.OnClientEvent:Fire(...)
+	end
+	function remote:FireAllClients(...)
+		self.OnClientEvent:Fire(...)
+	end
+	return remote
+end
+
 local function scan(path: string): any
 	path = normalize(path)
 	local node = newNode(path)
@@ -244,9 +285,20 @@ ensureRoot("out")
 ensureRoot("node_modules/@rbxts")
 ensureRoot("node_modules/@flamework")
 ensureRepoRoot("packages/core")
+ensureRepoRoot("packages/networking")
 
 local replicatedStorage = newNode(ROOT .. "/$services/ReplicatedStorage", "ReplicatedStorage")
 replicatedStorage.children.TS = treeIndex(ROOT .. "/out/shared")
+local networkingFolder = newNode(ROOT .. "/$services/ReplicatedStorage/RovyNetworking", "Folder")
+replicatedStorage.children.RovyNetworking = networkingFolder
+networkingFolder.children.ReliableClientToServer =
+	newRemote(ROOT .. "/$services/ReplicatedStorage/RovyNetworking/ReliableClientToServer", "ReliableClientToServer")
+networkingFolder.children.UnreliableClientToServer =
+	newRemote(ROOT .. "/$services/ReplicatedStorage/RovyNetworking/UnreliableClientToServer", "UnreliableClientToServer")
+networkingFolder.children.ReliableServerToClient =
+	newRemote(ROOT .. "/$services/ReplicatedStorage/RovyNetworking/ReliableServerToClient", "ReliableServerToClient")
+networkingFolder.children.UnreliableServerToClient =
+	newRemote(ROOT .. "/$services/ReplicatedStorage/RovyNetworking/UnreliableServerToClient", "UnreliableServerToClient")
 local serverScriptService = newNode(ROOT .. "/$services/ServerScriptService", "ServerScriptService")
 serverScriptService.children.TS = treeIndex(ROOT .. "/out/server")
 local starterPlayer = newNode(ROOT .. "/$services/StarterPlayer", "StarterPlayer")
@@ -272,6 +324,9 @@ nodeModules.children["@rovy"] = rovyScope
 local rovyCore = treeIndex(REPO .. "/packages/core/out")
 assert(rovyCore, "rovy example harness: missing packages/core/out")
 rovyScope.children["rovy-core"] = rovyCore
+local rovyNetworking = treeIndex(REPO .. "/packages/networking")
+assert(rovyNetworking, "rovy example harness: missing packages/networking")
+rovyScope.children.networking = rovyNetworking
 
 local gameObject = {}
 function gameObject:GetService(name: string)

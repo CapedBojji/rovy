@@ -2,7 +2,7 @@
 
 The roblox-ts transformer handles compile-time work that runtime TypeScript cannot do: resolving generic types, validating decorator usage, hoisting query descriptors, and injecting `rovy.__*` registration calls after each decorated class.
 
-Shipped as the `rovy-transformer` package — a dev-only roblox-ts plugin, separate from the `@rovy/core` runtime. See [Packages](21-packages.md) for the split and `tsconfig.json` setup.
+Shipped as the `rovy-transformer` package — a dev-only roblox-ts plugin, separate from the `@rovy/core` runtime. See [Packages](21-packages.md) for the split and `.rovy.json`-driven setup.
 
 ## Responsibilities
 
@@ -16,6 +16,81 @@ All of the following happen at **build time**. Nothing below runs at Luau startu
 6. Validate `@observer` field exclusivity (`event` only) and `@monitor` param order against the match query terms.
 7. Hoist `Query<...>` descriptors and `query<...>()` macros to module-level constants (pre-built jecs query handles).
 8. Inject a `rovy.__*` registration call right after each decorated class declaration.
+
+The networking layer adds more transformer duties: detect `@netEvent` from `@rovy/networking`, treat it as implicit core `@event`, read network settings from `.rovy.json`, generate Blink-validated `.blink` schema metadata, lower `NetClient`/`NetServer` params through core's package-extension injection hook, and inject `rovyNet.__netEvent(...)` metadata. See [Networking](23-networking.md).
+
+## Transformer config
+
+Do not keep active environment or Rojo selection in `tsconfig.json`.
+
+`tsconfig.json` should only register the transformer and point it at `.rovy.json`:
+
+```json
+{
+	"compilerOptions": {
+		"plugins": [
+			{
+				"transform": "rovy-transformer",
+				"config": ".rovy.json"
+			}
+		]
+	}
+}
+```
+
+`.rovy.json` is the source of truth for:
+
+- active environment selection
+- Rojo project path
+- optional sourcemap path
+- explicit client/server/shared boundaries
+- net settings such as transport choice, remote scope, polling, and strict boundary checks
+- generated Blink transport artifacts
+
+Example:
+
+```json
+{
+	"$schema": "./node_modules/@rovy/core/schema/rovy.schema.json",
+	"current": "dev",
+	"environments": {
+		"dev": {
+			"rojo": "default.project.json",
+			"sourcemap": "sourcemap.json",
+			"boundaries": {
+				"server": ["src/server"],
+				"client": ["src/client"],
+				"shared": ["src/shared"]
+			},
+			"net": {
+				"strictBoundaryChecks": true,
+				"transport": "blink",
+				"blink": {
+					"enabled": true,
+					"remoteScope": "ROVY",
+					"manualReplication": true,
+					"usePolling": true
+				}
+			}
+		}
+	}
+}
+```
+
+Environment resolution order:
+
+1. `process.env.ROVY_ENV`
+2. `.rovy.json` `current`
+3. transformer default
+
+When `net.transport` is `"blink"` (the default), the transformer owns Blink generation. It writes backend artifacts to:
+
+- `out/shared/net/generated/rovy.generated.blink`
+- `out/shared/net/generated/RovyBlinkClient.luau`
+- `out/shared/net/generated/RovyBlinkServer.luau`
+- `out/shared/net/generated/RovyBlinkTypes.luau`
+
+These are generated build outputs, not user-authored source files.
 
 ## Inference boundary
 
@@ -99,7 +174,7 @@ Each `rovy.__*` call only **pushes into a global registry**. No jecs IDs, no hoo
 
 Roblox ModuleScripts do not run unless required. A self-registering module is silently absent if no game code requires it.
 
-`rovy.loadPaths(...)` solves this — authored TS passes string paths like `"src/client/systems"`. The transformer resolves each string to the matching Roblox Instance root via Rojo, then runtime recursively requires every `ModuleScript` under that instance so every injected `rovy.__*` side effect runs.
+`rovy.loadPaths(...)` solves this — authored TS passes string paths like `"src/client/systems"`. The transformer resolves each string to the matching Roblox Instance root via the active `.rovy.json` environment's Rojo config, then runtime recursively requires every `ModuleScript` under that instance so every injected `rovy.__*` side effect runs.
 
 ```ts
 rovy.loadPaths(
@@ -134,3 +209,5 @@ Reason: avoid collisions across files that happen to share a type name. Same rul
 - [Trait runtime](09-trait-runtime.md)
 - [Systems and injection](17-systems-and-injection.md)
 - [Monitors](18-monitors.md)
+- [Packages](21-packages.md)
+- [Networking](23-networking.md)

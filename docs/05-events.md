@@ -132,6 +132,8 @@ commands.send(...)    = buffered event for systems (via EventReader)
 
 External Roblox or Flamework signals are a different problem. `EventReader<E>` is for **Rovy-native** `@event` classes that are already inside the ECS world. For external-signal translation, see [Collectors](22-collectors.md).
 
+Cross-network delivery is also a separate layer. `@event` is local-only by default; the draft `@netEvent` design adds transport metadata and re-enters the event on the receiver with `commands.send(...)` or `commands.trigger(...)`. See [Networking](23-networking.md).
+
 ## Registration
 
 Transformer injects a side-effect call after each `@event` class:
@@ -154,3 +156,4 @@ Undecorated class passed to `commands.send` or `EventReader<E>` → transformer 
 - [Systems and injection](17-systems-and-injection.md)
 - [Commands](04-commands.md)
 - [Collectors](22-collectors.md)
+- [Networking](23-networking.md)

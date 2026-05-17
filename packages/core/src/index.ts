@@ -46,6 +46,7 @@ export { EventRegistry, EventReaderHandle, EventWriterHandle } from "./runtime/e
 export { MonitorRegistry } from "./runtime/monitors";
 export { TraitQueryHandle } from "./runtime/traits";
 export { RelationQueryHandle } from "./runtime/relations";
+export { registerAppExtension, runAppExtensions, resetAppExtensions } from "./runtime/extensions";
 
 // Frozen transformer↔runtime contract.
 export * from "./contract";

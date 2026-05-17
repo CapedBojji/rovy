@@ -23,7 +23,7 @@
 		"plugins": [
 			{
 				"transform": "rovy-transformer",
-				"rojo": "default.project.json"
+				"config": ".rovy.json"
 			}
 		]
 	}

@@ -11,10 +11,13 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "pnpm run build && node test/smoke.js"
+    "test": "pnpm run build && node test/smoke.js && node test/blink.js"
   },
   "dependencies": {
     "@roblox-ts/rojo-resolver": "^1.1.0",
     "typescript": "5.5.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.31"
   }
 }

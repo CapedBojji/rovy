@@ -21,6 +21,8 @@ export interface ResolveCtx {
 	commands: CommandsImpl;
 	/** App-scoped collector singletons keyed by ctor. */
 	collectors: Map<Ctor, object>;
+	/** Package/plugin-provided injected params keyed by stable id. */
+	externalParams: Map<string, unknown>;
 	/** Local slots for the system/observer/monitor instance being invoked. */
 	locals: LocalStore;
 	/** Monitor-only: the matched entity + bound term values (Phase 8). */
@@ -45,6 +47,11 @@ export function resolveParam(p: ParamDescriptor, ctx: ResolveCtx): unknown {
 			return ctx.commands;
 		case "world":
 			return ctx.world;
+		case "external": {
+			const value = ctx.externalParams.get(p.id);
+			assert(value !== undefined, `[rovy] missing external injected param '${p.id}'`);
+			return value;
+		}
 		case "collect": {
 			const collect = ctx.collectors.get(p.ctor);
 			assert(collect !== undefined, `[rovy] missing @collect instance for ${tostring(p.ctor)}`);

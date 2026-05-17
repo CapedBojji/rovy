@@ -1,15 +1,8 @@
 /**
  * Shared cross-realm contracts for the zombie-game example.
  *
- * Only primitive/engine values that the binary serializer can round-trip
- * cleanly are allowed here — no instance references, CFrames, or callbacks.
- *
- * Payload classes (`WorldSnapshotPayload`, `FireWeaponRequestPayload`,
- * `RestartRequestPayload`) are simple data shapes wrapped so the
- * flamework-binary-serializer can introspect their fields at build time.
+ * Shared gameplay payloads for the zombie-game example.
  */
-
-import { createBinarySerializer } from "@rbxts/flamework-binary-serializer";
 
 /** Phase of the round shown in the HUD. */
 export type WavePhase = "intermission" | "wave" | "defeat";
@@ -69,10 +62,6 @@ export interface ProjectileSnapshot {
 	position: Vector3;
 }
 
-/**
- * Class shape (not just an interface) because flamework-binary-serializer
- * walks declared field types at compile time via the transformer.
- */
 export class WorldSnapshotPayload {
 	constructor(
 		public serverTick: number = 0,
@@ -100,16 +89,6 @@ export class RestartRequestPayload {
 	constructor(public clientTime: number = 0) {}
 }
 
-// ── Serializer instances ────────────────────────────────────────────────────
-
-/**
- * One shared instance per payload type. The Flamework transformer fills in
- * the type metadata at compile time so these calls produce a real serializer.
- */
-export const worldSnapshotSerializer = createBinarySerializer<WorldSnapshotPayload>();
-export const fireWeaponRequestSerializer = createBinarySerializer<FireWeaponRequestPayload>();
-export const restartRequestSerializer = createBinarySerializer<RestartRequestPayload>();
-
 // ── Smoke result (server-side test export) ──────────────────────────────────
 
 export interface ZombieGameSmokeResult {
@@ -124,5 +103,4 @@ export interface ZombieGameSmokeResult {
 	readonly defeatReached: boolean;
 	readonly restartApplied: boolean;
 	readonly snapshotCount: number;
-	readonly serializerRoundTripOk: boolean;
 }

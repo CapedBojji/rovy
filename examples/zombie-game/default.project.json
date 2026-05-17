@@ -23,9 +23,6 @@
 					},
 					"@rovy": {
 						"$path": "node_modules/@rovy"
-					},
-					"@flamework": {
-						"$path": "node_modules/@flamework"
 					}
 				}
 			},

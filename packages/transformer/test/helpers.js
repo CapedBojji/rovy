@@ -49,10 +49,20 @@ function createProgram(entryPath, rootDir, currentDirectory) {
 function compileFixture(source, options = {}) {
 	const { temp, src, rojo } = createFixtureDir();
 	const entry = path.join(src, options.fileName ?? "main.ts");
+	fs.mkdirSync(path.dirname(entry), { recursive: true });
 	fs.writeFileSync(entry, source);
+	if (options.rovyConfig) {
+		fs.writeFileSync(path.join(temp, ".rovy.json"), JSON.stringify(options.rovyConfig, null, 2));
+	}
 
 	const program = createProgram(entry, src, temp);
-	const transformer = factory(program, { rojo, ...(options.config ?? {}) }, { ts });
+	const transformer = factory(
+		program,
+		options.rovyConfig
+			? { config: ".rovy.json", ...(options.config ?? {}) }
+			: { rojo, ...(options.config ?? {}) },
+		{ ts },
+	);
 	const sourceFile = program.getSourceFile(entry);
 	assert(sourceFile, "fixture source file missing");
 
@@ -64,9 +74,11 @@ function compileFixture(source, options = {}) {
 	const diagnostics = result.diagnostics.map((diag) => String(diag.messageText));
 
 	result.dispose();
-	fs.rmSync(temp, { recursive: true, force: true });
+	if (!options.keepTemp) {
+		fs.rmSync(temp, { recursive: true, force: true });
+	}
 
-	return { printed, diagnostics };
+	return { printed, diagnostics, temp, src, rojo };
 }
 
 function assertNoDiagnostics(result, label) {

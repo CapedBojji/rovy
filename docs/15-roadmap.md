@@ -30,6 +30,18 @@ Current split:
 
 See [Collectors](22-collectors.md).
 
+## Networking milestone
+
+The first network-specific layer is intentionally smaller than full replication:
+
+1. `@netEvent` decorator that implies `@event`
+2. transformer-generated Blink schema/modules
+3. injected `NetClient` / `NetServer` params
+4. schedule-owned receive/flush sets
+5. compile-time and runtime boundary/direction validation
+
+That milestone stops at typed event transport metadata and runtime handles. Automatic entity/component replication stays out of scope for that first pass. See [Networking](23-networking.md).
+
 ## Risk areas
 
 - Variadic tuple inference for `Query<[Terms], ...Filters>` param types in roblox-ts.
@@ -48,3 +60,4 @@ See [Collectors](22-collectors.md).
 - [Transformer](10-transformer.md)
 - [Compiled output](19-compiled-output.md)
 - [Runtime lifecycle](20-runtime-lifecycle.md)
+- [Networking](23-networking.md)

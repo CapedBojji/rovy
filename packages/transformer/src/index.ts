@@ -1,3 +1,5 @@
+import cp from "node:child_process";
+import fs from "node:fs";
 import ts from "typescript";
 import {
 	arr,
@@ -27,6 +29,7 @@ const DECORATORS = new Set([
 	"collect",
 	"resource",
 	"event",
+	"netEvent",
 	"system",
 	"observer",
 	"monitor",
@@ -67,8 +70,11 @@ export default function rovyTransformer(
 }
 
 function transformSourceFile(state: TransformState, sourceFile: ts.SourceFile): ts.SourceFile {
+	maybeGenerateNetArtifacts(state, sourceFile);
 	const visitor = createVisitor(state, sourceFile);
 	const statements: ts.Statement[] = [];
+	const runtimeConfig = state.netRuntimeConfigStatement(sourceFile);
+	if (runtimeConfig) statements.push(runtimeConfig);
 
 	for (const statement of sourceFile.statements) {
 		if (ts.isClassDeclaration(statement)) {
@@ -81,6 +87,74 @@ function transformSourceFile(state: TransformState, sourceFile: ts.SourceFile): 
 	}
 
 	return ts.factory.updateSourceFile(sourceFile, state.withPendingImports(sourceFile, statements));
+}
+
+function maybeGenerateNetArtifacts(state: TransformState, sourceFile: ts.SourceFile): void {
+	if (state.hasGeneratedNetArtifacts()) return;
+	state.markNetArtifactsGenerated();
+	if (!state.shouldGenerateNetArtifacts()) return;
+	if (!state.shouldGenerateBlinkArtifacts()) return;
+
+	const schemas = collectBlinkSchemas(state);
+	if (schemas.length === 0) return;
+
+	const blink = state.blinkConfig();
+	const sourcePath = state.blinkGeneratedSourcePath();
+	const clientPath = state.blinkGeneratedClientPath();
+	const serverPath = state.blinkGeneratedServerPath();
+	const typesPath = state.blinkGeneratedTypesPath();
+
+	fs.mkdirSync(dirname(sourcePath), { recursive: true });
+	fs.writeFileSync(
+		sourcePath,
+		[
+			"option Casing = Pascal",
+			"option Typescript = true",
+			`option RemoteScope = "${blink.remoteScope ?? "ROVY"}"`,
+			`option ManualReplication = ${(blink.manualReplication ?? true) ? "true" : "false"}`,
+			`option UsePolling = ${(blink.usePolling ?? true) ? "true" : "false"}`,
+			`option ClientOutput = "${clientPath}"`,
+			`option ServerOutput = "${serverPath}"`,
+			`option TypesOutput = "${typesPath}"`,
+			"",
+			...schemas,
+			"",
+		].join("\n"),
+	);
+
+	const attempt = (command: string, args: ReadonlyArray<string>) =>
+		cp.spawnSync(command, [...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+	let result = attempt("blink", [sourcePath, "--yes", "--quiet"]);
+	if (result.error && (result.error as NodeJS.ErrnoException).code === "ENOENT") {
+		result = attempt("mise", ["exec", "--", "blink", sourcePath, "--yes", "--quiet"]);
+	}
+	if (result.status !== 0) {
+		state.diagnostic(
+			sourceFile,
+			`Blink generation failed.\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+		);
+	}
+}
+
+function collectBlinkSchemas(state: TransformState): string[] {
+	const schemas: string[] = [];
+	for (const file of state.program.getSourceFiles?.() ?? []) {
+		if (file.isDeclarationFile) continue;
+		for (const statement of file.statements) {
+			if (!ts.isClassDeclaration(statement)) continue;
+			const decorators = getRovyDecorators(state, file, statement);
+			for (const decorator of decorators) {
+				if (decorator.name === "netEvent") {
+					schemas.push(buildBlinkEvent(state, statement, decorator));
+				}
+			}
+		}
+	}
+	return schemas;
+}
+
+function dirname(value: string): string {
+	return value.replace(/\/[^/]+$/, "");
 }
 
 function createVisitor(state: TransformState, sourceFile: ts.SourceFile): ts.Visitor {
@@ -192,6 +266,17 @@ function transformClass(
 			case "event":
 				afterStatements.push(regCall(rovy, "__event", [className, decorator.args[0]].filter(isExpression)));
 				break;
+			case "netEvent": {
+				validateNetEvent(state, node, decorator);
+				afterStatements.push(regCall(rovy, "__event", [className]));
+				afterStatements.push(
+					regCall(state.addRovyNetImport(sourceFile), "__netEvent", [
+						className,
+						buildNetEventMeta(state, node, decorator, classId),
+					]),
+				);
+				break;
+			}
 			case "system": {
 				const method = methodNamed(node, "run");
 				const params = method ? lowerParams(state, sourceFile, method.parameters, { kind: "system", classId }) : emptyParams();
@@ -275,6 +360,10 @@ function validateClass(state: TransformState, node: ts.ClassDeclaration, decorat
 
 	if (decorators.some((d) => d.name === "system" || d.name === "observer") && !methodNamed(node, "run")) {
 		state.diagnostic(node, "@system/@observer classes require run(...)");
+	}
+
+	if (decorators.some((d) => d.name === "netEvent") && decorators.some((d) => d.name === "event")) {
+		state.diagnostic(node, "@netEvent implies @event; remove the extra @event decorator");
 	}
 }
 
@@ -404,6 +493,226 @@ function buildScheduleMeta(decorator: DecoratorInfo): ts.ObjectLiteralExpression
 	return obj([prop("runOnStart", propertyValue(options, "runOnStart") ?? bool(false))], true);
 }
 
+function buildNetEventMeta(
+	state: TransformState,
+	node: ts.ClassDeclaration,
+	decorator: DecoratorInfo,
+	classId: string,
+): ts.ObjectLiteralExpression {
+	const options = objectArg(decorator);
+	const direction = propertyValue(options, "direction");
+	const channel = propertyValue(options, "channel") ?? str("reliable");
+	const receive = propertyValue(options, "receive") ?? str("send");
+	const ctor = node.members.find(ts.isConstructorDeclaration);
+	const fieldNames = (ctor?.parameters ?? [])
+		.map((param) => (ts.isIdentifier(param.name) ? param.name.text : undefined))
+		.filter((name): name is string => name !== undefined);
+	return obj(
+		[
+			prop("id", str(classId)),
+			prop("name", str(node.name?.text ?? "AnonymousNetEvent")),
+			prop("direction", direction ?? str("clientToServer")),
+			prop("channel", channel),
+			prop("receive", receive),
+			prop("fields", arr(fieldNames.map(str))),
+			prop("blink", str(buildBlinkEvent(state, node, decorator))),
+		],
+		true,
+	);
+}
+
+function validateNetEvent(state: TransformState, node: ts.ClassDeclaration, decorator: DecoratorInfo): void {
+	const options = objectArg(decorator);
+	if (!options) {
+		state.diagnostic(decorator.node, "@netEvent requires options");
+		return;
+	}
+	const direction = propertyValue(options, "direction");
+	if (!direction) state.diagnostic(decorator.node, "@netEvent requires direction");
+	validateStringOption(state, direction, ["clientToServer", "serverToClient"], "@netEvent direction");
+	validateStringOption(state, propertyValue(options, "channel"), ["reliable", "unreliable"], "@netEvent channel");
+	validateStringOption(state, propertyValue(options, "receive"), ["send", "trigger"], "@netEvent receive");
+
+	const ctor = node.members.find(ts.isConstructorDeclaration);
+	for (const param of ctor?.parameters ?? []) {
+		if (!param.type) {
+			state.diagnostic(param, "@netEvent constructor fields require explicit serializable types");
+			continue;
+		}
+		blinkTypeShapeFor(state, param.type, param.questionToken !== undefined);
+	}
+}
+
+function validateStringOption(
+	state: TransformState,
+	expression: ts.Expression | undefined,
+	allowed: readonly string[],
+	label: string,
+): void {
+	if (!expression) return;
+	if (!ts.isStringLiteral(expression)) {
+		state.diagnostic(expression, `${label} must be a string literal`);
+		return;
+	}
+	if (!allowed.includes(expression.text)) {
+		state.diagnostic(expression, `${label} must be one of: ${allowed.map((v) => `"${v}"`).join(", ")}`);
+	}
+}
+
+function buildBlinkEvent(state: TransformState, node: ts.ClassDeclaration, decorator: DecoratorInfo): string {
+	const options = objectArg(decorator);
+	const direction = stringOptionValue(propertyValue(options, "direction")) ?? "clientToServer";
+	const channel = stringOptionValue(propertyValue(options, "channel")) ?? "reliable";
+	const from = direction === "clientToServer" ? "Client" : "Server";
+	const type = channel === "unreliable" ? "Unreliable" : "Reliable";
+	const ctor = node.members.find(ts.isConstructorDeclaration);
+	const fields: string[] = [];
+	const params = [...(ctor?.parameters ?? [])];
+	for (let i = 0; i < params.length; i++) {
+		const param = params[i];
+		const name = ts.isIdentifier(param.name) ? param.name.text : undefined;
+		if (!name || !param.type) continue;
+		const comma = i < params.length - 1 ? "," : "";
+		fields.push(...renderBlinkField(state, name, param.type, param.questionToken !== undefined, 2, comma));
+	}
+	return [
+		`event ${node.name?.text ?? "AnonymousNetEvent"} {`,
+		`\tFrom: ${from},`,
+		`\tType: ${type},`,
+		"\tCall: Polling,",
+		"\tData: struct {",
+		...fields,
+		"\t}",
+		"}",
+	].join("\n");
+}
+
+function stringOptionValue(expression: ts.Expression | undefined): string | undefined {
+	return expression && ts.isStringLiteral(expression) ? expression.text : undefined;
+}
+
+type BlinkTypeShape =
+	| { kind: "primitive"; text: string }
+	| { kind: "struct"; fields: Array<{ name: string; type: ts.TypeNode; optional: boolean }>; suffix: string }
+	| { kind: "array"; element: BlinkTypeShape; suffix: string };
+
+function blinkTypeShapeFor(state: TransformState, node: ts.TypeNode, optional: boolean): BlinkTypeShape {
+	let suffix = optional ? "?" : "";
+	if (ts.isUnionTypeNode(node)) {
+		const nonUndefined = node.types.filter((part) => part.kind !== ts.SyntaxKind.UndefinedKeyword);
+		if (nonUndefined.length !== node.types.length) suffix = "?";
+		if (nonUndefined.every(ts.isLiteralTypeNode)) {
+			return { kind: "primitive", text: `string${suffix}` };
+		}
+		if (nonUndefined.length === 1) return blinkTypeShapeFor(state, nonUndefined[0], suffix === "?");
+	}
+	if (ts.isArrayTypeNode(node)) return { kind: "array", element: blinkTypeShapeFor(state, node.elementType, false), suffix };
+	if (ts.isTypeReferenceNode(node)) {
+		const name = lastTypeName(node.typeName);
+		if (name === "NetId") return { kind: "primitive", text: `u32${suffix}` };
+		if (name === "Array" || name === "ReadonlyArray") {
+			const arg = node.typeArguments?.[0];
+			if (arg) return { kind: "array", element: blinkTypeShapeFor(state, arg, false), suffix };
+		}
+		const symbol = state.typeChecker?.getSymbolAtLocation(node.typeName);
+		for (const declaration of symbol?.declarations ?? []) {
+			if (ts.isInterfaceDeclaration(declaration)) {
+				return {
+					kind: "struct",
+					fields: blinkStructFieldsFor(state, declaration.members),
+					suffix,
+				};
+			}
+			if (ts.isTypeAliasDeclaration(declaration)) {
+				const inner = blinkTypeShapeFor(state, declaration.type, suffix === "?");
+				return applyBlinkSuffix(inner, suffix);
+			}
+		}
+	}
+	if (node.kind === ts.SyntaxKind.NumberKeyword) return { kind: "primitive", text: `f64${suffix}` };
+	if (node.kind === ts.SyntaxKind.StringKeyword) return { kind: "primitive", text: `string${suffix}` };
+	if (node.kind === ts.SyntaxKind.BooleanKeyword) return { kind: "primitive", text: `boolean${suffix}` };
+	if (ts.isParenthesizedTypeNode(node)) return blinkTypeShapeFor(state, node.type, suffix === "?");
+	if (ts.isTypeLiteralNode(node)) {
+		return {
+			kind: "struct",
+			fields: blinkStructFieldsFor(state, node.members),
+			suffix,
+		};
+	}
+	state.diagnostic(node, `unsupported @netEvent field type '${node.getText()}'`);
+	return { kind: "primitive", text: `unknown${suffix}` };
+}
+
+function blinkStructFieldsFor(
+	state: TransformState,
+	members: ts.NodeArray<ts.TypeElement> | readonly ts.TypeElement[],
+): Array<{ name: string; type: ts.TypeNode; optional: boolean }> {
+	const fields: Array<{ name: string; type: ts.TypeNode; optional: boolean }> = [];
+	for (const member of members) {
+		if (!ts.isPropertySignature(member) || !member.type) {
+			state.diagnostic(member, "unsupported @netEvent struct member");
+			continue;
+		}
+		const name = propertyNameText(member.name);
+		if (!name) {
+			state.diagnostic(member.name, "unsupported @netEvent struct member name");
+			continue;
+		}
+		fields.push({ name, type: member.type, optional: member.questionToken !== undefined });
+	}
+	return fields;
+}
+
+function applyBlinkSuffix(shape: BlinkTypeShape, suffix: string): BlinkTypeShape {
+	if (suffix === "") return shape;
+	switch (shape.kind) {
+		case "primitive":
+			return { kind: "primitive", text: `${shape.text}${suffix}` };
+		case "struct":
+			return { ...shape, suffix: `${shape.suffix}${suffix}` };
+		case "array":
+			return { ...shape, suffix: `${shape.suffix}${suffix}` };
+	}
+}
+
+function renderBlinkField(
+	state: TransformState,
+	name: string,
+	node: ts.TypeNode,
+	optional: boolean,
+	indent: number,
+	comma: string,
+): string[] {
+	return renderBlinkFieldShape(state, name, blinkTypeShapeFor(state, node, optional), indent, comma);
+}
+
+function renderBlinkFieldShape(
+	state: TransformState,
+	name: string,
+	shape: BlinkTypeShape,
+	indent: number,
+	comma: string,
+): string[] {
+	const tabs = "\t".repeat(indent);
+	if (shape.kind === "primitive") return [`${tabs}${name}: ${shape.text}${comma}`];
+	if (shape.kind === "array" && shape.element.kind === "primitive") {
+		return [`${tabs}${name}: ${shape.element.text}[]${shape.suffix}${comma}`];
+	}
+	const struct = shape.kind === "struct" ? shape : (shape.element as Extract<BlinkTypeShape, { kind: "struct" }>);
+	const suffix = shape.kind === "array" ? `[]${shape.suffix}` : shape.suffix;
+	const fields: string[] = [`${tabs}${name}: struct {`];
+	for (let i = 0; i < struct.fields.length; i++) {
+		const field = struct.fields[i];
+		const innerComma = i < struct.fields.length - 1 ? "," : "";
+		fields.push(
+			...renderBlinkFieldShape(state, field.name, blinkTypeShapeFor(state, field.type, field.optional), indent + 1, innerComma),
+		);
+	}
+	fields.push(`${tabs}}${suffix}${comma}`);
+	return fields;
+}
+
 function lowerParams(
 	state: TransformState,
 	sourceFile: ts.SourceFile,
@@ -506,6 +815,17 @@ function lowerParam(
 		const name = lastTypeName(type.typeName);
 		if (name === "Commands") return simpleParam("commands");
 		if (name === "World") return simpleParam("world");
+		if (isNetworkingType(state, sourceFile, type, "NetClient")) {
+			validateNetworkingBoundary(state, sourceFile, type, "client", "NetClient");
+			return externalParam("@rovy/networking/NetClient");
+		}
+		if (isNetworkingType(state, sourceFile, type, "NetServer")) {
+			validateNetworkingBoundary(state, sourceFile, type, "server", "NetServer");
+			return externalParam("@rovy/networking/NetServer");
+		}
+		if (isNetworkingType(state, sourceFile, type, "NetEventContext")) {
+			return externalParam("@rovy/networking/NetEventContext");
+		}
 		if (name === "Query") {
 			const query = buildQueryFromType(state, type, `${ctx.classId}:${ctx.paramIndex}`);
 			return {
@@ -545,8 +865,34 @@ function lowerParam(
 	return { descriptor: obj([prop("kind", str("world"))], false), queryStatements: [] };
 }
 
+function validateNetworkingBoundary(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.Node,
+	expected: "client" | "server",
+	label: string,
+): void {
+	const boundary = state.resolveBoundary(sourceFile);
+	if (boundary === "unknown") {
+		if (state.strictBoundaryChecks()) {
+			state.diagnostic(
+				node,
+				`${label} could not be placed in a known boundary from .rovy.json or conventional paths`,
+			);
+		}
+		return;
+	}
+	if (boundary !== expected && boundary !== "shared") {
+		state.diagnostic(node, `${label} can only be injected from the ${expected} boundary`);
+	}
+}
+
 function simpleParam(kind: string): { descriptor: ts.ObjectLiteralExpression; queryStatements: readonly ts.Statement[] } {
 	return { descriptor: obj([prop("kind", str(kind))], false), queryStatements: [] };
+}
+
+function externalParam(idValue: string): { descriptor: ts.ObjectLiteralExpression; queryStatements: readonly ts.Statement[] } {
+	return { descriptor: obj([prop("kind", str("external")), prop("id", str(idValue))], false), queryStatements: [] };
 }
 
 function buildMonitorMatch(
@@ -692,6 +1038,18 @@ function isEntityType(type: ts.TypeNode): boolean {
 
 function sameTypeAsExpression(type: ts.TypeNode, expression: ts.Expression): boolean {
 	return type.getText() === expression.getText();
+}
+
+function isNetworkingType(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	type: ts.TypeReferenceNode,
+	exportName: string,
+): boolean {
+	const imports = state.getNetworkingImports(sourceFile);
+	const name = type.typeName;
+	if (ts.isIdentifier(name)) return imports.named.get(name.text) === exportName;
+	return ts.isIdentifier(name.left) && imports.namespaces.has(name.left.text) && name.right.text === exportName;
 }
 
 function ctorArg(state: TransformState, node: ts.TypeReferenceNode): ts.Expression {

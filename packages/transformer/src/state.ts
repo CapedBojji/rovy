@@ -1,6 +1,13 @@
+import fs from "node:fs";
 import { RojoResolver } from "@roblox-ts/rojo-resolver";
 import ts from "typescript";
 import { importNamed } from "./ast";
+import {
+	type ResolvedRovyConfig,
+	type RovyBlinkConfig,
+	type RovyNetConfig,
+	loadRovyConfig,
+} from "./rovy-config";
 
 export interface TransformerConfig {
 	readonly [key: string]: unknown;
@@ -21,12 +28,16 @@ export class TransformState {
 	readonly currentDirectory: string;
 	readonly rootDir: string;
 	readonly outDir: string;
+	readonly rovyConfig?: ResolvedRovyConfig;
 	readonly classInfo = new Map<ts.ClassDeclaration, DecoratedClassInfo>();
 	readonly implementedInterfaces = new Map<ts.ClassDeclaration, ts.ExpressionWithTypeArguments[]>();
 
 	private readonly coreImportCache = new Map<string, CoreImports>();
+	private readonly networkingImportCache = new Map<string, CoreImports>();
 	private readonly pendingRovyImports = new Map<string, ts.Identifier>();
+	private readonly pendingRovyNetImports = new Map<string, ts.Identifier>();
 	private readonly rojoResolver?: RojoResolver;
+	private netArtifactsGenerated = false;
 
 	constructor(
 		readonly program: Partial<ts.Program>,
@@ -38,12 +49,24 @@ export class TransformState {
 		const options = program.getCompilerOptions?.() ?? {};
 		this.rootDir = this.absolute(options.rootDir ?? this.currentDirectory);
 		this.outDir = this.absolute(options.outDir ?? this.rootDir);
+		this.rovyConfig = loadRovyConfig(this.currentDirectory, config, {
+			absolute: (value) => this.absolute(value),
+			exists: (path) => fs.existsSync(path),
+		});
 		this.rojoResolver = this.createRojoResolver();
 		this.prepass();
 	}
 
 	getCoreImports(file: ts.SourceFile): CoreImports {
-		const cached = this.coreImportCache.get(file.fileName);
+		return this.getImportsForModule(file, "@rovy/core", this.coreImportCache);
+	}
+
+	getNetworkingImports(file: ts.SourceFile): CoreImports {
+		return this.getImportsForModule(file, "@rovy/networking", this.networkingImportCache);
+	}
+
+	private getImportsForModule(file: ts.SourceFile, moduleName: string, cache: Map<string, CoreImports>): CoreImports {
+		const cached = cache.get(file.fileName);
 		if (cached) return cached;
 
 		const named = new Map<string, string>();
@@ -51,7 +74,7 @@ export class TransformState {
 		for (const statement of file.statements) {
 			if (!ts.isImportDeclaration(statement)) continue;
 			if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
-			if (statement.moduleSpecifier.text !== "@rovy/core") continue;
+			if (statement.moduleSpecifier.text !== moduleName) continue;
 			const clause = statement.importClause;
 			if (!clause) continue;
 			if (clause.namedBindings && ts.isNamedImports(clause.namedBindings)) {
@@ -65,7 +88,7 @@ export class TransformState {
 		}
 
 		const imports = { named, namespaces };
-		this.coreImportCache.set(file.fileName, imports);
+		cache.set(file.fileName, imports);
 		return imports;
 	}
 
@@ -76,6 +99,20 @@ export class TransformState {
 			if (imports.namespaces.has(expression.expression.text)) return expression.name.text;
 		}
 		return undefined;
+	}
+
+	resolveNetworkingName(file: ts.SourceFile, expression: ts.Expression): string | undefined {
+		const imports = this.getNetworkingImports(file);
+		if (ts.isIdentifier(expression)) return imports.named.get(expression.text);
+		if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression)) {
+			if (imports.namespaces.has(expression.expression.text)) return expression.name.text;
+		}
+		return undefined;
+	}
+
+	fileUsesNetworking(file: ts.SourceFile): boolean {
+		const imports = this.getNetworkingImports(file);
+		return imports.named.size > 0 || imports.namespaces.size > 0;
 	}
 
 	isRovyValue(file: ts.SourceFile, expression: ts.Expression): boolean {
@@ -104,10 +141,140 @@ export class TransformState {
 		return identifier;
 	}
 
+	addRovyNetImport(file: ts.SourceFile): ts.Identifier {
+		for (const [local, exported] of this.getNetworkingImports(file).named) {
+			if (exported === "rovyNet") return ts.factory.createIdentifier(local);
+		}
+
+		let identifier = this.pendingRovyNetImports.get(file.fileName);
+		if (!identifier) {
+			identifier = ts.factory.createUniqueName("__rovyNet", ts.GeneratedIdentifierFlags.Optimistic);
+			this.pendingRovyNetImports.set(file.fileName, identifier);
+		}
+		return identifier;
+	}
+
 	withPendingImports(file: ts.SourceFile, statements: ReadonlyArray<ts.Statement>): ts.Statement[] {
 		const rovyImport = this.pendingRovyImports.get(file.fileName);
-		if (!rovyImport) return [...statements];
-		return [importNamed("@rovy/core", "rovy", rovyImport.text), ...statements];
+		const rovyNetImport = this.pendingRovyNetImports.get(file.fileName);
+		const imports: ts.Statement[] = [];
+		if (rovyImport) imports.push(importNamed("@rovy/core", "rovy", rovyImport.text));
+		if (rovyNetImport) imports.push(importNamed("@rovy/networking", "rovyNet", rovyNetImport.text));
+		return [...imports, ...statements];
+	}
+
+	netRuntimeConfigStatement(file: ts.SourceFile): ts.Statement | undefined {
+		if (!this.fileUsesNetworking(file)) return undefined;
+		const rovyNet = this.addRovyNetImport(file);
+		return ts.factory.createExpressionStatement(
+			ts.factory.createCallExpression(
+				ts.factory.createPropertyAccessExpression(rovyNet, "__configureRuntime"),
+				undefined,
+				[
+					ts.factory.createObjectLiteralExpression(
+						[
+							ts.factory.createPropertyAssignment(
+								"transport",
+								ts.factory.createStringLiteral(this.netTransport()),
+							),
+							ts.factory.createPropertyAssignment(
+								"strictBoundaryChecks",
+								this.strictBoundaryChecks()
+									? ts.factory.createTrue()
+									: ts.factory.createFalse(),
+							),
+						],
+						true,
+					),
+				],
+			),
+		);
+	}
+
+	netTransport(): "blink" | "remote" {
+		return this.netConfig()?.transport === "remote" ? "remote" : "blink";
+	}
+
+	netConfig(): RovyNetConfig | undefined {
+		return this.rovyConfig?.environment.net;
+	}
+
+	blinkConfig(): RovyBlinkConfig {
+		const blink = this.netConfig()?.blink;
+		return {
+			enabled: blink?.enabled ?? true,
+			remoteScope: blink?.remoteScope ?? "ROVY",
+			manualReplication: blink?.manualReplication ?? true,
+			usePolling: blink?.usePolling ?? true,
+		};
+	}
+
+	strictBoundaryChecks(): boolean {
+		return this.netConfig()?.strictBoundaryChecks ?? true;
+	}
+
+	resolveBoundary(file: ts.SourceFile): "server" | "client" | "shared" | "unknown" {
+		const configured = this.resolveBoundaryFromConfig(file.fileName);
+		if (configured !== "unknown") return configured;
+		const path = normalizePath(file.fileName);
+		if (isDescendant(path, this.absolute("src/server"))) return "server";
+		if (isDescendant(path, this.absolute("src/client"))) return "client";
+		if (isDescendant(path, this.absolute("src/shared"))) return "shared";
+		return "unknown";
+	}
+
+	private resolveBoundaryFromConfig(fileName: string): "server" | "client" | "shared" | "unknown" {
+		const boundaries = this.rovyConfig?.environment.boundaries;
+		if (!boundaries) return "unknown";
+		const absoluteFile = normalizePath(fileName);
+		const match = (paths: ReadonlyArray<string> | undefined): boolean =>
+			(paths ?? []).some((entry) => {
+				const absolute = this.absolute(entry);
+				return isDescendant(absoluteFile, absolute);
+			});
+		if (match(boundaries.server)) return "server";
+		if (match(boundaries.client)) return "client";
+		if (match(boundaries.shared)) return "shared";
+		return "unknown";
+	}
+
+	blinkGeneratedSourcePath(): string {
+		return join(this.outDir, "shared/net/generated/rovy.generated.blink");
+	}
+
+	blinkGeneratedClientPath(): string {
+		return join(this.outDir, "shared/net/generated/RovyBlinkClient.luau");
+	}
+
+	blinkGeneratedServerPath(): string {
+		return join(this.outDir, "shared/net/generated/RovyBlinkServer.luau");
+	}
+
+	blinkGeneratedTypesPath(): string {
+		return join(this.outDir, "shared/net/generated/RovyBlinkTypes.luau");
+	}
+
+	shouldGenerateBlinkArtifacts(): boolean {
+		return this.rovyConfig?.path !== undefined && this.netTransport() === "blink" && this.blinkConfig().enabled !== false;
+	}
+
+	shouldGenerateNetArtifacts(): boolean {
+		return this.classInfoHasDecorator("netEvent");
+	}
+
+	hasGeneratedNetArtifacts(): boolean {
+		return this.netArtifactsGenerated;
+	}
+
+	markNetArtifactsGenerated(): void {
+		this.netArtifactsGenerated = true;
+	}
+
+	classInfoHasDecorator(decorator: string): boolean {
+		for (const [, info] of this.classInfo) {
+			if (info.decorators.includes(decorator)) return true;
+		}
+		return false;
 	}
 
 	diagnostic(node: ts.Node, messageText: string): void {
@@ -203,9 +370,11 @@ export class TransformState {
 
 	private createRojoResolver(): RojoResolver | undefined {
 		const configuredPath =
-			typeof this.config.rojo === "string"
-				? this.absolute(this.config.rojo)
-				: RojoResolver.findRojoConfigFilePath(this.currentDirectory).path;
+			typeof this.rovyConfig?.environment.rojo === "string"
+				? this.absolute(this.rovyConfig.environment.rojo)
+				: typeof this.config.rojo === "string"
+					? this.absolute(this.config.rojo)
+					: RojoResolver.findRojoConfigFilePath(this.currentDirectory).path;
 		if (!configuredPath) return undefined;
 		try {
 			return RojoResolver.fromPath(configuredPath);
@@ -254,7 +423,7 @@ export class TransformState {
 export function decoratorName(state: TransformState, file: ts.SourceFile, decorator: ts.Decorator): string | undefined {
 	const expression = decorator.expression;
 	const target = ts.isCallExpression(expression) ? expression.expression : expression;
-	return state.resolveCoreName(file, target);
+	return state.resolveCoreName(file, target) ?? state.resolveNetworkingName(file, target);
 }
 
 export function normalizePath(value: string): string {

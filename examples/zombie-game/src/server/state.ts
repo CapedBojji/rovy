@@ -17,6 +17,7 @@ import { ArenaState, ServerClock, SnapshotState } from "./resources";
 export class Update {}
 
 export class IngressSet extends SystemSet {}
+export class RemoteIngressSet extends SystemSet {}
 export class WaveSet extends SystemSet {}
 export class MovementSet extends SystemSet {}
 export class CombatSet extends SystemSet {}

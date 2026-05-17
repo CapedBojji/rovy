@@ -1,17 +1,19 @@
-import { Res, ResMut, system } from "@rovy/core";
-import { SnapshotCollect } from "../collectors";
+import { EventReader, Res, ResMut, system } from "@rovy/core";
+import { WorldSnapshotPayload } from "shared/contracts";
+import { WorldSnapshotNet, fromWorldSnapshotNet } from "shared/network";
 import { ClientClock, HudState, SnapshotBufferState } from "../resources";
 import { Render, SnapshotSet } from "../state";
 
 @system({ schedule: Render, set: SnapshotSet })
 export class ApplySnapshotIngress {
 	run(
-		ingress: SnapshotCollect,
+		ingress: EventReader<WorldSnapshotNet>,
 		buffer: ResMut<SnapshotBufferState>,
 		clock: Res<ClientClock>,
 		hud: ResMut<HudState>,
 	) {
-		for (const snap of ingress.drain()) {
+		ingress.forEach((event) => {
+			const snap = fromWorldSnapshotNet(event) as WorldSnapshotPayload;
 			buffer.previous = buffer.current;
 			buffer.current = snap;
 			buffer.currentReceivedAt = clock.now;
@@ -21,6 +23,6 @@ export class ApplySnapshotIngress {
 			hud.playerHealth = snap.playerHealth;
 			hud.playerMaxHealth = snap.playerMaxHealth;
 			hud.gameOver = snap.phase === "defeat";
-		}
+		});
 	}
 }

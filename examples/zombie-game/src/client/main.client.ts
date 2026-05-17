@@ -25,7 +25,10 @@ function bootRuntime() {
 	return { app, game: clientGame };
 }
 
-function attachEngineHooks(runtime: { app: App; game: typeof import("client/game") }): void {
+function attachEngineHooks(runtime: {
+	app: App;
+	game: typeof import("client/game");
+}): void {
 	const { app, game: gameMod } = runtime;
 	const RunService = game.GetService("RunService");
 	RunService.RenderStepped.Connect((dt) => {
@@ -41,4 +44,3 @@ if (hasRunService) {
 	print("[zombie-game] client runtime online");
 }
 
-export {};

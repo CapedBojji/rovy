@@ -45,6 +45,8 @@ export class Scheduler {
 	queries = new Map<string, QueryLike>();
 	/** App-scoped collector instances (set by App after finalize). */
 	collectors = new Map<Ctor, object>();
+	/** Package/plugin-provided injected params (set by App after finalize). */
+	externalParams = new Map<string, unknown>();
 	/** Event registry + handle factories (set by App after finalize). */
 	events!: EventRegistry;
 	makeReader!: (registry: EventRegistry, event: Ctor) => EventReaderHandle;
@@ -60,6 +62,11 @@ export class Scheduler {
 	/** Declared via app.configureSets before start(). */
 	configureSets(schedule: Ctor, order: ReadonlyArray<Ctor>): void {
 		this.pendingSetOrder.set(schedule, [...order]);
+	}
+
+	/** Current configured set order for a schedule (empty if none). */
+	getSetOrder(schedule: Ctor): ReadonlyArray<Ctor> {
+		return this.pendingSetOrder.get(schedule) ?? [];
 	}
 
 	/** Finalize: group registry systems by schedule/set. */
@@ -126,6 +133,7 @@ export class Scheduler {
 					world: this.world,
 					commands: this.commands,
 					collectors: this.collectors,
+					externalParams: this.externalParams,
 					locals: sr.locals,
 					queries: this.queries,
 					events: this.events,

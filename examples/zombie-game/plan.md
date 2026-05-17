@@ -483,6 +483,12 @@ Boot config:
 7. Add tests and output assertions.
 8. Run build/test loop and fix compile/runtime issues.
 
+## Future Rovy Net Phase
+- After the first event-transport version of Rovy networking lands, replace the thin Flamework-only bridge with `@netEvent` where it improves clarity without changing the game loop shape.
+- Map client intents like fire/restart to `clientToServer` net events and cosmetic or HUD push paths to `serverToClient` net events.
+- Keep the same Rovy-owned sim/render split: networking remains transport plus boundary validation, not ownership of gameplay state.
+- Do not block this example on full entity/component replication. The first migration target is typed event transport only.
+
 ## Non-Goals
 - No ammo or reload.
 - No upgrades or between-wave shop.

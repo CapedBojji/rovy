@@ -1,7 +1,8 @@
 import { Query, Res, ResMut, With, system } from "@rovy/core";
-import { PLAYER_MAX_HEALTH, WorldSnapshotPayload, worldSnapshotSerializer } from "shared/contracts";
+import { NetServer } from "@rovy/networking";
+import { PLAYER_MAX_HEALTH, WorldSnapshotPayload } from "shared/contracts";
+import { toWorldSnapshotNet } from "shared/network";
 import { Health, PlayerUnit, Position, Projectile, WireId, Zombie } from "../components";
-import { ServerNetworkState } from "../network";
 import { ServerClock, SnapshotState, WaveState } from "../resources";
 import { SnapshotSet, tickSnapshotAccumulator, Update } from "../state";
 
@@ -11,7 +12,7 @@ export class BuildSnapshot {
 		clock: Res<ServerClock>,
 		wave: Res<WaveState>,
 		snap: ResMut<SnapshotState>,
-		network: Res<ServerNetworkState>,
+		network: NetServer,
 		players: Query<[PlayerUnit, Position, Health]>,
 		zombies: Query<[WireId, Position, Health], With<Zombie>>,
 		projectiles: Query<[WireId, Position], With<Projectile>>,
@@ -54,8 +55,7 @@ export class BuildSnapshot {
 			projectileSnaps,
 		);
 
-		const serialized = worldSnapshotSerializer.serialize(payload);
 		snap.snapshotCount += 1;
-		network.events?.worldSnapshot.broadcast(serialized.buffer);
+		network.broadcast(toWorldSnapshotNet(payload));
 	}
 }
