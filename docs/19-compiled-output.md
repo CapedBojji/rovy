@@ -70,6 +70,34 @@ Default constructor required. At finalize, `app.start()` calls `BattleClock.new(
 
 ---
 
+## Collectors
+
+```ts
+@collect
+class FireWeaponCollect extends Collector<string> {
+    constructor() {
+        super();
+    }
+}
+```
+
+Compiled:
+
+```luau
+local FireWeaponCollect = {}
+FireWeaponCollect.__index = FireWeaponCollect
+function FireWeaponCollect.new()
+    return setmetatable(Collector.new(), FireWeaponCollect)
+end
+rovy.__collect(FireWeaponCollect, "src/collectors/FireWeaponCollect")
+```
+
+`rovy.__collect` pushes `{ ctor, id }` into the collector registry. At finalize, `app.start()` instantiates the collector once and later injects that singleton anywhere `FireWeaponCollect` appears as a system, observer, or monitor param type.
+
+Authoring note: the meaningful collector structure is the queue plus constructor hookup code. `Collector<T>` provides `drain()` already, so authored collector classes should usually only extend the base and call `enqueue(...)`.
+
+---
+
 ## Events
 
 ```ts
@@ -331,6 +359,7 @@ rovy.loadPaths(
     script.Parent.monitors
 )
 -- every required module ran its rovy.__component / __system / __observer / ...
+-- every required module ran its rovy.__component / __collect / __system / __observer / ...
 -- registries now fully populated
 
 app:start()
@@ -349,7 +378,7 @@ end)
 
 | TS construct | At Luau runtime |
 |-------------|-----------------|
-| `@component` / `@resource` / ... decorators | Erased. Replaced by an injected `rovy.__*` call. |
+| `@component` / `@collect` / `@resource` / ... decorators | Erased. Replaced by an injected `rovy.__*` call. |
 | `implements CrowdControl` | Erased. Replaced by `rovy.__traitImpl(id, C)`. |
 | `Query<[Entity, Health], Without<Dead>>` type | Erased. Hoisted `rovy.__query(...)` + param descriptor. |
 | `trait<T>()` macro | Replaced → `rovy.traitToken("stable/path")` |

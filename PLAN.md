@@ -174,6 +174,39 @@ Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-run
 
 ---
 
+# Milestone 3 — External Signal Bridge (Phases 13–15)
+
+## ✅ Phase 13 — Collector contract + decorator + transformer lowering
+
+- [x] Added `@collect` no-op decorator to `packages/core/src/decorators.ts` and exported it from `packages/core/src/index.ts`
+- [x] Extended frozen contract with `CollectReg`, `CollectParam`, `registry.collectors`, and bumped `CONTRACT_VERSION` to `2`
+- [x] Added `rovy.__collect(ctor, id)` registry entry point and reset coverage
+- [x] Transformer now recognizes `@collect`, injects `rovy.__collect(...)`, and lowers collector class params to `{ kind = "collect", ctor = ... }`
+- [x] Transformer preserves observer first-param event precedence over collector matching
+- [x] `packages/core/src/__typecheck.ts` now exercises collector params in system / observer / monitor authoring positions
+- [x] **Exit:** transformer fixture coverage proves `__collect` injection and collect-param lowering in system / observer / monitor contexts
+
+## ✅ Phase 14 — Runtime collector store + param resolution
+
+- [x] `App` now owns app-scoped singleton collector instances keyed by ctor
+- [x] Collectors instantiate once during `app.start()` and are injected through shared param resolution into systems, observers, and monitors
+- [x] Collector-only apps are now valid in the empty-registry assertion
+- [x] Runtime validation fails loudly for unregistered collector params and collector instances missing callable `drain()`
+- [x] No teardown lifecycle in v1; collectors live for the full `App` lifetime
+- [x] **Exit:** new runtime specs cover singleton injection, queue persistence across runs, collector-only boot, and named validation failures
+
+## ✅ Phase 15 — Integration tests + docs promotion
+
+- [x] Added new core specs for collector registry contract, runtime injection/validation, and buffered-event + trigger integration flow
+- [x] Added transformer regression coverage for `@collect` lowering and zero-arg constructor validation
+- [x] Promoted docs from proposal wording to shipped collector feature wording across README / API / package / events / observers / systems docs
+- [x] Updated roadmap docs to point at implemented collector support
+- [x] **Exit:** required test suites for `rovy-transformer` and `@rovy/core` are green with collector coverage added
+
+> **✅ Milestone 3 COMPLETE (Phases 13–15).** `mise exec -- pnpm --filter rovy-transformer test` green, `mise exec -- pnpm --filter @rovy/core test` green, and core spec count now sits at 64/64.
+
+---
+
 ## Risks
 
 - jecs internal-API reality (`world.observable`, 4-arg `added`, `archetype_traverse_remove`) — Phase 0 spike + vendored d.ts; blocks 7–9 if upstream absent (fallback: per-frame archetype poll, redesign exit detection)

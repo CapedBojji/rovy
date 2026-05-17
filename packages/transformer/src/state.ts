@@ -134,6 +134,19 @@ export class TransformState {
 		return node.getText().replace(/\s+/g, "");
 	}
 
+	decoratorsForTypeNode(node: ts.TypeNode): ReadonlyArray<string> | undefined {
+		const symbol = this.symbolForTypeNode(node);
+		for (const declaration of symbol?.declarations ?? []) {
+			if (!ts.isClassDeclaration(declaration)) continue;
+			return this.classInfo.get(declaration)?.decorators;
+		}
+		return undefined;
+	}
+
+	hasDecoratorOnTypeNode(node: ts.TypeNode, decorator: string): boolean {
+		return this.decoratorsForTypeNode(node)?.includes(decorator) ?? false;
+	}
+
 	lowerLoadPath(node: ts.StringLiteral): ts.Expression {
 		const rbxPath = this.resolveRbxPath(node.text);
 		if (!rbxPath) {

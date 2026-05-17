@@ -130,6 +130,8 @@ commands.send(...)    = buffered event for systems (via EventReader)
 | Cause-effect chain (damage → death → loot) | `trigger` |
 | Inside an observer, react before next system runs | `world.trigger` |
 
+External Roblox or Flamework signals are a different problem. `EventReader<E>` is for **Rovy-native** `@event` classes that are already inside the ECS world. For external-signal translation, see [Collectors](22-collectors.md).
+
 ## Registration
 
 Transformer injects a side-effect call after each `@event` class:
@@ -151,3 +153,4 @@ Undecorated class passed to `commands.send` or `EventReader<E>` → transformer 
 - [Observers](06-observers.md)
 - [Systems and injection](17-systems-and-injection.md)
 - [Commands](04-commands.md)
+- [Collectors](22-collectors.md)

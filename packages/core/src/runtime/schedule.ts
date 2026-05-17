@@ -43,6 +43,8 @@ export class Scheduler {
 	private depth = 0;
 	/** Hoisted query handles (set by App after finalize). */
 	queries = new Map<string, QueryLike>();
+	/** App-scoped collector instances (set by App after finalize). */
+	collectors = new Map<Ctor, object>();
 	/** Event registry + handle factories (set by App after finalize). */
 	events!: EventRegistry;
 	makeReader!: (registry: EventRegistry, event: Ctor) => EventReaderHandle;
@@ -123,6 +125,7 @@ export class Scheduler {
 				const args = resolveParams(sr.reg.params, {
 					world: this.world,
 					commands: this.commands,
+					collectors: this.collectors,
 					locals: sr.locals,
 					queries: this.queries,
 					events: this.events,

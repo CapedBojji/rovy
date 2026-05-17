@@ -23,6 +23,7 @@ export type ParamKind =
 	| "commands"
 	| "world"
 	| "query"
+	| "collect"
 	| "res"
 	| "resMut"
 	| "optRes"
@@ -65,6 +66,10 @@ export interface QueryParam {
 	/** Stable id of the hoisted QueryDescriptor (see `rovy.__query`). */
 	readonly handle: StableId;
 }
+export interface CollectParam {
+	readonly kind: "collect";
+	readonly ctor: Ctor;
+}
 export interface LocalParam {
 	readonly kind: "local";
 	/** Position among Local params on this method (its slot key). */
@@ -79,6 +84,7 @@ export type ParamDescriptor =
 	| EventParam
 	| EntityParam
 	| TermParam
+	| CollectParam
 	| ResParam
 	| EventChannelParam
 	| QueryParam
@@ -119,9 +125,20 @@ export interface ComponentReg {
 	readonly id: StableId;
 }
 
+export interface CollectReg {
+	readonly ctor: Ctor;
+	readonly id: StableId;
+}
+
+export interface CollectorRefReg {
+	readonly key: string;
+	readonly ctor: Ctor;
+}
+
 export interface ResourceReg {
 	readonly ctor: Ctor;
 	readonly id: StableId;
+	readonly collectorRefs?: ReadonlyArray<CollectorRefReg>;
 }
 
 export interface EventReg {
@@ -190,6 +207,7 @@ export interface SetOrderReg {
 
 export interface RovyRegistry {
 	readonly components: Array<ComponentReg>;
+	readonly collectors: Array<CollectReg>;
 	readonly resources: Array<ResourceReg>;
 	readonly events: Array<EventReg>;
 	readonly systems: Array<SystemReg>;
@@ -211,4 +229,4 @@ export interface RovyRegistry {
  */
 
 /** Bumped on any breaking change to the shapes above. Transformer asserts a match. */
-export const CONTRACT_VERSION = 1;
+export const CONTRACT_VERSION = 3;

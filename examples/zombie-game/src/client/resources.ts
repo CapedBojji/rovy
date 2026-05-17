@@ -1,0 +1,49 @@
+import EgooE from "@rbxts/egooe";
+import { $collectRef, resource } from "@rovy/core";
+import { PLAYER_MAX_HEALTH, WavePhase } from "shared/contracts";
+import { LocalClientCollect } from "./collectors";
+
+@resource
+export class ClientClock {
+	now = 0;
+	delta = 0;
+}
+
+@resource
+export class SnapshotBufferState {
+	previous?: import("shared/contracts").WorldSnapshotPayload;
+	current?: import("shared/contracts").WorldSnapshotPayload;
+	currentReceivedAt = 0;
+}
+
+@resource
+export class RenderRegistry {
+	rootFolder?: Folder;
+	zombieParts = new Map<number, Part>();
+	projectileParts = new Map<number, Part>();
+}
+
+@resource
+export class HudState {
+	phase: WavePhase = "intermission";
+	waveNumber = 0;
+	enemiesRemaining = 0;
+	playerHealth = PLAYER_MAX_HEALTH;
+	playerMaxHealth = PLAYER_MAX_HEALTH;
+	gameOver = false;
+}
+
+@resource
+export class HudUiState {
+	gui?: ScreenGui;
+	node?: ReturnType<typeof EgooE.new>;
+	rendering = false;
+	readonly local: LocalClientCollect = $collectRef<LocalClientCollect>();
+}
+
+@resource
+export class LocalPlayerState {
+	character?: Model;
+	shotSequence = 0;
+	userId = 0;
+}

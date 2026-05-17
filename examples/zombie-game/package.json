@@ -26,7 +26,7 @@
   "dependencies": {
     "@flamework/core": "1.3.2",
     "@flamework/networking": "1.3.2",
-    "@rbxts/egooe": "0.1.6",
+    "@rbxts/egooe": "0.1.7",
     "@rbxts/flamework-binary-serializer": "0.7.0",
     "@rbxts/iris": "2.3.1-ts.1",
     "@rbxts/jecs": "^0.11.0",

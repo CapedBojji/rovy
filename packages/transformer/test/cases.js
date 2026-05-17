@@ -28,7 +28,11 @@ import {
 	Added,
 	Changed,
 	Removed,
+	World,
+	Collector,
+	$collectRef,
 	component,
+	collect,
 	event,
 	monitor,
 	observer,
@@ -46,6 +50,7 @@ runCase("bare decorators inject registry calls", () => {
 	const result = compileFixture(`
 ${header}
 @component class Unit {}
+@collect class FireInbox extends Collector<unknown> {}
 @resource class Clock { constructor(public tick = 0) {} }
 @event({ capacity: 8 }) class DamageTaken {}
 @relation({ exclusive: true }) class ChildOf {}
@@ -53,10 +58,25 @@ ${header}
 `);
 	assertNoDiagnostics(result, "decorator injection");
 	assert.match(result.printed, /__component\(Unit,/);
+	assert.match(result.printed, /__collect\(FireInbox,/);
 	assert.match(result.printed, /__resource\(Clock,/);
 	assert.match(result.printed, /__event\(DamageTaken,/);
 	assert.match(result.printed, /__relation\(ChildOf,/);
 	assert.match(result.printed, /__schedule\(Update,/);
+});
+
+runCase("$collectRef resource fields lower into resource metadata", () => {
+	const result = compileFixture(`
+${header}
+@collect class FireInbox extends Collector<unknown> {}
+@resource class InboxRefs {
+	readonly inbox = $collectRef<FireInbox>();
+}
+`);
+	assertNoDiagnostics(result, "$collectRef lowering");
+	assert.match(result.printed, /__resource\(InboxRefs, "src\/main@InboxRefs", \{[\s\S]*collectorRefs: \[\s*\{ key: "inbox", ctor: FireInbox \}\s*\]/);
+	assert.match(result.printed, /inbox = undefined as unknown as FireInbox/);
+	assert.doesNotMatch(result.printed, /\$collectRef<FireInbox>\(\)/);
 });
 
 runCase("system query and injection params lower into descriptors", () => {
@@ -180,6 +200,33 @@ class DamageObserver {
 	assert.match(result.printed, /kind: "commands"/);
 });
 
+runCase("collector params lower in system observer and monitor methods", () => {
+	const result = compileFixture(`
+${header}
+@schedule class Update {}
+@collect class FireInbox extends Collector<unknown> {}
+@event() class DamageTaken {}
+@component class Health {}
+@system({ schedule: Update })
+class DrainSystem {
+	run(inbox: FireInbox) {}
+}
+@observer({ event: DamageTaken })
+class DamageObserver {
+	run(event: DamageTaken, inbox: FireInbox) {}
+}
+@monitor({ match: query<[Entity, Health]>() })
+class HealthMonitor {
+	onEnter(entity: Entity, health: Health, inbox: FireInbox) {}
+}
+`);
+	assertNoDiagnostics(result, "collector lowering");
+	assert.match(result.printed, /__collect\(FireInbox,/);
+	assert.match(result.printed, /__system\(DrainSystem, \{[\s\S]*kind: "collect", ctor: FireInbox/);
+	assert.match(result.printed, /__observer\(DamageObserver, \{[\s\S]*kind: "event"[\s\S]*kind: "collect", ctor: FireInbox/);
+	assert.match(result.printed, /__monitor\(HealthMonitor, \{[\s\S]*kind: "term", index: 1[\s\S]*kind: "collect", ctor: FireInbox/);
+});
+
 runCase("loadPaths string lowers through rojo path", () => {
 	const result = compileFixture(`
 ${header}
@@ -199,6 +246,51 @@ class Clock {
 }
 `);
 	assert.match(result.diagnostics.join("\n"), /constructor params must be optional or defaulted/);
+});
+
+runCase("collect ctor validation catches required params", () => {
+	const result = compileFixture(`
+${header}
+@collect
+class FireInbox extends Collector<number> {
+	constructor(public seed: number) {}
+}
+`);
+	assert.match(result.diagnostics.join("\n"), /@collect constructor params must be optional or defaulted/);
+});
+
+runCase("$collectRef validation catches missing type arg", () => {
+	const result = compileFixture(`
+${header}
+@resource
+class InboxRefs {
+	readonly inbox = $collectRef();
+}
+`);
+	assert.match(result.diagnostics.join("\n"), /\$collectRef<T>\(\) requires exactly one type argument/);
+});
+
+runCase("$collectRef validation catches non-collect type", () => {
+	const result = compileFixture(`
+${header}
+class Plain {}
+@resource
+class InboxRefs {
+	readonly inbox = $collectRef<Plain>();
+}
+`);
+	assert.match(result.diagnostics.join("\n"), /\$collectRef<T>\(\) requires T to be an @collect class/);
+});
+
+runCase("$collectRef validation catches unsupported usage site", () => {
+	const result = compileFixture(`
+${header}
+@collect class FireInbox extends Collector<unknown> {}
+class Plain {
+	readonly inbox = $collectRef<FireInbox>();
+}
+`);
+	assert.match(result.diagnostics.join("\n"), /\$collectRef<T>\(\) is only supported as a @resource field initializer/);
 });
 
 runCase("generic system validation fires", () => {

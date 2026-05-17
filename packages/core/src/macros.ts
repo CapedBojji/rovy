@@ -2,6 +2,7 @@
  * Compile-time macros. The `rovy-transformer` rewrites every call site:
  *   `trait<CrowdControl>()`        → `rovy.traitToken("src/.../CrowdControl")`
  *   `query<[Health], With<Unit>>()` → reference to a hoisted QueryDescriptor
+ *   `$collectRef<Inbox>()`         → resource-field wiring metadata
  *
  * If one of these is ever reached at runtime, the transformer did not run —
  * fail loudly (doc 21 "transformer-not-run guard") rather than silently
@@ -27,3 +28,10 @@ export function query<
 >(): never {
 	throw GUARD;
 }
+
+/** Resource-field collector singleton reference. */
+function collectRefMacro<T>(): T {
+	throw GUARD;
+}
+
+export { collectRefMacro as $collectRef };

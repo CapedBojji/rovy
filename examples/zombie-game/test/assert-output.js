@@ -23,14 +23,13 @@ assert.ok(fs.existsSync(outDir), "zombie-game out/ missing; run rbxtsc first");
 const files = walk(outDir);
 const output = files.map((file) => fs.readFileSync(file, "utf8")).join("\n");
 
-// Rovy transformer markers (component / system / observer / query registration).
+// Rovy transformer markers (component / collect / system / query registration).
 const rovyChecks = [
 	["component registration", /:__component\(/],
+	["collect registration", /:__collect\(/],
 	["resource registration", /:__resource\(/],
 	["system registration", /:__system\(/],
-	["observer registration", /:__observer\(/],
 	["query registration", /:__query\(/],
-	["event registration", /:__event\(/],
 	["schedule registration", /:__schedule\(/],
 	["loadPaths Rojo lowering", /game:GetService\("ReplicatedStorage"\):WaitForChild\("TS"\)/],
 ];
@@ -42,6 +41,7 @@ for (const [label, pattern] of rovyChecks) {
 // The exact string depends on the Flamework transformer; we look for the
 // Networking.createEvent surface that ends up in the compiled module.
 assert.match(output, /Networking|createEvent|GlobalEvents/, "missing Flamework networking output");
+assert.doesNotMatch(output, /:__observer\(/, "zombie example should not emit observer registrations");
 
 // Macro / query lowering didn't leak diagnostics into the output.
 assert.doesNotMatch(output, /macro reached runtime untransformed/, "raw macro guard leaked into game output");

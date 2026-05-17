@@ -10,6 +10,7 @@ import {
 	num,
 	obj,
 	prop,
+	propertyNameText,
 	propertyValue,
 	stmt,
 	str,
@@ -23,6 +24,7 @@ export interface TransformerExtras {
 
 const DECORATORS = new Set([
 	"component",
+	"collect",
 	"resource",
 	"event",
 	"system",
@@ -113,6 +115,11 @@ function transformCall(
 		return node;
 	}
 
+	if (coreName === "$collectRef") {
+		state.diagnostic(node, "$collectRef<T>() is only supported as a @resource field initializer");
+		return node;
+	}
+
 	if (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "loadPaths") {
 		if (state.isRovyValue(sourceFile, node.expression.expression)) {
 			return ts.factory.updateCallExpression(
@@ -153,7 +160,10 @@ function transformClass(
 	validateClass(state, node, decorators);
 
 	const stripped = removeRovyDecorators(state, sourceFile, node);
-	const transformedClass = ts.visitEachChild(stripped, visitor, state.context);
+	const isResource = decorators.some((d) => d.name === "resource");
+	const resourceCollectRefs = isResource ? collectRefBindings(state, sourceFile, stripped) : [];
+	const resourceReadyClass = isResource ? stripCollectRefInitializers(state, sourceFile, stripped) : stripped;
+	const transformedClass = ts.visitEachChild(resourceReadyClass, visitor, state.context);
 	const moduleId = state.stableIdForNode(node);
 	const classId = classScopedId(moduleId, className.text);
 
@@ -163,8 +173,21 @@ function transformClass(
 				afterStatements.push(regCall(rovy, "__component", [className, str(classId)]));
 				afterStatements.push(...traitImplCalls(state, rovy, node, className));
 				break;
+			case "collect":
+				afterStatements.push(regCall(rovy, "__collect", [className, str(classId)]));
+				break;
 			case "resource":
-				afterStatements.push(regCall(rovy, "__resource", [className, str(classId)]));
+				{
+					const args: ts.Expression[] = [className, str(classId)];
+					if (resourceCollectRefs.length > 0) args.push(buildResourceMeta(resourceCollectRefs));
+				afterStatements.push(
+					regCall(
+						rovy,
+						"__resource",
+						args,
+					),
+				);
+				}
 				break;
 			case "event":
 				afterStatements.push(regCall(rovy, "__event", [className, decorator.args[0]].filter(isExpression)));
@@ -240,11 +263,12 @@ function validateClass(state: TransformState, node: ts.ClassDeclaration, decorat
 		state.diagnostic(node, "@system/@observer/@monitor classes cannot be generic in v1");
 	}
 
-	if (decorators.some((d) => d.name === "resource")) {
+	const zeroArgDecorated = decorators.find((d) => d.name === "resource" || d.name === "collect");
+	if (zeroArgDecorated) {
 		const ctor = node.members.find(ts.isConstructorDeclaration);
 		for (const param of ctor?.parameters ?? []) {
 			if (!param.questionToken && !param.initializer) {
-				state.diagnostic(param, "@resource constructor params must be optional or defaulted");
+				state.diagnostic(param, `@${zeroArgDecorated.name} constructor params must be optional or defaulted`);
 			}
 		}
 	}
@@ -252,6 +276,71 @@ function validateClass(state: TransformState, node: ts.ClassDeclaration, decorat
 	if (decorators.some((d) => d.name === "system" || d.name === "observer") && !methodNamed(node, "run")) {
 		state.diagnostic(node, "@system/@observer classes require run(...)");
 	}
+}
+
+function collectRefBindings(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.ClassDeclaration,
+): ts.ObjectLiteralExpression[] {
+	const refs: ts.ObjectLiteralExpression[] = [];
+	for (const member of node.members) {
+		if (!ts.isPropertyDeclaration(member) || member.initializer === undefined) continue;
+		if (!ts.isCallExpression(member.initializer)) continue;
+		if (state.resolveCoreName(sourceFile, member.initializer.expression) !== "$collectRef") continue;
+
+		const key = member.name ? propertyNameText(member.name) : undefined;
+		if (key === undefined) {
+			state.diagnostic(member, "$collectRef<T>() fields must use an identifier, string, or number property name");
+			continue;
+		}
+
+		const typeArg = member.initializer.typeArguments?.[0];
+		if (!typeArg || member.initializer.typeArguments?.length !== 1) {
+			state.diagnostic(member.initializer, "$collectRef<T>() requires exactly one type argument");
+			continue;
+		}
+		if (!ts.isTypeReferenceNode(typeArg)) {
+			state.diagnostic(member.initializer, "$collectRef<T>() type argument must name an @collect class");
+			continue;
+		}
+		if (!state.hasDecoratorOnTypeNode(typeArg, "collect")) {
+			state.diagnostic(member.initializer, "$collectRef<T>() requires T to be an @collect class");
+			continue;
+		}
+
+		refs.push(obj([prop("key", str(key)), prop("ctor", entityNameToExpression(typeArg.typeName))], false));
+	}
+	return refs;
+}
+
+function stripCollectRefInitializers(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.ClassDeclaration,
+): ts.ClassDeclaration {
+	const members = node.members.map((member) => {
+		if (!ts.isPropertyDeclaration(member) || member.initializer === undefined) return member;
+		if (!ts.isCallExpression(member.initializer)) return member;
+		if (state.resolveCoreName(sourceFile, member.initializer.expression) !== "$collectRef") return member;
+		const placeholderType =
+			member.type ??
+			member.initializer.typeArguments?.[0] ??
+			ts.factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword);
+		const placeholder = ts.factory.createAsExpression(
+			ts.factory.createAsExpression(id("undefined"), ts.factory.createKeywordTypeNode(ts.SyntaxKind.UnknownKeyword)),
+			placeholderType,
+		);
+		return ts.factory.updatePropertyDeclaration(
+			member,
+			member.modifiers,
+			member.name,
+			member.questionToken,
+			member.type,
+			placeholder,
+		);
+	});
+	return ts.factory.updateClassDeclaration(node, node.modifiers, node.name, node.typeParameters, node.heritageClauses, members);
 }
 
 function buildSystemMeta(
@@ -304,6 +393,10 @@ function buildRelationMeta(decorator: DecoratorInfo): ts.ObjectLiteralExpression
 		],
 		true,
 	);
+}
+
+function buildResourceMeta(collectorRefs: readonly ts.ObjectLiteralExpression[]): ts.ObjectLiteralExpression {
+	return obj([prop("collectorRefs", arr(collectorRefs, true))], true);
 }
 
 function buildScheduleMeta(decorator: DecoratorInfo): ts.ObjectLiteralExpression {
@@ -437,6 +530,13 @@ function lowerParam(
 				descriptor: obj([prop("kind", str("local")), prop("index", num(ctx.localIndex))], false),
 				queryStatements: [],
 				localUsed: true,
+			};
+		}
+
+		if (state.hasDecoratorOnTypeNode(type, "collect")) {
+			return {
+				descriptor: obj([prop("kind", str("collect")), prop("ctor", entityNameToExpression(type.typeName))], false),
+				queryStatements: [],
 			};
 		}
 	}

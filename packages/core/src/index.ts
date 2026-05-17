@@ -8,6 +8,7 @@ export * from "./types";
 // Decorators (no-op markers; transformer injects rovy.__*).
 export {
 	component,
+	collect,
 	resource,
 	plugin,
 	event,
@@ -29,7 +30,7 @@ export type {
 } from "./decorators";
 
 // Compile-time macros (transformer rewrites; throw if reached untransformed).
-export { trait, query } from "./macros";
+export { trait, query, $collectRef } from "./macros";
 
 // Runtime registry (public for the transformer + tests).
 export { rovy } from "./rovy";

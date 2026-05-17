@@ -29,6 +29,7 @@ Read in order for first pass. Skip around after. For project setup / package spl
 19. [Compiled output](19-compiled-output.md) — what the transformer emits per construct.
 20. [Runtime lifecycle](20-runtime-lifecycle.md) — register → finalize → run; how the runtime uses it all.
 21. [Packages](21-packages.md) — `@rovy/core` vs `rovy-transformer`, setup, the two-package split.
+22. [Collectors](22-collectors.md) — external Roblox/Flamework signal translation into systems.
 
 ## What jecs handles
 
@@ -49,6 +50,7 @@ Read in order for first pass. Skip around after. For project setup / package spl
 - commands
 - custom schedules + flush points
 - transformer-injected registration (`rovy.__*` side effects + `rovy.loadPaths`)
+- collector bridge for external Roblox/Flamework signals
 
 ## Use cases
 

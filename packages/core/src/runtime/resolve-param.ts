@@ -19,6 +19,8 @@ export type LocalStore = Map<number, unknown>;
 export interface ResolveCtx {
 	world: RovyWorld;
 	commands: CommandsImpl;
+	/** App-scoped collector singletons keyed by ctor. */
+	collectors: Map<Ctor, object>;
 	/** Local slots for the system/observer/monitor instance being invoked. */
 	locals: LocalStore;
 	/** Monitor-only: the matched entity + bound term values (Phase 8). */
@@ -43,6 +45,11 @@ export function resolveParam(p: ParamDescriptor, ctx: ResolveCtx): unknown {
 			return ctx.commands;
 		case "world":
 			return ctx.world;
+		case "collect": {
+			const collect = ctx.collectors.get(p.ctor);
+			assert(collect !== undefined, `[rovy] missing @collect instance for ${tostring(p.ctor)}`);
+			return collect;
+		}
 		case "res":
 		case "resMut":
 			return ctx.world.resource(p.ctor as unknown as new () => object);

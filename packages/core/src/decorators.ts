@@ -23,6 +23,7 @@ const noop = (_ctor: Ctor): void => {
 // ─── Bare marker decorators ─────────────────────────────────────────────────
 
 export function component(_ctor: Ctor): void {}
+export function collect(_ctor: Ctor): void {}
 export function resource(_ctor: Ctor): void {}
 export function plugin(_ctor: Ctor): void {}
 

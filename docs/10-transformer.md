@@ -8,11 +8,11 @@ Shipped as the `rovy-transformer` package — a dev-only roblox-ts plugin, separ
 
 All of the following happen at **build time**. Nothing below runs at Luau startup.
 
-1. Scan every decorated class: `@component`, `@resource`, `@event`, `@system`, `@observer`, `@monitor`, `@relation`, `@schedule`, `@set`, `@plugin`.
+1. Scan every decorated class: `@component`, `@collect`, `@resource`, `@event`, `@system`, `@observer`, `@monitor`, `@relation`, `@schedule`, `@set`, `@plugin`.
 2. Resolve trait macros (`trait<T>()`) and query macros (`query<...>()`), plus `Trait<T>` / `HasTrait<T>` / `AllTraits<T>` type references, via TypeScript `TypeChecker` (erased at runtime — must happen now).
 3. Generate stable trait IDs from canonical module paths.
 4. Scan `implements` clauses on `@component` classes to find trait implementers.
-5. Read `run` / `onEnter` / `onExit` / `onChange` param types — extract `Query<...>` descriptors, resource deps, event readers/writers.
+5. Read `run` / `onEnter` / `onExit` / `onChange` param types — extract `Query<...>` descriptors, collector deps, resource deps, event readers/writers.
 6. Validate `@observer` field exclusivity (`event` only) and `@monitor` param order against the match query terms.
 7. Hoist `Query<...>` descriptors and `query<...>()` macros to module-level constants (pre-built jecs query handles).
 8. Inject a `rovy.__*` registration call right after each decorated class declaration.
@@ -83,6 +83,7 @@ One injected call per decorator:
 | Decorator | Injected call |
 |-----------|---------------|
 | `@component` | `rovy.__component(C, id)` |
+| `@collect` | `rovy.__collect(C, id)` — runtime instantiates once per `App` |
 | `@resource` | `rovy.__resource(C, id)` — finalize auto-instantiates via default ctor |
 | `@event` | `rovy.__event(C, { capacity })` |
 | `@system` | `rovy.__system(C, { schedule, set, after, before, params })` |

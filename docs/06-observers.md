@@ -4,6 +4,8 @@
 
 Observers react to events dispatched via `commands.trigger()`, `world.trigger()`, or `commands.send()`.
 
+Observers are for **Rovy events**, not as the primary bridge for Roblox or Flamework callbacks. If the source is `connect(...)`, `Activated`, `CharacterAdded`, `InputBegan`, or another external signal, use a collector feeding a normal system; see [Collectors](22-collectors.md).
+
 ## Decorator options
 
 ```ts
@@ -97,3 +99,4 @@ class UpdateHealthBar {
 - [Monitors](18-monitors.md) — lifecycle reactions (enter/exit/change)
 - [Schedules](07-schedules.md)
 - [Systems and injection](17-systems-and-injection.md)
+- [Collectors](22-collectors.md)

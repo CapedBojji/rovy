@@ -11,6 +11,8 @@
  */
 
 import type {
+	CollectReg,
+	CollectorRefReg,
 	ComponentReg,
 	Ctor,
 	EventReg,
@@ -41,6 +43,7 @@ export type ModuleProvider = (roots: ReadonlyArray<unknown>) => void;
 function createRegistry(): RovyRegistry {
 	return {
 		components: [],
+		collectors: [],
 		resources: [],
 		events: [],
 		systems: [],
@@ -80,8 +83,11 @@ export const rovy = {
 	__component(ctor: Ctor, id: StableId): void {
 		registry.components.push({ ctor, id } satisfies ComponentReg);
 	},
-	__resource(ctor: Ctor, id: StableId): void {
-		registry.resources.push({ ctor, id } satisfies ResourceReg);
+	__collect(ctor: Ctor, id: StableId): void {
+		registry.collectors.push({ ctor, id } satisfies CollectReg);
+	},
+	__resource(ctor: Ctor, id: StableId, meta?: { collectorRefs?: ReadonlyArray<CollectorRefReg> }): void {
+		registry.resources.push({ ctor, id, collectorRefs: meta?.collectorRefs } satisfies ResourceReg);
 	},
 	__event(ctor: Ctor, options?: { capacity?: number; label?: string }): void {
 		registry.events.push({ ctor, capacity: options?.capacity, label: options?.label } satisfies EventReg);
@@ -140,6 +146,7 @@ export const rovy = {
 			while (arr.size() > 0) arr.pop();
 		};
 		empty(registry.components);
+		empty(registry.collectors);
 		empty(registry.resources);
 		empty(registry.events);
 		empty(registry.systems);

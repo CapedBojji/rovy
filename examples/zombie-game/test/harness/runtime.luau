@@ -8,6 +8,109 @@ local TS = {}
 local moduleCache: { [string]: { value: any } } = {}
 local nodeByPath: { [string]: any } = {}
 
+if _G.Vector3 == nil then
+	local Vector3 = {}
+	Vector3.__index = function(self, key)
+		if key == "Magnitude" then
+			return math.sqrt(self.X * self.X + self.Y * self.Y + self.Z * self.Z)
+		end
+		return Vector3[key]
+	end
+	Vector3.__add = function(a, b)
+		return Vector3.new(a.X + b.X, a.Y + b.Y, a.Z + b.Z)
+	end
+	Vector3.__sub = function(a, b)
+		return Vector3.new(a.X - b.X, a.Y - b.Y, a.Z - b.Z)
+	end
+	Vector3.__mul = function(a, b)
+		if type(a) == "number" then
+			return Vector3.new(a * b.X, a * b.Y, a * b.Z)
+		elseif type(b) == "number" then
+			return Vector3.new(a.X * b, a.Y * b, a.Z * b)
+		end
+		error("Vector3.__mul expects number", 2)
+	end
+	Vector3.__div = function(a, b)
+		return Vector3.new(a.X / b, a.Y / b, a.Z / b)
+	end
+	Vector3.__tostring = function(self)
+		return string.format("Vector3(%s, %s, %s)", tostring(self.X), tostring(self.Y), tostring(self.Z))
+	end
+	function Vector3.new(x, y, z)
+		return setmetatable({
+			X = x or 0,
+			Y = y or 0,
+			Z = z or 0,
+		}, Vector3)
+	end
+	function Vector3:add(other)
+		return self + other
+	end
+	function Vector3:sub(other)
+		return self - other
+	end
+	function Vector3:mul(value)
+		return self * value
+	end
+	function Vector3:div(value)
+		return self / value
+	end
+	_G.Vector3 = Vector3
+end
+
+if _G.CFrame == nil then
+	local CFrame = {}
+	CFrame.__index = CFrame
+	CFrame.__tostring = function()
+		return "CFrame"
+	end
+	function CFrame.new(x, y, z)
+		local position
+		if type(x) == "table" and x.X ~= nil then
+			position = x
+		else
+			position = _G.Vector3.new(x or 0, y or 0, z or 0)
+		end
+		return setmetatable({
+			Position = position,
+			LookVector = _G.Vector3.new(0, 0, -1),
+		}, CFrame)
+	end
+	function CFrame.Angles(_x, _y, _z)
+		return CFrame.new()
+	end
+	_G.CFrame = CFrame
+end
+
+if _G.Color3 == nil then
+	local Color3 = {}
+	function Color3.fromRGB(r, g, b)
+		return { R = r, G = g, B = b }
+	end
+	_G.Color3 = Color3
+end
+
+if _G.Enum == nil then
+	_G.Enum = {
+		Material = {
+			Metal = "Metal",
+			SmoothPlastic = "SmoothPlastic",
+			Neon = "Neon",
+		},
+		SurfaceType = {
+			Smooth = "Smooth",
+		},
+		KeyCode = {
+			R = "R",
+		},
+	}
+end
+
+local HarnessVector3 = _G.Vector3
+local HarnessCFrame = _G.CFrame
+local HarnessColor3 = _G.Color3
+local HarnessEnum = _G.Enum
+
 local Node = {}
 
 local function normalize(path: string): string
@@ -139,6 +242,7 @@ end
 
 ensureRoot("out")
 ensureRoot("node_modules/@rbxts")
+ensureRoot("node_modules/@flamework")
 ensureRepoRoot("packages/core")
 
 local replicatedStorage = newNode(ROOT .. "/$services/ReplicatedStorage", "ReplicatedStorage")
@@ -157,6 +261,12 @@ runtimeLib.__runtimeLib = true
 rbxtsInclude.children.RuntimeLib = runtimeLib
 local nodeModules = newNode(ROOT .. "/$services/ReplicatedStorage/rbxts_include/node_modules")
 rbxtsInclude.children.node_modules = nodeModules
+local rbxtsScope = treeIndex(ROOT .. "/node_modules/@rbxts")
+assert(rbxtsScope, "rovy example harness: missing node_modules/@rbxts")
+nodeModules.children["@rbxts"] = rbxtsScope
+local flameworkScope = treeIndex(ROOT .. "/node_modules/@flamework")
+assert(flameworkScope, "rovy example harness: missing node_modules/@flamework")
+nodeModules.children["@flamework"] = flameworkScope
 local rovyScope = newNode(ROOT .. "/$services/ReplicatedStorage/rbxts_include/node_modules/@rovy")
 nodeModules.children["@rovy"] = rovyScope
 local rovyCore = treeIndex(REPO .. "/packages/core/out")
@@ -202,6 +312,10 @@ local function loadModule(node): any
 		_G = sharedG,
 		game = gameObject,
 		task = task,
+		Vector3 = HarnessVector3,
+		CFrame = HarnessCFrame,
+		Color3 = HarnessColor3,
+		Enum = HarnessEnum,
 		require = function(target)
 			if type(target) == "string" then
 				local base = (fsPath:match("^(.*)[/\\][^/\\]+$")) or ROOT

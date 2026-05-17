@@ -6,6 +6,7 @@ Full public surface. Authoring is decorator-based; the transformer reads decorat
 
 ```ts
 @component
+@collect
 @resource
 @event(options?: { capacity?: number; label?: string })
 @system(options: { schedule: ScheduleCtor; set?: typeof SystemSet; after?: SystemCtor[]; before?: SystemCtor[]; runIf?: () => boolean })
@@ -27,7 +28,8 @@ Available in `run` (systems/observers) and `onEnter`/`onExit`/`onChange` (monito
 | `Entity` | matched entity (monitors, query rows) |
 | `Commands` | command buffer |
 | `Query<[Terms], ...Filters>` | pre-built query handle |
-| `Res<T>` | read-only resource (throws if missing) |
+| `CollectorClass` (`@collect`, usually `extends Collector<T>`) | app-scoped collector singleton |
+| `Res<T>` | shallow-readonly resource (throws if missing) |
 | `ResMut<T>` | mutable resource (write intent) |
 | `OptRes<T>` | `T \| undefined` |
 | `EventReader<E>` | buffered events of `E` this run |
@@ -42,7 +44,7 @@ Decorators inject these — you call only `loadPaths`.
 ```ts
 rovy.loadPaths(...paths);   // `paths: string[]`; transformer lowers to Instance roots
 rovy.traitToken<T>();           // value-position trait handle (see Traits)
-// rovy.__component / __resource / __event / __system / __observer
+// rovy.__component / __collect / __resource / __event / __system / __observer
 // / __monitor / __relation / __schedule / __traitImpl / __query
 //   are transformer-injected — never hand-written
 ```
@@ -143,6 +145,31 @@ q.size();
 q.first();
 for (const [..bindings] of q) {}
 q.withTarget(entity);   // narrow Pair<R> to specific target
+```
+
+## Collector
+
+Runtime base class for `@collect` authoring:
+
+```ts
+abstract class Collector<T> {
+	protected enqueue(value: T): void;
+	drain(): Array<T>;
+}
+```
+
+Typical shape:
+
+```ts
+@collect
+class FireInbox extends Collector<FirePayload> {
+	constructor() {
+		super();
+		externalSignal.Connect((payload) => {
+			this.enqueue(payload);
+		});
+	}
+}
 ```
 
 ## Macros

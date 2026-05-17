@@ -129,13 +129,43 @@ The transformer reads the resolved TS type of each `run` param — no decorator 
 |------------|----------------|
 | `Commands` | command buffer for this step |
 | `Query<Terms, ...Filters>` | pre-built jecs query handle, tick-scoped for change detection |
-| `Res<T>` | `world.resource(T)`, throws if missing |
+| `Res<T>` | `world.resource(T)`, shallow-readonly, throws if missing |
 | `ResMut<T>` | same, marks write intent for scheduler |
 | `OptRes<T>` | `world.resource(T) \| undefined` |
 | `EventReader<E>` | buffered events of type `E` for this step |
 | `EventWriter<E>` | `send(event)` helper |
 | `Local<T>` | per-system persistent state, initialised once |
 | `World` | raw world access (escape hatch, bypasses tracking) |
+
+## Collector injection
+
+The injected surface also includes collectors for external signal translation:
+
+```ts
+@system({ schedule: Update })
+class ConsumeFireRequests {
+	run(fire: FireWeaponCollect, commands: Commands) {
+		for (const request of fire.drain()) {
+			// translate external payload into ECS work
+		}
+	}
+}
+```
+
+Author collectors as `class FireWeaponCollect extends Collector<Payload>`. The queue inside the collector is the meaningful state; systems consume that queue through inherited `drain()`. Keep domain logic out of `drain()` itself.
+
+If you need reusable outbound handles such as network clients/servers, prefer a `@resource`:
+
+```ts
+@system({ schedule: Update })
+class SendSnapshots {
+	run(network: Res<ServerNetworkState>) {
+		network.events.worldSnapshot.broadcast(bytes);
+	}
+}
+```
+
+Collector instances are created once per `App` at `app.start()` and then injected by param type into systems, observers, and monitors. See [Collectors](22-collectors.md).
 
 ## Query term types
 

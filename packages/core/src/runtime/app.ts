@@ -23,6 +23,7 @@ export class App {
 	readonly commands: CommandsImpl;
 	readonly scheduler: Scheduler;
 	readonly eventRegistry = new EventRegistry();
+	private readonly collectors = new Map<Ctor, object>();
 	private monitors?: MonitorRegistry;
 	private started = false;
 	/** Overrides supplied before start(); applied after resource registration. */
@@ -88,6 +89,7 @@ export class App {
 		const reg = rovy.registry;
 		assert(
 			reg.components.size() > 0 ||
+				reg.collectors.size() > 0 ||
 				reg.systems.size() > 0 ||
 				reg.resources.size() > 0 ||
 				reg.events.size() > 0 ||
@@ -118,6 +120,31 @@ export class App {
 			}
 		}
 
+		// 2b. collectors → singleton app-owned external ingress bridges
+		for (const entry of reg.collectors) {
+			const factory = entry.ctor as unknown as new () => object;
+			const instance = new factory();
+			assert(
+				typeIs((instance as { drain?: unknown }).drain, "function"),
+				`[rovy] @collect '${entry.id}' must define drain() or extend Collector`,
+			);
+			this.collectors.set(entry.ctor, instance);
+		}
+
+		// 2c. collector-backed resource fields → singleton collector instances
+		for (const entry of reg.resources) {
+			if (entry.collectorRefs === undefined || entry.collectorRefs.size() === 0) continue;
+			const instance = this.world.resource(entry.ctor as never) as Record<string, unknown>;
+			for (const ref of entry.collectorRefs) {
+				const collector = this.collectors.get(ref.ctor);
+				assert(
+					collector !== undefined,
+					`[rovy] @resource '${entry.id}' needs unregistered @collect field '${ref.key}': ${tostring(ref.ctor)}`,
+				);
+				instance[ref.key] = collector;
+			}
+		}
+
 		// any overrides for resources NOT in the registry (manual-only)
 		for (const [cls, instance] of this.resourceOverrides) {
 			if (this.world.resourceMap.get(cls) === undefined) {
@@ -125,7 +152,7 @@ export class App {
 			}
 		}
 
-		// 2c. relations → jecs relation ids + cleanup/exclusive policies
+		// 2d. relations → jecs relation ids + cleanup/exclusive policies
 		for (const r of reg.relations) {
 			this.world.registerRelation(r.ctor, {
 				exclusive: r.exclusive,
@@ -171,6 +198,7 @@ export class App {
 		const baseCtx = () => ({
 			world: this.world,
 			commands: this.commands,
+			collectors: this.collectors,
 			queries: this.scheduler.queries,
 			events: this.eventRegistry,
 			makeReader,
@@ -178,6 +206,7 @@ export class App {
 			lastRunTick: -1,
 		});
 		this.eventRegistry.resolveBase = baseCtx;
+		this.scheduler.collectors = this.collectors;
 		this.scheduler.events = this.eventRegistry;
 		this.scheduler.makeReader = makeReader;
 		this.scheduler.makeWriter = makeWriter;
@@ -211,6 +240,11 @@ export class App {
 					assert(
 						this.eventRegistry.hasEvent(p.ctor),
 						`[rovy] ${kind} '${id}' needs unregistered @event: ${tostring(p.ctor)}`,
+					);
+				} else if (p.kind === "collect") {
+					assert(
+						this.collectors.get(p.ctor) !== undefined,
+						`[rovy] ${kind} '${id}' needs unregistered @collect: ${tostring(p.ctor)}`,
 					);
 				}
 			}

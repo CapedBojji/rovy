@@ -88,7 +88,7 @@ export interface Query<
 // ─── Injection wrappers (transformer reads the wrapper name) ─────────────────
 
 /** Read-only resource. Throws at resolve if missing. */
-export type Res<T extends object> = T;
+export type Res<T extends object> = Readonly<T>;
 /** Mutable resource (advisory write-intent in v1). */
 export type ResMut<T extends object> = T;
 /** Optional resource. */
@@ -139,6 +139,26 @@ export interface World {
 	trigger(event: object): void;
 	runSchedule(schedule: Ctor): void;
 	flush(): void;
+}
+
+// ─── Collector base (runtime value) ──────────────────────────────────────────
+
+/**
+ * Base class for `@collect` authoring. Subclasses own external hookups and
+ * call `enqueue`; systems consume queued payloads through inherited `drain()`.
+ */
+export abstract class Collector<T extends defined> {
+	protected queue = new Array<T>();
+
+	protected enqueue(value: T): void {
+		this.queue.push(value);
+	}
+
+	drain(): Array<T> {
+		const out = this.queue;
+		this.queue = [];
+		return out;
+	}
 }
 
 // ─── SystemSet (nominal marker base — a real runtime value) ──────────────────

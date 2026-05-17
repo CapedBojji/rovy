@@ -1,0 +1,14 @@
+import "./apply-player-lifecycle-ingress";
+import "./sync-player-positions";
+import "./apply-remote-ingress";
+import "./advance-clock";
+import "./advance-wave-state";
+import "./spawn-queued-zombies";
+import "./step-zombie-movement";
+import "./step-projectile-movement";
+import "./tick-cooldowns";
+import "./resolve-projectile-hits";
+import "./resolve-zombie-contacts";
+import "./despawn-dead-zombies";
+import "./despawn-expired-projectiles";
+import "./build-snapshot";

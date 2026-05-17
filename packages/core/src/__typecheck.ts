@@ -6,11 +6,15 @@
 
 import {
 	component,
+	collect,
+	Collector,
+	$collectRef as collectRef,
 	event,
 	system,
 	observer,
 	monitor,
 	relation,
+	resource,
 	schedule,
 	trait,
 	query,
@@ -60,6 +64,19 @@ class Shield {
 	constructor(public amount: number) {}
 }
 
+@collect
+class RemoteInbox extends Collector<number> {
+	constructor() {
+		super();
+		this.enqueue(1);
+	}
+}
+
+@resource
+class InboxRefs {
+	readonly inbox = collectRef<RemoteInbox>();
+}
+
 interface CrowdControl {
 	blocksMovement(): boolean;
 }
@@ -92,6 +109,7 @@ class MoveUnits {
 		_commands: Commands,
 		_units: Query<[Entity, Position, Optional<Shield>], With<Unit>, Without<Dead>>,
 		_clock: Res<Health>,
+		_inbox: RemoteInbox,
 	) {
 		_units.forEach((_e, _pos, _shield) => {});
 	}
@@ -104,12 +122,12 @@ class ReactChange {
 
 @observer({ event: DamageTaken, priority: 10 })
 class ApplyDamage {
-	run(_e: DamageTaken, _commands: Commands, _hp: Query<[Entity, Health]>) {}
+	run(_e: DamageTaken, _commands: Commands, _hp: Query<[Entity, Health]>, _inbox: RemoteInbox) {}
 }
 
 @monitor({ match: query<[Health, Position], With<Unit>, Without<Dead>>() })
 class ValidTarget {
-	onEnter(_entity: Entity, _h: Health, _p: Position, _c: Commands) {}
+	onEnter(_entity: Entity, _h: Health, _p: Position, _c: Commands, _inbox: RemoteInbox) {}
 	onExit(_entity: Entity, _h: Health, _p: Position) {}
 }
 
@@ -123,6 +141,7 @@ class TraitAndPairs {
 		_writer: EventWriter<DamageTaken>,
 		_reader: EventReader<DamageTaken>,
 		_mut: ResMut<Health>,
+		_refs: Res<InboxRefs>,
 	) {
 		const token = trait<CrowdControl>();
 		void token;
@@ -135,6 +154,8 @@ export type __TypecheckOk = [
 	typeof ApplyDamage,
 	typeof ValidTarget,
 	typeof TraitAndPairs,
+	typeof RemoteInbox,
+	typeof InboxRefs,
 	typeof Stunned,
 	typeof Unit,
 	typeof Dead,

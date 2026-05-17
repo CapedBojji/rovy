@@ -17,6 +17,7 @@ Each `rovy.__*` call only appends to a registry. No jecs calls, no hooks. Order-
 ```luau
 local rovy = {
     _components = {},   -- { { ctor, id } }
+    _collectors = {},   -- { { ctor, id } }
     _resources  = {},   -- { { ctor, id } }
     _events     = {},   -- { { ctor, capacity } }
     _systems    = {},   -- { { ctor, schedule, set, after, before, params } }
@@ -30,6 +31,10 @@ local rovy = {
 
 function rovy.__component(ctor, id)
     table.insert(rovy._components, { ctor = ctor, id = id })
+end
+
+function rovy.__collect(ctor, id)
+    table.insert(rovy._collectors, { ctor = ctor, id = id })
 end
 
 function rovy.__traitImpl(traitId, implCtor)
@@ -50,7 +55,7 @@ function rovy.loadPaths(...)
     for _, root in { ... } do
         for _, desc in root:GetDescendants() do
             if desc:IsA("ModuleScript") then
-                require(desc)   -- side effects fire: rovy.__component / __system / ...
+                require(desc)   -- side effects fire: rovy.__component / __collect / __system / ...
             end
         end
     end
@@ -65,7 +70,7 @@ This is the answer to "Roblox modules don't run unless required" — `loadPaths`
 
 ```luau
 function App:start()
-    assert(#rovy._components > 0 or #rovy._systems > 0,
+    assert(#rovy._components > 0 or #rovy._collectors > 0 or #rovy._systems > 0,
         "rovy.loadPaths must run before app.start")
 
     -- 1. components → jecs IDs
@@ -81,6 +86,12 @@ function App:start()
         if self.world:get(RESOURCE_ENTITY, jecsId) == nil then
             self.world:set(RESOURCE_ENTITY, jecsId, e.ctor.new())  -- default
         end
+    end
+
+    -- 2b. collectors → app-owned singleton instances
+    for _, e in rovy._collectors do
+        self.collectors[e.ctor] = e.ctor.new()
+        assert(type(self.collectors[e.ctor].drain) == "function")
     end
 
     -- 3. events → buffers
@@ -222,7 +233,7 @@ local function resolveParam(p, world, commands, instance)
 end
 ```
 
-`Res` and `ResMut` resolve identically; `ResMut` is write-intent metadata for future parallel scheduling. Dev mode may freeze the `Res` value.
+`Res` and `ResMut` resolve identically at runtime; `Res<T>` is shallow-readonly in TypeScript, while `ResMut<T>` is the mutable write-intent form for future parallel scheduling. Dev mode may freeze the `Res` value.
 
 ---
 
@@ -448,7 +459,7 @@ First run: `lastRunTick = -1` → everything passes (Bevy parity). `Removed<C>` 
 
 ```txt
 module load (forced by rovy.loadPaths)
-  → rovy.__component / __resource / __event / __system / __observer
+  → rovy.__component / __collect / __resource / __event / __system / __observer
     / __monitor / __relation / __schedule / __traitImpl / __query
   → registries populated (pure data)
 
