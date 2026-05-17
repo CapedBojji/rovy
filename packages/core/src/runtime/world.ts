@@ -28,6 +28,10 @@ export class RovyWorld implements World {
 	readonly resourceMap = new Map<Ctor, JecsEntity>();
 	/** Bumped once per schedule run (Phase 4); change detection reads it. */
 	changeTick = 0;
+	/** Prefab ctors known to the runtime (set by App.start). */
+	prefabCtors?: Set<Ctor>;
+	/** Invokes a prefab's build() against a target entity. */
+	prefabInvoker?: (ctor: Ctor, entity: Entity) => void;
 
 	// ── change detection stores (Phase 7), keyed by jecs component id ────────
 	/** entity → tick of last add OR set. */
@@ -123,7 +127,9 @@ export class RovyWorld implements World {
 
 	private applyBundle(entity: JecsEntity, bundle: ReadonlyArray<object>): void {
 		for (const item of bundle) {
-			if (this.componentMap.has(item as unknown as Ctor)) {
+			if (this.prefabCtors !== undefined && this.prefabCtors.has(item as unknown as Ctor)) {
+				this.prefabInvoker!(item as unknown as Ctor, entity);
+			} else if (this.componentMap.has(item as unknown as Ctor)) {
 				// bare class → tag
 				this.jecs.add(entity, this.idOf(item as unknown as Ctor) as never);
 			} else {

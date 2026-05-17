@@ -161,6 +161,23 @@ export abstract class Collector<T extends defined> {
 	}
 }
 
+// ─── Prefab base (runtime value) ─────────────────────────────────────────────
+
+/**
+ * Base class for `@prefab` authoring. Subclasses implement `build(...)` which
+ * assembles components onto the target entity. `this.entity()` returns the
+ * runtime-selected target for the current build call.
+ */
+export abstract class Prefab {
+	readonly __rovyTarget: Entity = undefined!;
+
+	protected entity(): Entity {
+		const t = this.__rovyTarget;
+		assert(t !== undefined, "[rovy] Prefab.entity() called outside a build() invocation");
+		return t;
+	}
+}
+
 // ─── SystemSet (nominal marker base — a real runtime value) ──────────────────
 
 /**

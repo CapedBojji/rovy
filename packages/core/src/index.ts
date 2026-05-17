@@ -10,6 +10,7 @@ export {
 	component,
 	collect,
 	resource,
+	prefab,
 	plugin,
 	event,
 	system,

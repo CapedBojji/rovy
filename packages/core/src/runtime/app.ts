@@ -5,8 +5,10 @@
  */
 
 import { rovy } from "../rovy";
-import type { Ctor } from "../contract";
+import type { Ctor, ParamDescriptor } from "../contract";
 import type { Entity } from "../types";
+import { resolveParams } from "./resolve-param";
+import type { ResolveCtx } from "./resolve-param";
 import { CommandsImpl } from "./commands";
 import { EventReaderHandle, EventRegistry, EventWriterHandle, wireEvents } from "./events";
 import { flush } from "./flush";
@@ -25,6 +27,7 @@ export class App {
 	readonly scheduler: Scheduler;
 	readonly eventRegistry = new EventRegistry();
 	private readonly collectors = new Map<Ctor, object>();
+	private readonly prefabs = new Map<Ctor, { instance: object; params: ReadonlyArray<ParamDescriptor>; id: string }>();
 	private readonly externalParams = new Map<string, unknown>();
 	private monitors?: MonitorRegistry;
 	private started = false;
@@ -141,7 +144,14 @@ export class App {
 			this.collectors.set(entry.ctor, instance);
 		}
 
-		// 2c. collector-backed resource fields → singleton collector instances
+		// 2c. prefabs → singleton app-owned entity builders
+		for (const entry of reg.prefabs) {
+			const factory = entry.ctor as unknown as new () => object;
+			const instance = new factory();
+			this.prefabs.set(entry.ctor, { instance, params: entry.params, id: entry.id });
+		}
+
+		// 2d. collector-backed resource fields → singleton collector instances
 		for (const entry of reg.resources) {
 			if (entry.collectorRefs === undefined || entry.collectorRefs.size() === 0) continue;
 			const instance = this.world.resource(entry.ctor as never) as Record<string, unknown>;
@@ -217,6 +227,26 @@ export class App {
 			lastRunTick: -1,
 		});
 		this.eventRegistry.resolveBase = baseCtx;
+
+		// 4b. wire prefab invoker (needs baseCtx for param resolution)
+		const prefabCtors = new Set<Ctor>();
+		for (const [ctor] of this.prefabs) prefabCtors.add(ctor);
+		this.world.prefabCtors = prefabCtors;
+		const prefabs = this.prefabs;
+		this.world.prefabInvoker = (prefabCtor: Ctor, entity: Entity) => {
+			const pe = prefabs.get(prefabCtor);
+			assert(pe !== undefined, `[rovy] no registered @prefab: ${tostring(prefabCtor)}`);
+			const inst = pe.instance as { __rovyTarget: Entity };
+			const savedTarget = inst.__rovyTarget;
+			(inst as { __rovyTarget: Entity }).__rovyTarget = entity;
+			const ctx: ResolveCtx = { ...(baseCtx() as ResolveCtx), locals: new Map() };
+			const args = resolveParams(pe.params, ctx);
+			const buildFn = (inst as unknown as Record<string, (self: object, ...a: unknown[]) => Entity>).build;
+			const returned = buildFn(inst, ...args);
+			(inst as { __rovyTarget: Entity }).__rovyTarget = savedTarget;
+			assert(returned === entity, `[rovy] @prefab '${pe.id}' build() must return this.entity()`);
+		};
+
 		this.scheduler.collectors = this.collectors;
 		this.scheduler.externalParams = this.externalParams;
 		this.scheduler.events = this.eventRegistry;
@@ -264,6 +294,7 @@ export class App {
 		for (const s of reg.systems) checkParams("system", s.id, s.params);
 		for (const o of reg.observers) checkParams("observer", tostring(o.ctor), o.params);
 		for (const m of reg.monitors) checkParams("monitor", tostring(m.ctor), m.params);
+		for (const p of reg.prefabs) checkParams("prefab", p.id, p.params);
 
 		// 6. build scheduler (schedules → sets → systems), then fire runOnStart
 		this.scheduler.build(reg);

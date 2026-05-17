@@ -18,6 +18,8 @@ import type {
 	EventReg,
 	MonitorReg,
 	ObserverReg,
+	ParamDescriptor,
+	PrefabReg,
 	QueryDescriptor,
 	RelationReg,
 	ResourceReg,
@@ -51,6 +53,7 @@ function createRegistry(): RovyRegistry {
 		monitors: [],
 		relations: [],
 		schedules: [],
+		prefabs: [],
 		traits: new Map<StableId, Array<Ctor>>(),
 		queries: new Map<StableId, QueryDescriptor>(),
 	};
@@ -116,6 +119,9 @@ export const rovy = {
 	__schedule(ctor: Ctor, meta: Omit<ScheduleReg, "ctor">): void {
 		registry.schedules.push({ ctor, ...meta });
 	},
+	__prefab(ctor: Ctor, meta: { id: StableId; params: ReadonlyArray<ParamDescriptor> }): void {
+		registry.prefabs.push({ ctor, ...meta } satisfies PrefabReg);
+	},
 	__traitImpl(traitId: StableId, impl: Ctor): void {
 		let impls = registry.traits.get(traitId);
 		if (impls === undefined) {
@@ -163,6 +169,7 @@ export const rovy = {
 		empty(registry.monitors);
 		empty(registry.relations);
 		empty(registry.schedules);
+		empty(registry.prefabs);
 		registry.traits.clear();
 		registry.queries.clear();
 	},

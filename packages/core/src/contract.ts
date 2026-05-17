@@ -203,6 +203,12 @@ export interface ScheduleReg {
 	readonly runOnStart: boolean;
 }
 
+export interface PrefabReg {
+	readonly ctor: Ctor;
+	readonly id: StableId;
+	readonly params: ReadonlyArray<ParamDescriptor>;
+}
+
 /** Set ordering within a schedule, declared via app.configureSets (not a decorator). */
 export interface SetOrderReg {
 	readonly schedule: Ctor;
@@ -221,6 +227,7 @@ export interface RovyRegistry {
 	readonly monitors: Array<MonitorReg>;
 	readonly relations: Array<RelationReg>;
 	readonly schedules: Array<ScheduleReg>;
+	readonly prefabs: Array<PrefabReg>;
 	/** traitId → implementer ctors (from `implements` clauses). */
 	readonly traits: Map<StableId, Array<Ctor>>;
 	/** queryId → hoisted descriptor. */
@@ -235,4 +242,4 @@ export interface RovyRegistry {
  */
 
 /** Bumped on any breaking change to the shapes above. Transformer asserts a match. */
-export const CONTRACT_VERSION = 3;
+export const CONTRACT_VERSION = 4;
