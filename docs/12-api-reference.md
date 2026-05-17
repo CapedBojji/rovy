@@ -7,6 +7,7 @@ Full public surface. Authoring is decorator-based; the transformer reads decorat
 ```ts
 @component
 @collect
+@prefab
 @resource
 @event(options?: { capacity?: number; label?: string })
 @system(options: { schedule: ScheduleCtor; set?: typeof SystemSet; after?: SystemCtor[]; before?: SystemCtor[]; runIf?: () => boolean })
@@ -37,6 +38,19 @@ Available in `run` (systems/observers) and `onEnter`/`onExit`/`onChange` (monito
 | `Local<T>` | per-instance persistent state |
 | `World` | raw world (escape hatch) |
 
+Draft networking params:
+
+| Param type | Injected value |
+|------------|----------------|
+| `NetClient` | client-only outbound net handle |
+| `NetServer` | server-only outbound net handle |
+| `NetEventContext` | sender lookup for received client-to-server events |
+
+These come from `@rovy/networking`, not `@rovy/core`. Core provides the package-extension injection hook; the networking package owns the net handles.
+`App.start()` auto-installs networking when `@netEvent` metadata or injected net params are present, so normal user code does not add `NetPlugin` manually.
+
+Planned prefab `build(...)` injection is narrower. See [Prefabs](24-prefabs.md) for the proposed v1 allowed param list and exclusions.
+
 ## rovy (global registry)
 
 Decorators inject these — you call only `loadPaths`.
@@ -56,6 +70,7 @@ new App();
 app.addPlugin(PluginClass);
 
 app.insertResource(resourceInstance);   // override auto-registered default
+app.insertParam(stableId, value);       // package/plugin-owned injected param
 app.configureSets(ScheduleCtor, [SetClass, ...]);
 
 app.start();                 // finalize registries + fire @schedule({ runOnStart: true })
@@ -91,6 +106,13 @@ world.runSchedule(ScheduleClass);
 world.flush();
 ```
 
+Planned prefab support treats prefab classes as bundle items:
+
+```ts
+world.spawn(SlimePrefab);
+world.insert(entity, SlimePrefab);
+```
+
 ## Commands
 
 ```ts
@@ -108,6 +130,13 @@ commands.relate(source, RelationClass, target);
 commands.unrelate(source, RelationClass, target);
 
 commands.runSchedule(ScheduleClass);
+```
+
+Planned prefab support also reuses this bundle surface:
+
+```ts
+commands.spawn(SlimePrefab);
+commands.insert(entity, SlimePrefab);
 ```
 
 ## Query types
@@ -158,19 +187,26 @@ abstract class Collector<T> {
 }
 ```
 
-Typical shape:
+## Prefab
+
+> Planned, not shipped yet.
+
+Planned runtime base for `@prefab` authoring:
 
 ```ts
-@collect
-class FireInbox extends Collector<FirePayload> {
-	constructor() {
-		super();
-		externalSignal.Connect((payload) => {
-			this.enqueue(payload);
-		});
-	}
+abstract class Prefab {
+	protected entity(): Entity;
+	build(...injected): Entity;
 }
 ```
+
+Expected v1 semantics:
+
+- app-owned singleton prefab instance per `@prefab` class
+- zero-arg/default-constructible only
+- used as a bundle item in `world.spawn`, `world.insert`, `commands.spawn`, and `commands.insert`
+- `build(...)` must return the runtime-selected target entity
+- prefab does not differentiate spawn vs insert; it only builds into `this.entity()`
 
 ## Macros
 
@@ -185,6 +221,38 @@ query<[Terms], ...F>();  // @monitor match
 
 Decorators replace the old functional wrappers. There is no `system(fn)`, `observer(fn)`, or `plugin(fn)`. Use `@system`, `@observer`, `@monitor`, `@plugin` classes.
 
+## Networking (`@rovy/networking`)
+
+Networking lives in a separate package. The current MVP public surface is:
+
+```ts
+import { NetClient, NetServer, netEvent } from "@rovy/networking";
+
+@netEvent(options: {
+	direction: "clientToServer" | "serverToClient";
+	channel?: "reliable" | "unreliable";
+	receive?: "send" | "trigger";
+})
+
+class NetClient {
+	send<E extends ClientToServerNetEvent>(event: E): void;
+	trigger<E extends ClientToServerNetEvent>(event: E): void;
+}
+
+class NetServer {
+	send<E extends ServerToClientNetEvent>(player: Player, event: E): void;
+	trigger<E extends ServerToClientNetEvent>(player: Player, event: E): void;
+	broadcast<E extends ServerToClientNetEvent>(event: E): void;
+	broadcastTrigger<E extends ServerToClientNetEvent>(event: E): void;
+	sendList<E extends ServerToClientNetEvent>(players: Player[], event: E): void;
+	triggerList<E extends ServerToClientNetEvent>(players: Player[], event: E): void;
+	broadcastExcept<E extends ServerToClientNetEvent>(except: Player, event: E): void;
+	broadcastTriggerExcept<E extends ServerToClientNetEvent>(except: Player, event: E): void;
+}
+```
+
+See [Networking](23-networking.md) for the full spec, current package boundary, backend-owned Blink generation, `.rovy.json` shape, scheduling, and boundary checks.
+
 ## See also
 
 - [Queries](03-queries.md)
@@ -192,3 +260,5 @@ Decorators replace the old functional wrappers. There is no `system(fn)`, `obser
 - [Observers](06-observers.md)
 - [Monitors](18-monitors.md)
 - [Systems and injection](17-systems-and-injection.md)
+- [Networking](23-networking.md)
+- [Prefabs](24-prefabs.md)

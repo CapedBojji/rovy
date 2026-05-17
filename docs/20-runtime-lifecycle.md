@@ -18,6 +18,7 @@ Each `rovy.__*` call only appends to a registry. No jecs calls, no hooks. Order-
 local rovy = {
     _components = {},   -- { { ctor, id } }
     _collectors = {},   -- { { ctor, id } }
+    _prefabs    = {},   -- { { ctor, id, params } }   -- planned
     _resources  = {},   -- { { ctor, id } }
     _events     = {},   -- { { ctor, capacity } }
     _systems    = {},   -- { { ctor, schedule, set, after, before, params } }
@@ -35,6 +36,10 @@ end
 
 function rovy.__collect(ctor, id)
     table.insert(rovy._collectors, { ctor = ctor, id = id })
+end
+
+function rovy.__prefab(ctor, meta)
+    table.insert(rovy._prefabs, meta)   -- planned
 end
 
 function rovy.__traitImpl(traitId, implCtor)
@@ -92,6 +97,12 @@ function App:start()
     for _, e in rovy._collectors do
         self.collectors[e.ctor] = e.ctor.new()
         assert(type(self.collectors[e.ctor].drain) == "function")
+    end
+
+    -- 2c. prefabs → app-owned singleton instances (planned)
+    for _, e in rovy._prefabs do
+        self.prefabs[e.ctor] = e.ctor.new()
+        assert(type(self.prefabs[e.ctor].build) == "function")
     end
 
     -- 3. events → buffers
@@ -159,6 +170,8 @@ end
 
 `componentMap` (TS class → jecs ID) is the central lookup every later operation uses.
 
+For the planned prefab feature, `app.start()` also owns prefab singleton creation and dependency validation in the same finalize pass.
+
 ---
 
 ## Components — how they're used
@@ -179,6 +192,8 @@ function Commands:spawn(...)
     return entity
 end
 ```
+
+Planned prefab handling extends this same path. Before normal component/tag classification, runtime checks whether a bundle item is a registered prefab class. If it is, runtime invokes prefab `build(...)` against the already-selected target entity instead of treating the item as a component/tag.
 
 ### Query iteration
 
@@ -214,6 +229,13 @@ end
 3. if it was a new component: `on_add` instead → archetype move + `onEnter`
 
 `world.get(e, Health)` = `world:get(e, componentMap[Health])`. One map lookup + jecs archetype access. O(1).
+
+For planned prefab usage, the target entity rules are:
+
+- `world.spawn(PrefabClass)` creates the entity first, then builds into it
+- `world.insert(entity, PrefabClass)` builds into the provided entity
+- `commands.spawn(PrefabClass)` reserves the entity id immediately, then flush builds into that reserved id
+- `commands.insert(entity, PrefabClass)` flush builds into the provided entity
 
 ---
 

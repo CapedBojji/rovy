@@ -98,6 +98,49 @@ Authoring note: the meaningful collector structure is the queue plus constructor
 
 ---
 
+## Prefabs
+
+> Planned surface. This section documents the intended compiled shape, not shipped behavior yet.
+
+```ts
+@prefab
+class SlimePrefab extends Prefab {
+    build(commands: Commands, clock: Res<BattleClock>): Entity {
+        const entity = this.entity();
+        commands.insert(entity, Unit);
+        commands.set(entity, SpawnTick, new SpawnTick(clock.tick));
+        return entity;
+    }
+}
+```
+
+Planned compiled shape:
+
+```luau
+local SlimePrefab = {}
+SlimePrefab.__index = SlimePrefab
+function SlimePrefab.new()
+    return setmetatable(Prefab.new(), SlimePrefab)
+end
+function SlimePrefab:build(commands, clock)
+    local entity = self:entity()
+    commands:insert(entity, Unit)
+    commands:set(entity, SpawnTick.new(clock.tick))
+    return entity
+end
+rovy.__prefab(SlimePrefab, {
+    id = "src/prefabs/SlimePrefab",
+    params = {
+        { kind = "commands" },
+        { kind = "res", ctor = BattleClock },
+    },
+})
+```
+
+Unlike systems, prefab registration does not include schedule/set metadata. It only carries the stable id plus the lowered `build(...)` param descriptor list.
+
+---
+
 ## Events
 
 ```ts

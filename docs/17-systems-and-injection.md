@@ -137,6 +137,18 @@ The transformer reads the resolved TS type of each `run` param — no decorator 
 | `Local<T>` | per-system persistent state, initialised once |
 | `World` | raw world access (escape hatch, bypasses tracking) |
 
+The draft networking layer adds more injectable param types:
+
+| Param type | Injected value |
+|------------|----------------|
+| `NetClient` | client-only outbound event handle |
+| `NetServer` | server-only outbound event handle |
+| `NetEventContext` | sender lookup for received client-to-server events |
+
+Those net param types live in `@rovy/networking`. Core resolves them through package-provided external param ids, so core does not need net-specific descriptor kinds.
+
+Planned prefab `build(...)` uses the same style of compile-time param lowering, but with a narrower allowed set. See [Prefabs](24-prefabs.md).
+
 ## Collector injection
 
 The injected surface also includes collectors for external signal translation:
@@ -166,6 +178,32 @@ class SendSnapshots {
 ```
 
 Collector instances are created once per `App` at `app.start()` and then injected by param type into systems, observers, and monitors. See [Collectors](22-collectors.md).
+
+The `@netEvent` design is different: network handles become first-class injected params provided by `@rovy/networking`, with boundary validation from the transformer and runtime. See [Networking](23-networking.md).
+
+## Planned prefab injection
+
+Prefabs are planned to reuse the same compile-time injection model, but on a `build(...)` method instead of a scheduled `run(...)` method:
+
+```ts
+@prefab
+class SlimePrefab extends Prefab {
+	build(commands: Commands, clock: Res<BattleClock>): Entity {
+		const entity = this.entity();
+		commands.insert(entity, Unit);
+		commands.set(entity, SpawnTick, new SpawnTick(clock.tick));
+		return entity;
+	}
+}
+```
+
+Design target:
+
+- transformer reads `build(...)` param types and emits prefab param descriptors
+- runtime resolves those params when the prefab is invoked as a bundle item
+- prefab gets the runtime-selected target entity through the prefab base helper
+
+Planned v1 exclusions are intentional: no `Query<...>`, no `EventReader<E>`, and no observer/monitor-only context params. Prefab authoring is for deterministic entity assembly, not schedule iteration.
 
 ## Query term types
 

@@ -44,6 +44,28 @@ commands.unrelate(source, RelationClass, target);
 commands.runSchedule(ScheduleClass);
 ```
 
+Planned prefab support extends the same bundle surface instead of adding a separate helper API:
+
+```ts
+commands.spawn(SlimePrefab);
+commands.insert(entity, SlimePrefab);
+world.spawn(SlimePrefab);
+world.insert(entity, SlimePrefab);
+```
+
+In the planned v1 design, prefabs are singleton `@prefab` classes owned by the `App`. `commands.spawn(...)` reserves the entity id immediately, then flush invokes the prefab's `build(...)` against that exact target entity so deferred prefab usage stays deterministic.
+
+Prefab authoring does not differentiate spawn vs insert. The prefab only receives the target entity to build into:
+
+- `spawn` means runtime created or reserved the target entity first
+- `insert` means runtime reused the provided target entity
+
+So `commands.spawn(SlimePrefab, TeamEnemy, SpawnMarker)` means one entity gets:
+
+- everything `SlimePrefab.build(...)` applies
+- `TeamEnemy`
+- `SpawnMarker`
+
 ## Direct world access
 
 Available but rare. Use during startup, tests, or when you need the entity id back immediately.
@@ -68,5 +90,6 @@ world.runSchedule(ScheduleClass);
 ## See also
 
 - [Events](05-events.md)
+- [Prefabs](24-prefabs.md)
 - [Relationships](11-relationships.md)
 - [Schedules](07-schedules.md)

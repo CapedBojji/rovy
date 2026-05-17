@@ -13,6 +13,8 @@
 
 Repo note: runtime now lives under `packages/core` in workspace layout, with transformer package at `packages/transformer`. Historical phase notes below still refer to old pre-workspace root paths.
 
+Networking note: `@rovy/networking` is a distinct workspace package at `packages/networking`. Core stays ECS-focused; networking uses a net-neutral external param hook in core for injected package handles.
+
 **Enabling insight:** core is fully buildable/testable WITHOUT the transformer — the `rovy.__*` API (docs 19/20) is a hand-writable contract; tests hand-write the calls the transformer would inject. That surface is the transformer↔runtime boundary, **frozen at Phase 1**.
 
 Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-runtime-lifecycle.md`, `docs/16-change-detection.md`, `docs/18-monitors.md`, per-feature docs 02–11/17.
@@ -204,6 +206,109 @@ Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-run
 - [x] **Exit:** required test suites for `rovy-transformer` and `@rovy/core` are green with collector coverage added
 
 > **✅ Milestone 3 COMPLETE (Phases 13–15).** `mise exec -- pnpm --filter rovy-transformer test` green, `mise exec -- pnpm --filter @rovy/core test` green, and core spec count now sits at 64/64.
+
+# Milestone 4 — Networking Package MVP (Phase 16)
+
+## ✅ Phase 16 — Package extension params + `@rovy/networking` scaffold
+
+- [x] Added net-neutral external injected param descriptors to `@rovy/core`: `{ kind: "external", id }`
+- [x] Added `app.insertParam(id, value)` and scheduler/runtime resolution for package-owned injected params
+- [x] Added core spec coverage for external param injection and missing-param errors
+- [x] Added `packages/networking` as `@rovy/networking`
+- [x] Added `netEvent`, `rovyNet.__netEvent`, `NetRuntime`, `NetClient`, `NetServer`, `NetEventContext`, `NetPlugin`, `NetId`
+- [x] Transformer now recognizes `@netEvent` from `@rovy/networking`, emits both `rovy.__event(...)` and `rovyNet.__netEvent(...)`, and lowers `NetClient` / `NetServer` / `NetEventContext` params through external ids
+- [x] Transformer generates Blink schema metadata strings for `@netEvent` constructor payloads, including Blink-required comma-separated struct fields
+- [x] Added transformer Blink integration test that extracts generated `.blink` schema, runs real Blink CLI, and asserts client/server/types Luau outputs exist
+- [x] **Exit:** `mise exec -- pnpm test`, `mise exec -- pnpm run test:integration`, and `mise exec -- pnpm run test:zombie` green
+
+# Milestone 5 — Prefabs (Planned)
+
+## ⬜ Phase 17 — `@prefab` contract, runtime shape, transformer lowering
+
+- [ ] Add `@prefab` no-op decorator to `@rovy/core` public surface
+- [ ] Extend the frozen contract with:
+  - [ ] `PrefabReg`
+  - [ ] `registry.prefabs`
+  - [ ] `rovy.__prefab(ctor, meta)`
+  - [ ] prefab `build(...)` param descriptors
+- [ ] Add a runtime authoring base like `Prefab<T extends Entity = Entity>` to `packages/core/src/types/index.ts`
+- [ ] Prefab base must expose the runtime-selected target entity to authored `build(...)`
+  - [ ] preferred shape: `this.entity()`
+  - [ ] this is required so the same prefab can support both `world.spawn(PrefabClass)` and `world.insert(entity, PrefabClass)`
+- [ ] Lock v1 prefab semantics:
+  - [ ] app-owned singleton prefab instances, like collectors
+  - [ ] zero-arg/default-constructible only
+  - [ ] static only: no per-spawn payload, no constructor state
+  - [ ] `build(...)` must return the target entity the runtime selected
+- [ ] Transformer support:
+  - [ ] scan `@prefab`
+  - [ ] require `build(...)`
+  - [ ] lower `build(...)` params through the same descriptor pipeline used by systems/observers/monitors
+  - [ ] reject non-defaulted constructor params
+  - [ ] reject unsupported prefab param kinds
+- [ ] Supported prefab `build(...)` params in v1:
+  - [ ] `Commands`
+  - [ ] `World`
+  - [ ] `Res<T>`, `ResMut<T>`, `OptRes<T>`
+  - [ ] `@collect` classes
+  - [ ] external package params
+  - [ ] `EventWriter<E>`
+- [ ] Explicitly unsupported in v1 prefab `build(...)`:
+  - [ ] `Query<...>`
+  - [ ] `EventReader<E>`
+  - [ ] observer-only `event`
+  - [ ] monitor-only `entity` / `term`
+  - [ ] `Local<T>` for now
+- [ ] **Exit:** transformer fixture coverage proves `__prefab` injection, valid prefab param lowering, invalid param rejection, and zero-arg constructor validation
+
+## ⬜ Phase 18 — Runtime prefab invocation through `world` and `commands`
+
+- [ ] `App` owns singleton prefab instances keyed by ctor, similar to collectors
+- [ ] `app.start()` must:
+  - [ ] instantiate each prefab once
+  - [ ] validate callable `build(...)`
+  - [ ] validate prefab dependency params with named errors, same style as systems/observers/monitors
+- [ ] Add prefab invocation plumbing to runtime:
+  - [ ] detect prefab bundle items before normal component/tag classification
+  - [ ] invoke prefab build against a known target entity
+  - [ ] restore prefab instance target context safely after nested prefab calls
+- [ ] `world.spawn(...bundle)`:
+  - [ ] create target entity first
+  - [ ] apply bundle items into that entity
+  - [ ] when a prefab item appears, call its `build(...)` against that same entity
+- [ ] `world.insert(entity, item)`:
+  - [ ] if `item` is a prefab, build into the provided entity immediately
+- [ ] `commands.spawn(...bundle)`:
+  - [ ] reserve/create the entity id immediately
+  - [ ] queue spawn work against that reserved id
+  - [ ] flush must build prefabs onto that exact reserved entity
+- [ ] `commands.insert(entity, item)`:
+  - [ ] if `item` is a prefab, defer build until flush but target the provided entity
+- [ ] Keep non-prefab bundle behavior unchanged
+- [ ] `commands.spawn(...)` likely needs to return the reserved entity id once prefab support lands
+- [ ] Build-return invariant:
+  - [ ] runtime should fail loudly if prefab `build(...)` returns a different entity than the target entity
+- [ ] **Exit:** core runtime specs prove prefab singletons, world spawn/insert behavior, command reserved-id behavior, dependency injection, and named failures
+
+## ⬜ Phase 19 — Docs and regression coverage
+
+- [ ] Update docs:
+  - [ ] `docs/04-commands.md`
+  - [ ] `docs/12-api-reference.md`
+  - [ ] `docs/17-systems-and-injection.md`
+  - [ ] `docs/19-compiled-output.md`
+  - [ ] `docs/20-runtime-lifecycle.md`
+  - [ ] `docs/21-packages.md`
+  - [ ] `docs/README.md`
+- [ ] Document prefab semantics clearly:
+  - [ ] prefab is singleton and static in v1
+  - [ ] prefab is build-time sugar for entity construction/filling
+  - [ ] prefab `build(...)` receives injected runtime values
+  - [ ] prefab authors should use the prefab base helper to access the current target entity
+  - [ ] `commands` path reserves ids up front
+- [ ] Add or update compile-only type fixture coverage in `packages/core/src/__typecheck.ts`
+- [ ] Add regression coverage that normal component/tag bundle handling still works after prefab detection lands
+- [ ] **Exit:** docs match runtime reality and prefab additions do not regress collectors/resources/system injection or normal bundle behavior
 
 ---
 

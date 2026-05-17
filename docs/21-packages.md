@@ -1,31 +1,48 @@
-# Packages — `@rovy/core` and `rovy-transformer`
+# Packages — core, networking, and transformer
 
-Rovy ships as two packages, mirroring the Flamework split (`@flamework/core` + `rbxts-transformer-flamework`):
+Rovy ships as distinct packages, mirroring the split between runtime packages and build-time transformer tooling:
 
 | Package | Role | You interact with it by |
 |---------|------|-------------------------|
 | `@rovy/core` | Decorators, macros, types, **and the packaged runtime** | `import` it and write code |
-| `rovy-transformer` | roblox-ts compiler transformer plugin | Listing it in `tsconfig.json` once |
+| `@rovy/networking` | Net-event authoring surface and runtime handles | `import` it when using `@netEvent` |
+| `rovy-transformer` | roblox-ts compiler transformer plugin | Listing it in `tsconfig.json` and pointing it at `.rovy.json` |
 
-You only ever author against `@rovy/core`. `rovy-transformer` runs silently at build time and rewrites your decorated code into the `rovy.__*` registration calls the bundled runtime consumes.
+Most ECS code authors against `@rovy/core`. Networked event code additionally imports `@rovy/networking`. `rovy-transformer` runs silently at build time and rewrites decorated code into the registration calls the runtimes consume.
 
-Inside this repo, those packages live in a pnpm workspace at `packages/core` and `packages/transformer`. That split is implementation-only; the published package boundary stays the same.
+Inside this repo, those packages live in a pnpm workspace at `packages/core`, `packages/networking`, and `packages/transformer`.
 
 ## What lives in `@rovy/core`
 
 Everything you import:
 
 - **Decorators** — `@component`, `@collect`, `@resource`, `@event`, `@system`, `@observer`, `@monitor`, `@relation`, `@schedule`, `@set`, `@plugin`
+- **Planned decorator** — `@prefab`
 - **Macros** — `trait<T>()`, `query<...>()`
 - **Type-only helpers** — `Query<...>`, `Res<T>`, `ResMut<T>`, `OptRes<T>`, `Trait<T>`, `HasTrait<T>`, `AllTraits<T>`, `Pair<R>`, `Optional<C>`, `With<C>`, `Without<C>`, `Changed<C>`, `Added<C>`, `Removed<C>`, `Entity`, `Commands`, `World`, `EventReader<E>`, `EventWriter<E>`, `Local<T>`, `SystemSet`
 - **Runtime** — `App`, the `World` wrapper, `Commands`, scheduler, observer/monitor dispatch, event buffers, resource store, change-detection stores, trait registry
-- **The `rovy` registry object** — `rovy.loadPaths(...)` (public; authored TS passes string paths that the transformer lowers to Instance roots) plus the `rovy.__component` / `__collect` / `__resource` / `__event` / `__system` / `__observer` / `__monitor` / `__relation` / `__schedule` / `__traitImpl` / `__query` / `rovy.traitToken` entry points (transformer-only — never hand-called)
+- **The `rovy` registry object** — `rovy.loadPaths(...)` (public; authored TS passes string paths that the transformer lowers to Instance roots) plus the `rovy.__component` / `__collect` / `__prefab` / `__resource` / `__event` / `__system` / `__observer` / `__monitor` / `__relation` / `__schedule` / `__traitImpl` / `__query` / `rovy.traitToken` entry points (transformer-only — never hand-called; `__prefab` is planned)
 
 ```ts
 import { App, component, system, Query, Res, rovy } from "@rovy/core";
 ```
 
 The runtime is *packaged inside* `@rovy/core`. There is no separate runtime package — the transformer targets the API surface that core already exports.
+
+## What lives in `@rovy/networking`
+
+Networking is separate from core. Import it only when a package needs net events:
+
+- **Decorator** — `@netEvent(...)`
+- **Runtime handles** — `NetClient`, `NetServer`, `NetEventContext`, `NetRuntime`, `NetPlugin`
+- **Registry** — `rovyNet.__netEvent(...)` is transformer-injected; users should not hand-call it
+- **Types** — `NetId`, `ClientToServerNetEvent`, `ServerToClientNetEvent`
+
+```ts
+import { NetClient, netEvent } from "@rovy/networking";
+```
+
+`@netEvent` implies a core `@event`: the transformer emits both `rovy.__event(...)` and `rovyNet.__netEvent(...)`.
 
 ## What `rovy-transformer` does
 
@@ -36,7 +53,7 @@ A roblox-ts custom transformer. Pure build-time. It never ships to the game. Dut
 3. Hoist `Query<...>` / `query<...>()` to module-level descriptors.
 4. Inject a `rovy.__*` registration call after each decorated class.
 5. Rewrite `trait<T>()` → `rovy.traitToken("stable/path")`.
-6. Validate decorator usage (observer field exclusivity, monitor param order, `@resource` defaulted ctor).
+6. Validate decorator usage (observer field exclusivity, monitor param order, `@resource` defaulted ctor, planned `@prefab` zero-arg ctor + `build(...)` shape).
 
 ## How they connect
 
@@ -62,26 +79,63 @@ The transformer↔runtime contract is the `rovy.__*` API exported by `@rovy/core
 
 ## Setup
 
-Install both:
+Install the core runtime and transformer:
 
 ```sh
 npm i @rovy/core
 npm i -D rovy-transformer
 ```
 
-Register the transformer in `tsconfig.json` (roblox-ts reads `compilerOptions.plugins`):
+Install networking only when using net events:
+
+```sh
+npm i @rovy/networking
+```
+
+Register the transformer in `tsconfig.json` (roblox-ts reads `compilerOptions.plugins`) and point it at the shared Rovy config:
 
 ```json
 {
   "compilerOptions": {
     "plugins": [
-      { "transform": "rovy-transformer" }
+      {
+        "transform": "rovy-transformer",
+        "config": ".rovy.json"
+      }
     ]
   }
 }
 ```
 
-That is the only transformer touchpoint. `rbxtsc` picks it up automatically; no extra build step.
+Then keep environment, Rojo, boundary, and Blink settings in `.rovy.json`:
+
+```json
+{
+  "current": "dev",
+  "environments": {
+    "dev": {
+      "rojo": "default.project.json",
+      "boundaries": {
+        "server": ["src/server"],
+        "client": ["src/client"],
+        "shared": ["src/shared"]
+      },
+      "net": {
+        "strictBoundaryChecks": true,
+        "transport": "blink",
+        "blink": {
+          "enabled": true,
+          "remoteScope": "ROVY",
+          "manualReplication": true,
+          "usePolling": true
+        }
+      }
+    }
+  }
+}
+```
+
+That is the only transformer touchpoint in `tsconfig.json`. `rbxtsc` picks it up automatically; no extra build step. When networking is enabled, the backend generates Blink files into `out/shared/net/generated/*`, so users only author decorators and injected params.
 
 ## Macro / decorator stubs (transformer-not-run guard)
 
@@ -117,3 +171,4 @@ So a missing/misconfigured transformer surfaces as an immediate, explicit error 
 - [Compiled output](19-compiled-output.md) — what the transformer emits
 - [Runtime lifecycle](20-runtime-lifecycle.md) — how the runtime consumes it
 - [API reference](12-api-reference.md)
+- [Prefabs](24-prefabs.md)
