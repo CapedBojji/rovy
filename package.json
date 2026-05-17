@@ -14,7 +14,8 @@
     "build:example": "pnpm --filter rovy-transformer build && pnpm --filter @rovy/core build && pnpm --filter @rovy/example-game build:place",
     "test:integration": "pnpm run build:example && pnpm --filter @rovy/example-game test:output && pnpm --filter @rovy/example-game test:luau && pnpm --filter @rovy/example-game test:place",
     "build:zombie": "pnpm --filter rovy-transformer build && pnpm --filter @rovy/core build && pnpm --filter @rovy/networking build && pnpm --filter @rovy/example-zombie-game build:place",
-    "test:zombie": "pnpm run build:zombie && pnpm --filter @rovy/example-zombie-game test:output && pnpm --filter @rovy/example-zombie-game test:luau && pnpm --filter @rovy/example-zombie-game test:place"
+    "test:zombie": "pnpm run build:zombie && pnpm --filter @rovy/example-zombie-game test:output && pnpm --filter @rovy/example-zombie-game test:luau && pnpm --filter @rovy/example-zombie-game test:place",
+    "build:examples": "pnpm run build:example && pnpm run build:zombie"
   },
   "devDependencies": {
     "typescript": "5.5.3"

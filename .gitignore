@@ -12,3 +12,4 @@
 *.rbxl.lock
 /examples/**/**/node_modules
 /examples/**/**/out
+/build

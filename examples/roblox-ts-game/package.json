@@ -7,7 +7,7 @@
   "scripts": {
     "build": "rbxtsc --type game",
     "watch": "rbxtsc --type game -w",
-    "build:place": "pnpm run build && mkdir -p build && rojo build default.project.json -o build/rovy-example.rbxl",
+    "build:place": "pnpm run build && mkdir -p ../../build && rojo build default.project.json -o ../../build/rovy-example.rbxl",
     "test:output": "node test/assert-output.js",
     "test:luau": "lune run test/smoke",
     "test:place": "node test/assert-place.js"
