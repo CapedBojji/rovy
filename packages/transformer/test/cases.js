@@ -19,6 +19,7 @@ import {
 	EventWriter,
 	Local,
 	OptRes,
+	Prefab,
 	Query,
 	Res,
 	ResMut,
@@ -36,6 +37,7 @@ import {
 	event,
 	monitor,
 	observer,
+	prefab,
 	query,
 	resource,
 	relation,
@@ -501,6 +503,147 @@ class BadSystem {
 }
 `);
 	assert.match(result.diagnostics.join("\n"), /unsupported injected param type/);
+});
+
+// ─── Prefab tests ──────────────────────────────────────────────────────────────
+
+runCase("prefab decorator injects __prefab registry call", () => {
+	const result = compileFixture(`
+${header}
+
+@resource class Clock { constructor(public tick = 0) {} }
+@prefab
+class SlimePrefab extends Prefab {
+	build(commands: Commands, clock: Res<Clock>): Entity {
+		const entity = this.entity();
+		return entity;
+	}
+}
+`);
+	assertNoDiagnostics(result, "prefab lowering");
+	assert.match(result.printed, /__prefab\(SlimePrefab,/);
+	assert.match(result.printed, /id: ".*@SlimePrefab"/);
+	assert.match(result.printed, /kind: "commands"/);
+	assert.match(result.printed, /kind: "res"/);
+	assert.doesNotMatch(result.printed, /@prefab/);
+});
+
+runCase("prefab with EventWriter param lowers correctly", () => {
+	const result = compileFixture(`
+${header}
+
+@event() class SpawnNotify {}
+@prefab
+class SpawnPrefab extends Prefab {
+	build(w: EventWriter<SpawnNotify>): Entity {
+		return this.entity();
+	}
+}
+`);
+	assertNoDiagnostics(result, "prefab EventWriter param");
+	assert.match(result.printed, /__prefab\(SpawnPrefab,/);
+	assert.match(result.printed, /kind: "eventWriter"/);
+});
+
+runCase("prefab with collect param lowers correctly", () => {
+	const result = compileFixture(`
+${header}
+
+@collect class SpawnInbox extends Collector<unknown> {}
+@prefab
+class InboxPrefab extends Prefab {
+	build(inbox: SpawnInbox): Entity {
+		return this.entity();
+	}
+}
+`);
+	assertNoDiagnostics(result, "prefab collect param");
+	assert.match(result.printed, /__prefab\(InboxPrefab,/);
+	assert.match(result.printed, /kind: "collect"/);
+});
+
+runCase("prefab with no params lowers with empty params array", () => {
+	const result = compileFixture(`
+${header}
+
+@prefab
+class EmptyPrefab extends Prefab {
+	build(): Entity {
+		return this.entity();
+	}
+}
+`);
+	assertNoDiagnostics(result, "prefab empty params");
+	assert.match(result.printed, /__prefab\(EmptyPrefab,/);
+	assert.match(result.printed, /params: \[\]/);
+});
+
+runCase("prefab without build method emits diagnostic", () => {
+	const result = compileFixture(`
+${header}
+
+@prefab
+class NoBuildPrefab extends Prefab {}
+`);
+	assert.match(result.diagnostics.join("\n"), /@prefab classes require a build\(\.\.\.\) method/);
+});
+
+runCase("prefab rejects Query param with diagnostic", () => {
+	const result = compileFixture(`
+${header}
+
+@component class Position {}
+@prefab
+class BadPrefab extends Prefab {
+	build(q: Query<[Position]>): Entity {
+		return this.entity();
+	}
+}
+`);
+	assert.match(result.diagnostics.join("\n"), /@prefab build\(\) cannot inject Query/);
+});
+
+runCase("prefab rejects EventReader param with diagnostic", () => {
+	const result = compileFixture(`
+${header}
+
+@event() class MyEvent {}
+@prefab
+class BadPrefab extends Prefab {
+	build(r: EventReader<MyEvent>): Entity {
+		return this.entity();
+	}
+}
+`);
+	assert.match(result.diagnostics.join("\n"), /@prefab build\(\) cannot inject EventReader/);
+});
+
+runCase("prefab rejects Local param with diagnostic", () => {
+	const result = compileFixture(`
+${header}
+
+interface MyState { count: number }
+@prefab
+class BadPrefab extends Prefab {
+	build(state: Local<MyState>): Entity {
+		return this.entity();
+	}
+}
+`);
+	assert.match(result.diagnostics.join("\n"), /@prefab build\(\) cannot inject Local/);
+});
+
+runCase("prefab rejects required constructor params", () => {
+	const result = compileFixture(`
+${header}
+
+@prefab
+class BadPrefab extends Prefab {
+	constructor(x: number) { super(); }
+	build(): Entity { return this.entity(); }
+}
+`);
+	assert.match(result.diagnostics.join("\n"), /@prefab constructor params must be optional or defaulted/);
 });
 
 console.log("rovy-transformer cases OK");

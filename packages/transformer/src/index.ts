@@ -28,6 +28,7 @@ const DECORATORS = new Set([
 	"component",
 	"collect",
 	"resource",
+	"prefab",
 	"event",
 	"netEvent",
 	"system",
@@ -304,6 +305,14 @@ function transformClass(
 				afterStatements.push(regCall(rovy, "__monitor", [className, buildMonitorMeta(match?.id ?? `${classId}:match`, methods, params)]));
 				break;
 			}
+			case "prefab": {
+				const method = methodNamed(node, "build");
+				const params = method
+					? lowerPrefabParams(state, sourceFile, method.parameters, classId)
+					: emptyParams();
+				afterStatements.push(regCall(rovy, "__prefab", [className, buildPrefabMeta(classId, params)]));
+				break;
+			}
 			case "relation":
 				afterStatements.push(regCall(rovy, "__relation", [className, buildRelationMeta(decorator)]));
 				break;
@@ -348,7 +357,7 @@ function validateClass(state: TransformState, node: ts.ClassDeclaration, decorat
 		state.diagnostic(node, "@system/@observer/@monitor classes cannot be generic in v1");
 	}
 
-	const zeroArgDecorated = decorators.find((d) => d.name === "resource" || d.name === "collect");
+	const zeroArgDecorated = decorators.find((d) => d.name === "resource" || d.name === "collect" || d.name === "prefab");
 	if (zeroArgDecorated) {
 		const ctor = node.members.find(ts.isConstructorDeclaration);
 		for (const param of ctor?.parameters ?? []) {
@@ -360,6 +369,10 @@ function validateClass(state: TransformState, node: ts.ClassDeclaration, decorat
 
 	if (decorators.some((d) => d.name === "system" || d.name === "observer") && !methodNamed(node, "run")) {
 		state.diagnostic(node, "@system/@observer classes require run(...)");
+	}
+
+	if (decorators.some((d) => d.name === "prefab") && !methodNamed(node, "build")) {
+		state.diagnostic(node, "@prefab classes require a build(...) method");
 	}
 
 	if (decorators.some((d) => d.name === "netEvent") && decorators.some((d) => d.name === "event")) {
@@ -1114,6 +1127,40 @@ function emptyParams(): ParamBuild {
 
 function printExpression(expression: ts.Expression, sourceFile: ts.SourceFile): string {
 	return ts.createPrinter({ removeComments: true }).printNode(ts.EmitHint.Expression, expression, sourceFile);
+}
+
+function lowerPrefabParams(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	params: ts.NodeArray<ts.ParameterDeclaration>,
+	classId: string,
+): ParamBuild {
+	const EXCLUDED = new Set(["Query", "EventReader", "Local"]);
+	const descriptors: ts.ObjectLiteralExpression[] = [];
+	for (let i = 0; i < params.length; i++) {
+		const param = params[i];
+		const type = param.type;
+		if (type && ts.isTypeReferenceNode(type)) {
+			const name = lastTypeName(type.typeName);
+			if (EXCLUDED.has(name)) {
+				state.diagnostic(param, `@prefab build() cannot inject ${name} — excluded in v1`);
+				descriptors.push(obj([prop("kind", str("world"))], false));
+				continue;
+			}
+		}
+		const lowered = lowerParam(state, sourceFile, param, {
+			kind: "system",
+			classId,
+			paramIndex: i,
+			localIndex: 0,
+		});
+		descriptors.push(lowered.descriptor);
+	}
+	return { descriptor: arr(descriptors, true), queryStatements: [] };
+}
+
+function buildPrefabMeta(classId: string, params: ParamBuild): ts.ObjectLiteralExpression {
+	return obj([prop("id", str(classId)), prop("params", params.descriptor)], true);
 }
 
 function classScopedId(moduleId: string, className: string): string {
