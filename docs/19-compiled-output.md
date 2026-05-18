@@ -44,6 +44,71 @@ rovy.__component(Dead, "src/components/Dead")
 
 ---
 
+## Widgets
+
+> Planned surface. This section documents the intended compiled shape, not shipped behavior yet.
+
+Source:
+
+```ts
+/** @widget WindowBuilder */
+export function Window(options: { title: string }): void {
+	throw "transformer only";
+}
+
+@widget
+class WindowBuilder {
+	build(theme: Res<Theme>) {
+		return (options: { title: string }) => {
+			// widget runtime authoring
+		};
+	}
+}
+
+Window({ title: "Inventory" });
+```
+
+Planned compiled shape:
+
+```ts
+function Window(options) {
+	throw "transformer only";
+}
+class WindowBuilder {
+	build(theme) {
+		return (options) => {
+			// widget runtime authoring
+		};
+	}
+}
+rovyUi.__widget(WindowBuilder, {
+	id: "src/client/widgets/Window@Window",
+});
+
+rovyUi.__callWidget(WindowBuilder, {
+	id: "src/client/screens/InventoryScreen:0",
+	args: [{ title: "Inventory" }],
+});
+```
+
+Conceptually the transformer does two things:
+
+1. Inject widget registration for each `@widget` builder class.
+2. Resolve each JSDoc caller function to its same-file builder.
+3. Rewrite plain calls to caller functions into the future widget-runtime invocation surface.
+
+Important authored/runtime intent:
+
+- authors write `Window(args)`
+- authors expose widgets as normal functions with JSDoc metadata
+- the JSDoc explicitly maps caller to same-file builder
+- the builder owns `build(...)`
+- no class-construction path is part of the intended authoring model
+
+This is a stateless widget model. There are no hook slots, no `useState`, and no `useEffect` hidden behind the compiled output. If compile-time keys are eventually added for UI, they are for widget identity/metadata only, never for hook storage.
+
+---
+
 ## Resources
 
 ```ts

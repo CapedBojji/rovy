@@ -1,4 +1,4 @@
-# Packages — core, networking, and transformer
+# Packages — core, networking, ui, and transformer
 
 Rovy ships as distinct packages, mirroring the split between runtime packages and build-time transformer tooling:
 
@@ -6,11 +6,12 @@ Rovy ships as distinct packages, mirroring the split between runtime packages an
 |---------|------|-------------------------|
 | `@rovy/core` | Decorators, macros, types, **and the packaged runtime** | `import` it and write code |
 | `@rovy/networking` | Net-event authoring surface and runtime handles | `import` it when using `@netEvent` |
+| `@rovy/ui` | Planned stateless widget authoring surface and UI runtime | `import` it when using widget callers/builders |
 | `rovy-transformer` | roblox-ts compiler transformer plugin | Listing it in `tsconfig.json` and pointing it at `.rovy.json` |
 
-Most ECS code authors against `@rovy/core`. Networked event code additionally imports `@rovy/networking`. `rovy-transformer` runs silently at build time and rewrites decorated code into the registration calls the runtimes consume.
+Most ECS code authors against `@rovy/core`. Networked event code additionally imports `@rovy/networking`. Planned widget authoring additionally imports `@rovy/ui`. `rovy-transformer` runs silently at build time and rewrites decorated code into the registration calls the runtimes consume.
 
-Inside this repo, those packages live in a pnpm workspace at `packages/core`, `packages/networking`, and `packages/transformer`.
+Inside this repo, those packages live in a pnpm workspace at `packages/core`, `packages/networking`, a planned `packages/ui`, and `packages/transformer`.
 
 ## What lives in `@rovy/core`
 
@@ -44,6 +45,53 @@ import { NetClient, netEvent } from "@rovy/networking";
 
 `@netEvent` implies a core `@event`: the transformer emits both `rovy.__event(...)` and `rovyNet.__netEvent(...)`.
 
+## What lives in `@rovy/ui`
+
+UI is planned as a separate package rather than part of `@rovy/core`.
+
+Planned contents:
+
+- **Widget runtime helper** — future `useWidget(...)`-style plumbing
+- **Runtime authoring surface** — widget registry + widget invocation plumbing
+- **Transformer-aware widget call surface** — plain calls to JSDoc-tagged widget caller functions such as `Window(args)`
+- **Stateless widget contract** — no `useState`, no `useEffect`, no hook runtime as part of the public design
+
+```ts
+/** @widget WindowBuilder */
+export function Window(options: { title: string }): void {}
+
+@widget
+class WindowBuilder {
+	build() {
+		return (options: { title: string }) => {};
+	}
+}
+```
+
+The current planned model is:
+
+- widgets use a JSDoc-tagged caller function plus a same-file `@widget` builder class
+- `rovy.loadPaths(...)` requiring modules auto-collects them through injected registration side effects
+- the caller JSDoc explicitly names the builder
+- the builder must be resolved in the same file only
+- the builder owns `build(...)`
+- transformer/runtime pass that build result through the future `useWidget(...)` path
+- authored widget calls stay plain function calls
+
+The intended authored syntax is plain-call sugar:
+
+```ts
+Window({ title: "Inventory" });
+```
+
+Also not the primary surface:
+
+```ts
+RovyUi.Window({ title: "Inventory" });
+```
+
+Because the user-facing call target is a normal function and the JSDoc names a same-file builder explicitly, editor/typechecker behavior should stay normal while still giving the transformer something reliable to discover.
+
 ## What `rovy-transformer` does
 
 A roblox-ts custom transformer. Pure build-time. It never ships to the game. Duties (full list in [Transformer](10-transformer.md)):
@@ -53,7 +101,7 @@ A roblox-ts custom transformer. Pure build-time. It never ships to the game. Dut
 3. Hoist `Query<...>` / `query<...>()` to module-level descriptors.
 4. Inject a `rovy.__*` registration call after each decorated class.
 5. Rewrite `trait<T>()` → `rovy.traitToken("stable/path")`.
-6. Validate decorator usage (observer field exclusivity, monitor param order, `@resource` defaulted ctor, planned `@prefab` zero-arg ctor + `build(...)` shape).
+6. Validate decorator usage (observer field exclusivity, monitor param order, `@resource` defaulted ctor, planned `@prefab` zero-arg ctor + `build(...)` shape, planned same-file JSDoc `@widget` caller/builder lowering shape).
 
 ## How they connect
 
@@ -90,6 +138,12 @@ Install networking only when using net events:
 
 ```sh
 npm i @rovy/networking
+```
+
+Install UI only when using widgets:
+
+```sh
+npm i @rovy/ui
 ```
 
 Register the transformer in `tsconfig.json` (roblox-ts reads `compilerOptions.plugins`) and point it at the shared Rovy config:
@@ -172,3 +226,4 @@ So a missing/misconfigured transformer surfaces as an immediate, explicit error 
 - [Runtime lifecycle](20-runtime-lifecycle.md) — how the runtime consumes it
 - [API reference](12-api-reference.md)
 - [Prefabs](24-prefabs.md)
+- [UI](26-ui.md)

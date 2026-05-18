@@ -1,6 +1,6 @@
 # Transformer
 
-The roblox-ts transformer handles compile-time work that runtime TypeScript cannot do: resolving generic types, validating decorator usage, hoisting query descriptors, and injecting `rovy.__*` registration calls after each decorated class.
+The roblox-ts transformer handles compile-time work that runtime TypeScript cannot do: resolving generic types, validating decorator usage, hoisting query descriptors, injecting `rovy.__*` registration calls after each decorated class, and eventually lowering planned UI widget calls discovered from JSDoc metadata.
 
 Shipped as the `rovy-transformer` package — a dev-only roblox-ts plugin, separate from the `@rovy/core` runtime. See [Packages](21-packages.md) for the split and `.rovy.json`-driven setup.
 
@@ -8,7 +8,7 @@ Shipped as the `rovy-transformer` package — a dev-only roblox-ts plugin, separ
 
 All of the following happen at **build time**. Nothing below runs at Luau startup.
 
-1. Scan every decorated class: `@component`, `@collect`, `@resource`, `@event`, `@system`, `@observer`, `@monitor`, `@relation`, `@schedule`, `@set`, `@plugin`.
+1. Scan every decorated class: `@component`, `@collect`, `@resource`, `@event`, `@system`, `@observer`, `@monitor`, `@relation`, `@schedule`, `@set`, `@plugin`, plus planned widget builder classes and JSDoc `@widget BuilderName` caller functions.
 2. Resolve trait macros (`trait<T>()`) and query macros (`query<...>()`), plus `Trait<T>` / `HasTrait<T>` / `AllTraits<T>` type references, via TypeScript `TypeChecker` (erased at runtime — must happen now).
 3. Generate stable trait IDs from canonical module paths.
 4. Scan `implements` clauses on `@component` classes to find trait implementers.
@@ -18,6 +18,8 @@ All of the following happen at **build time**. Nothing below runs at Luau startu
 8. Inject a `rovy.__*` registration call right after each decorated class declaration.
 
 The networking layer adds more transformer duties: detect `@netEvent` from `@rovy/networking`, treat it as implicit core `@event`, read network settings from `.rovy.json`, generate Blink-validated `.blink` schema metadata, lower `NetClient`/`NetServer` params through core's package-extension injection hook, and inject `rovyNet.__netEvent(...)` metadata. See [Networking](23-networking.md).
+
+The planned UI layer adds a separate future duty set: detect JSDoc `@widget BuilderName` on caller functions, resolve the named builder in the same file only, validate the linked `@widget` builder class, inject widget registration metadata, detect plain calls to tagged widget functions such as `Window(args)`, lower those calls into the future widget-runtime invocation surface, and optionally attach stable compile-time widget identity metadata. Explicit non-goal: UI does **not** add hook/state/effect transform work.
 
 ## Transformer config
 
@@ -167,8 +169,11 @@ One injected call per decorator:
 | `@relation` | `rovy.__relation(C, { exclusive, onTargetDelete, onDelete })` |
 | `@schedule` | `rovy.__schedule(C, { runOnStart })` |
 | `implements Trait` on `@component` | `rovy.__traitImpl("src/traits/CrowdControl", C)` |
+| planned `@widget` builder | future `rovyUi.__widget(Builder, meta)`-style registration |
 
 Each `rovy.__*` call only **pushes into a global registry**. No jecs IDs, no hooks yet — registration is lazy. `app.start()` does the finalize pass.
+
+For planned UI, the same registration rule still applies: widget builders should self-register through module side effects, and `rovy.loadPaths(...)` should remain the discovery mechanism. The extra UI step is that callsites like `Window(args)` need the transformer to map the caller function to its same-file builder and route the call through the future widget runtime while authored TS remains a normal function call.
 
 ## Module loading
 
@@ -204,6 +209,19 @@ __ecs.trait("src/shared/battle/traits/CrowdControl")
 
 Reason: avoid collisions across files that happen to share a type name. Same rule for hoisted query descriptors and monitor match tokens.
 
+## Planned UI note
+
+UI is intentionally being designed without hook semantics.
+
+The transformer should therefore not grow React-like responsibilities for:
+
+- state slot indexing
+- effect slot indexing
+- dependency-array comparison
+- hidden widget-local state buckets
+
+If compile-time UI keys are ever added, they are only for widget identity, transform metadata, or diagnostics. See [UI](26-ui.md).
+
 ## See also
 
 - [Trait runtime](09-trait-runtime.md)
@@ -211,3 +229,4 @@ Reason: avoid collisions across files that happen to share a type name. Same rul
 - [Monitors](18-monitors.md)
 - [Packages](21-packages.md)
 - [Networking](23-networking.md)
+- [UI](26-ui.md)

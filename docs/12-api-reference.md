@@ -7,6 +7,7 @@ Full public surface. Authoring is decorator-based; the transformer reads decorat
 ```ts
 @component
 @collect
+/** @widget BuilderName */  // planned, on widget caller functions from @rovy/ui
 @prefab
 @resource
 @event(options?: { capacity?: number; label?: string })
@@ -50,6 +51,8 @@ These come from `@rovy/networking`, not `@rovy/core`. Core provides the package-
 `App.start()` auto-installs networking when `@netEvent` metadata or injected net params are present, so normal user code does not add `NetPlugin` manually.
 
 Planned prefab `build(...)` injection is narrower. See [Prefabs](24-prefabs.md) for the proposed v1 allowed param list and exclusions.
+
+Planned widget authoring does not use hook params. The current docs direction is a stateless JSDoc-caller + builder model where dynamic behavior comes from args/resources/external state, not `useState` / `useEffect`.
 
 ## rovy (global registry)
 
@@ -208,6 +211,48 @@ Expected v1 semantics:
 - `build(...)` must return the runtime-selected target entity
 - prefab does not differentiate spawn vs insert; it only builds into `this.entity()`
 
+## Widget
+
+> Planned, not shipped yet.
+
+Planned public authoring surface from `@rovy/ui`:
+
+```ts
+/** @widget WindowBuilder */
+function Window(args: WindowArgs): void;
+
+@widget
+class WindowBuilder {
+	build(theme: Res<Theme>, units: Query<[Entity, Health]>): (args: WindowArgs) => void;
+}
+```
+
+Locked design decisions:
+
+- widgets use a normal caller function plus a same-file `@widget` builder class
+- `rovy.loadPaths(...)` auto-collects them through transformer-injected registration side effects
+- authored callsites are plain function calls such as `Window(args)`
+- the JSDoc tag explicitly names the builder
+- builder lookup is same-file-only
+- the builder class owns required `build(...)`
+- `build(...)` may receive resources, queries, and other allowed injected params
+- the returned function receives authored widget args and is passed through the future widget runtime / `useWidget(...)` path
+
+Planned transformer behavior:
+
+- resolve JSDoc caller-to-builder mapping
+- inject registration metadata for `@widget` builder classes
+- detect calls to tagged widget functions
+- lower `WidgetFn(args)` into the future widget-runtime invocation surface
+- optionally attach stable compile-time widget identity metadata
+
+Statelessness rules:
+
+- no `useState`
+- no `useEffect`
+- no widget-local persistent app state as public contract
+- changing behavior must come from args, resources, commands, events, or explicit external stores
+
 ## Macros
 
 Compile-time only — transformer rewrites them.
@@ -258,6 +303,7 @@ See [Networking](23-networking.md) for the full spec, current package boundary, 
 - [Queries](03-queries.md)
 - [Commands](04-commands.md)
 - [Observers](06-observers.md)
+- [UI](26-ui.md)
 - [Monitors](18-monitors.md)
 - [Systems and injection](17-systems-and-injection.md)
 - [Networking](23-networking.md)
