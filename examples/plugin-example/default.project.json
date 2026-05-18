@@ -1,0 +1,9 @@
+{
+  "name": "example-gameclock",
+  "tree": {
+    "$className": "Folder",
+    "out": {
+      "$path": "out"
+    }
+  }
+}

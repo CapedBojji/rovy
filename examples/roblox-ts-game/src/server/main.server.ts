@@ -1,4 +1,5 @@
 import { App, rovy } from "@rovy/core";
+import { GameClockPlugin } from "@rovy/example-gameclock";
 
 export interface IntegrationSmokeResult {
 	readonly started: boolean;
@@ -8,6 +9,7 @@ export interface IntegrationSmokeResult {
 	readonly deadEntered: number;
 	readonly finalHealth: number;
 	readonly traitId: string;
+	readonly clockTick: number;
 }
 
 function loadGameModule() {
@@ -22,6 +24,7 @@ export function runIntegrationSmoke(): IntegrationSmokeResult {
 
 	const gameModule = loadGameModule();
 	const app = new App();
+	app.addPlugin(new GameClockPlugin({ schedule: gameModule.Update }));
 	app.start();
 
 	gameModule.seed(app);
@@ -36,5 +39,6 @@ export function runIntegrationSmoke(): IntegrationSmokeResult {
 		deadEntered: result.deadEntered,
 		finalHealth: result.finalHealth,
 		traitId: result.traitId,
+		clockTick: result.clockTick,
 	};
 }

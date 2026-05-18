@@ -1,0 +1,25 @@
+{
+  "name": "@rovy/example-gameclock",
+  "version": "0.0.0",
+  "description": "Example Rovy plugin — GameClock injected param",
+  "main": "out/init.luau",
+  "types": "out/index.d.ts",
+  "license": "MIT",
+  "scripts": {
+    "build": "pnpm --filter @rovy/core build && rbxtsc",
+    "dev": "rbxtsc -w"
+  },
+  "files": [
+    "out",
+    "!**/*.tsbuildinfo"
+  ],
+  "dependencies": {
+    "@rovy/core": "workspace:*",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@rbxts/compiler-types": "3.0.0-types.0",
+    "@rbxts/types": "^1.0.920",
+    "roblox-ts": "^3.0.0"
+  }
+}

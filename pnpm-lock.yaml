@@ -12,6 +12,25 @@ importers:
         specifier: 5.5.3
         version: 5.5.3
 
+  examples/plugin-example:
+    dependencies:
+      '@rovy/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+    devDependencies:
+      '@rbxts/compiler-types':
+        specifier: 3.0.0-types.0
+        version: 3.0.0-types.0
+      '@rbxts/types':
+        specifier: ^1.0.920
+        version: 1.0.920
+      roblox-ts:
+        specifier: ^3.0.0
+        version: 3.0.0
+
   examples/roblox-ts-game:
     dependencies:
       '@rbxts/jecs':
@@ -20,6 +39,9 @@ importers:
       '@rovy/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@rovy/example-gameclock':
+        specifier: workspace:*
+        version: link:../plugin-example
     devDependencies:
       '@rbxts/compiler-types':
         specifier: 3.0.0-types.0

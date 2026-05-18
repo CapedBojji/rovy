@@ -3,6 +3,7 @@ import {
 	Commands,
 	Entity,
 	Query,
+	Res,
 	ResMut,
 	With,
 	component,
@@ -15,6 +16,7 @@ import {
 	system,
 	trait,
 } from "@rovy/core";
+import { GameClock } from "@rovy/example-gameclock";
 
 export function makeSmokeBanner(name: string) {
 	return `Rovy integration loaded from ${name}`;
@@ -50,6 +52,7 @@ export class SmokeResult {
 	deadEntered = 0;
 	finalHealth = -1;
 	traitId = "";
+	clockTick = 0;
 }
 
 @event({ capacity: 4 })
@@ -96,6 +99,13 @@ class ApplyDamage {
 class DeadMonitor {
 	onEnter(_entity: Entity, _dead: Dead, result: ResMut<SmokeResult>) {
 		result.deadEntered += 1;
+	}
+}
+
+@system({ schedule: Update })
+class ReadClock {
+	run(clock: Res<GameClock>, result: ResMut<SmokeResult>) {
+		result.clockTick = clock.tick;
 	}
 }
 
