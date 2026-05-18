@@ -1,8 +1,33 @@
 --!nocheck
-local fs = require("@lune/fs")
-local luau = require("@lune/luau")
-local task = require("@lune/task")
-local process = require("@lune/process")
+local fs = zune.fs
+local luau = zune.luau
+local task = zune.task
+local process = zune.process
+local roblox = require("../../../../test/luau/harness/roblox")
+
+local function kind(path: string): string?
+	local ok, stat = pcall(fs.stat, path)
+	if ok and stat ~= nil then
+		return stat.kind
+	end
+	return nil
+end
+
+local function isFile(path: string): boolean
+	return kind(path) == "file"
+end
+
+local function isDir(path: string): boolean
+	return kind(path) == "directory"
+end
+
+local function readDir(path: string): { string }
+	local names = {}
+	for _, entry in fs.entries(path) do
+		table.insert(names, entry.name)
+	end
+	return names
+end
 
 local TS = {}
 local moduleCache: { [string]: { value: any } } = {}
@@ -125,36 +150,14 @@ local function normalize(path: string): string
 	return "/" .. table.concat(parts, "/")
 end
 
-local ROOT = normalize((process.cwd :: string):gsub("[/\\]+$", ""))
+local ROOT = normalize((process.cwd() :: string):gsub("[/\\]+$", ""))
 local REPO = normalize(ROOT .. "/../..")
 
 local function newNode(path: string, className: string?)
 	return setmetatable({ __path = normalize(path), __file = nil, __className = className or "Folder", children = {} }, Node)
 end
 
-local function newSignal()
-	local listeners = {}
-	return {
-		Connect = function(_self, fn)
-			table.insert(listeners, fn)
-			return {
-				Disconnect = function()
-					for i = #listeners, 1, -1 do
-						if listeners[i] == fn then
-							table.remove(listeners, i)
-							break
-						end
-					end
-				end,
-			}
-		end,
-		Fire = function(_self, ...)
-			for _, fn in listeners do
-				fn(...)
-			end
-		end,
-	}
-end
+local newSignal = roblox.createSignal
 
 local function newRemote(path: string, name: string)
 	local remote = newNode(path, "RemoteEvent")
@@ -176,19 +179,19 @@ end
 local function scan(path: string): any
 	path = normalize(path)
 	local node = newNode(path)
-	if fs.isFile(path) then
+	if isFile(path) then
 		node.__file = path
 		node.__className = "ModuleScript"
 		return node
 	end
-	if not fs.isDir(path) then
+	if not isDir(path) then
 		return node
 	end
-	for _, entry in fs.readDir(path) do
+	for _, entry in readDir(path) do
 		local childPath = path .. "/" .. entry
-		if fs.isDir(childPath) then
+		if isDir(childPath) then
 			node.children[entry] = scan(childPath)
-		elseif fs.isFile(childPath) then
+		elseif isFile(childPath) then
 			local child = node.children[entry] or newNode(childPath, "ModuleScript")
 			child.__file = childPath
 			child.__className = "ModuleScript"
@@ -328,17 +331,11 @@ local rovyNetworking = treeIndex(REPO .. "/packages/networking")
 assert(rovyNetworking, "rovy example harness: missing packages/networking")
 rovyScope.children.networking = rovyNetworking
 
-local gameObject = {}
-function gameObject:GetService(name: string)
-	if name == "ReplicatedStorage" then
-		return replicatedStorage
-	elseif name == "ServerScriptService" then
-		return serverScriptService
-	elseif name == "StarterPlayer" then
-		return starterPlayer
-	end
-	error("unknown fake service: " .. name)
-end
+local gameObject = roblox.createGame({
+	ReplicatedStorage = replicatedStorage,
+	ServerScriptService = serverScriptService,
+	StarterPlayer = starterPlayer,
+})
 
 local sharedG = setmetatable({}, { __index = _G })
 
@@ -393,7 +390,7 @@ local function loadModule(node): any
 		end,
 	}, { __index = _G })
 
-	local chunk = luau.load(src, { debugName = fsPath, environment = env })
+	local chunk = luau.load(luau.compile(src), { chunk_name = fsPath, env = env })
 	local value = chunk()
 	moduleCache[fsPath] = { value = value }
 	return value

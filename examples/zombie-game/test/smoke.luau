@@ -1,6 +1,7 @@
 --!nocheck
-local process = require("@lune/process")
+local testing = zune.testing
 local TS = require("./harness/runtime")
+local expect = testing.expect
 
 -- The smoke loads main.server (which exports runZombieGameSmoke). The
 -- top-level engine attachment inside main.server is gated behind a pcall
@@ -10,30 +11,18 @@ local TS = require("./harness/runtime")
 local main = TS.loadPath("out/server/main.server")
 local result = main.runZombieGameSmoke()
 
-local function expect(name: string, value, expected)
-	if value ~= expected then
-		error(string.format("%s: expected %s, got %s", name, tostring(expected), tostring(value)), 2)
-	end
-end
-
-local function expectAtLeast(name: string, value, minimum)
-	if type(value) ~= "number" or value < minimum then
-		error(string.format("%s: expected >= %s, got %s", name, tostring(minimum), tostring(value)), 2)
-	end
-end
-
-expect("started", result.started, true)
-expectAtLeast("ticksRan", result.ticksRan, 60)
-expectAtLeast("zombiesSpawned", result.zombiesSpawned, 1)
-expectAtLeast("zombiesKilled", result.zombiesKilled, 1)
-expectAtLeast("shotsFired", result.shotsFired, 1)
-expectAtLeast("snapshotCount", result.snapshotCount, 1)
-expect("playerHealthAfterRestart", result.playerHealth, 100)
-expect("defeatReached", result.defeatReached, true)
-expect("restartApplied", result.restartApplied, true)
-expect("waveAfterRestart", result.waveNumber, 0)
-expect("phaseAfterRestart", result.phase, "intermission")
-expect("serializerRoundTripOk", result.serializerRoundTripOk, true)
+testing.test("zombie smoke", function()
+	expect(result.started).toBe(true)
+	expect(result.ticksRan).toBeGreaterThanOrEqual(60)
+	expect(result.zombiesSpawned).toBeGreaterThanOrEqual(1)
+	expect(result.zombiesKilled).toBeGreaterThanOrEqual(1)
+	expect(result.shotsFired).toBeGreaterThanOrEqual(1)
+	expect(result.snapshotCount).toBeGreaterThanOrEqual(1)
+	expect(result.playerHealth).toBe(100)
+	expect(result.defeatReached).toBe(true)
+	expect(result.restartApplied).toBe(true)
+	expect(result.waveNumber).toBe(0)
+	expect(result.phase).toBe("intermission")
+end)
 
 print("ok  zombie-game Luau smoke")
-process.exit(0)

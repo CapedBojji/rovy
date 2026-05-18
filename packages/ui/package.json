@@ -6,9 +6,9 @@
   "types": "out/index.d.ts",
   "license": "MIT",
   "scripts": {
-    "build": "pnpm --filter @rovy/core build && rbxtsc",
+    "build": "corepack pnpm@10.17.1 --filter @rovy/core build && rbxtsc",
     "dev": "rbxtsc -w",
-    "test": "pnpm run build && lune run test/run"
+    "test": "npm run build && zune test test/run"
   },
   "files": [
     "out",

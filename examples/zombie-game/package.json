@@ -5,11 +5,11 @@
   "description": "Rovy-driven zombie wave survival example (Rovy networking + egooe HUD).",
   "main": "index.js",
   "scripts": {
-    "build": "rbxtsc --type game && pnpm --dir ../../packages/transformer exec node scripts/generate-blink.js ../../examples/zombie-game",
+    "build": "pnpm --filter @rovy/networking build && rbxtsc --type game && pnpm --dir ../../packages/transformer exec node scripts/generate-blink.js ../../examples/zombie-game",
     "watch": "pnpm --dir ../../packages/transformer exec node scripts/watch-blink.js ../../examples/zombie-game",
     "build:place": "pnpm run build && mkdir -p ../../build && rojo build default.project.json -o ../../build/rovy-zombie-game.rbxl",
     "test:output": "node test/assert-output.js",
-    "test:luau": "lune run test/smoke",
+    "test:luau": "zune test test/smoke",
     "test:place": "node test/assert-place.js"
   },
   "keywords": [],

@@ -8,8 +8,8 @@
   "scripts": {
     "build": "rbxtsc",
     "dev": "rbxtsc -w",
-    "test": "rbxtsc -p tsconfig.test.json && lune run test/run",
-    "spike": "lune run test/smoke"
+    "test": "rbxtsc -p tsconfig.test.json && zune test test/run",
+    "spike": "zune test test/smoke"
   },
   "files": [
     "out",

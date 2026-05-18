@@ -1,8 +1,33 @@
 --!nocheck
-local fs = require("@lune/fs")
-local luau = require("@lune/luau")
-local task = require("@lune/task")
-local process = require("@lune/process")
+local fs = zune.fs
+local luau = zune.luau
+local task = zune.task
+local process = zune.process
+local roblox = require("../../../../test/luau/harness/roblox")
+
+local function kind(path: string): string?
+	local ok, stat = pcall(fs.stat, path)
+	if ok and stat ~= nil then
+		return stat.kind
+	end
+	return nil
+end
+
+local function isFile(path: string): boolean
+	return kind(path) == "file"
+end
+
+local function isDir(path: string): boolean
+	return kind(path) == "directory"
+end
+
+local function readDir(path: string): { string }
+	local names = {}
+	for _, entry in fs.entries(path) do
+		table.insert(names, entry.name)
+	end
+	return names
+end
 
 local TS = {}
 local moduleCache: { [string]: { value: any } } = {}
@@ -22,7 +47,7 @@ local function normalize(path: string): string
 	return "/" .. table.concat(parts, "/")
 end
 
-local ROOT = normalize((process.cwd :: string):gsub("[/\\]+$", ""))
+local ROOT = normalize((process.cwd() :: string):gsub("[/\\]+$", ""))
 local REPO = normalize(ROOT .. "/../..")
 
 local function newNode(path: string, className: string?)
@@ -32,19 +57,19 @@ end
 local function scan(path: string): any
 	path = normalize(path)
 	local node = newNode(path)
-	if fs.isFile(path) then
+	if isFile(path) then
 		node.__file = path
 		node.__className = "ModuleScript"
 		return node
 	end
-	if not fs.isDir(path) then
+	if not isDir(path) then
 		return node
 	end
-	for _, entry in fs.readDir(path) do
+	for _, entry in readDir(path) do
 		local childPath = path .. "/" .. entry
-		if fs.isDir(childPath) then
+		if isDir(childPath) then
 			node.children[entry] = scan(childPath)
-		elseif fs.isFile(childPath) then
+		elseif isFile(childPath) then
 			local child = node.children[entry] or newNode(childPath, "ModuleScript")
 			child.__file = childPath
 			child.__className = "ModuleScript"
@@ -140,6 +165,7 @@ end
 ensureRoot("out")
 ensureRoot("node_modules/@rbxts")
 ensureRepoRoot("packages/core")
+ensureRepoRoot("examples/plugin-example")
 
 local replicatedStorage = newNode(ROOT .. "/$services/ReplicatedStorage", "ReplicatedStorage")
 replicatedStorage.children.TS = treeIndex(ROOT .. "/out/shared")
@@ -162,18 +188,15 @@ nodeModules.children["@rovy"] = rovyScope
 local rovyCore = treeIndex(REPO .. "/packages/core/out")
 assert(rovyCore, "rovy example harness: missing packages/core/out")
 rovyScope.children["rovy-core"] = rovyCore
+local gameClockPlugin = treeIndex(REPO .. "/examples/plugin-example")
+assert(gameClockPlugin, "rovy example harness: missing examples/plugin-example")
+rovyScope.children["example-gameclock"] = gameClockPlugin
 
-local gameObject = {}
-function gameObject:GetService(name: string)
-	if name == "ReplicatedStorage" then
-		return replicatedStorage
-	elseif name == "ServerScriptService" then
-		return serverScriptService
-	elseif name == "StarterPlayer" then
-		return starterPlayer
-	end
-	error("unknown fake service: " .. name)
-end
+local gameObject = roblox.createGame({
+	ReplicatedStorage = replicatedStorage,
+	ServerScriptService = serverScriptService,
+	StarterPlayer = starterPlayer,
+})
 
 local sharedG = setmetatable({}, { __index = _G })
 
@@ -183,11 +206,14 @@ local function loadModule(node): any
 	end
 	local fsPath = rawget(node, "__file")
 	assert(fsPath, "rovy example harness: not a ModuleScript: " .. tostring(rawget(node, "__path")))
-	local cached = moduleCache[fsPath]
-	if cached ~= nil then
-		return cached.value
+	local shouldCache = string.find(fsPath, "/examples/plugin-example/out/", 1, true) == nil
+	if shouldCache then
+		local cached = moduleCache[fsPath]
+		if cached ~= nil then
+			return cached.value
+		end
+		moduleCache[fsPath] = { value = nil }
 	end
-	moduleCache[fsPath] = { value = nil }
 
 	local src = fs.readFile(fsPath)
 	local scriptNode = node
@@ -224,9 +250,11 @@ local function loadModule(node): any
 		end,
 	}, { __index = _G })
 
-	local chunk = luau.load(src, { debugName = fsPath, environment = env })
+	local chunk = luau.load(luau.compile(src), { chunk_name = fsPath, env = env })
 	local value = chunk()
-	moduleCache[fsPath] = { value = value }
+	if shouldCache then
+		moduleCache[fsPath] = { value = value }
+	end
 	return value
 end
 

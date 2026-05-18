@@ -1,22 +1,18 @@
 --!nocheck
-local process = require("@lune/process")
+local testing = zune.testing
 local TS = require("./harness/runtime")
+local expect = testing.expect
 
 local clientGame = TS.loadPath("out/client/game")
 local result = clientGame.runUiSmoke()
 
-local function expect(name: string, value, expected)
-	if value ~= expected then
-		error(string.format("%s: expected %s, got %s", name, tostring(expected), tostring(value)), 2)
-	end
-end
-
-expect("rootReady", result.rootReady, true)
-expect("guiReady", result.guiReady, true)
-expect("renderCount", result.renderCount, 1)
-expect("demoRendered", result.demoRendered, true)
-expect("inventoryRendered", result.inventoryRendered, true)
-expect("itemCount", result.itemCount, 4)
+testing.test("ui inventory smoke", function()
+	expect(result.rootReady).toBe(true)
+	expect(result.guiReady).toBe(true)
+	expect(result.renderCount).toBe(1)
+	expect(result.demoRendered).toBe(true)
+	expect(result.inventoryRendered).toBe(true)
+	expect(result.itemCount).toBe(4)
+end)
 
 print("ok  ui inventory Luau smoke")
-process.exit(0)

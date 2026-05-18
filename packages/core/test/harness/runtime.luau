@@ -1,21 +1,45 @@
 --!nocheck
 -- Minimal roblox-ts RuntimeLib emulation for running compiled `out/` Luau
--- under Lune without Roblox Studio. Implements only what roblox-ts emits for
+-- under Zune without Roblox Studio. Implements only what roblox-ts emits for
 -- the rovy core: `local TS = _G[script]`, `TS.import`, `TS.getModule`, and a
 -- filesystem-backed fake-Instance tree. Promise/generator/try are intentionally
 -- unsupported — core code must not depend on them (enforced by build).
 --
--- Lune `@lune/fs` is async (coroutine-yielding). Yielding inside an `__index`
+-- Zune `zune.fs` is async (coroutine-yielding). Yielding inside an `__index`
 -- metamethod (which roblox-ts triggers via node indexing) crashes with
 -- "attempt to yield across metamethod/C-call boundary". So the module tree is
 -- pre-scanned ONCE here (normal context); `__index` is pure table lookup.
 
-local fs = require("@lune/fs")
-local luau = require("@lune/luau")
-local task = require("@lune/task")
-local process = require("@lune/process")
+local fs = zune.fs
+local luau = zune.luau
+local task = zune.task
+local process = zune.process
 
-local ROOT = (process.cwd :: string):gsub("[/\\]+$", "")
+local function kind(path: string): string?
+	local ok, stat = pcall(fs.stat, path)
+	if ok and stat ~= nil then
+		return stat.kind
+	end
+	return nil
+end
+
+local function isFile(path: string): boolean
+	return kind(path) == "file"
+end
+
+local function isDir(path: string): boolean
+	return kind(path) == "directory"
+end
+
+local function readDir(path: string): { string }
+	local names = {}
+	for _, entry in fs.entries(path) do
+		table.insert(names, entry.name)
+	end
+	return names
+end
+
+local ROOT = (process.cwd() :: string):gsub("[/\\]+$", "")
 
 local TS = {}
 local moduleCache: { [string]: { value: any } } = {}
@@ -30,19 +54,19 @@ end
 -- Eagerly scan a directory subtree into Node form. Pure table structure after.
 local function scan(path: string): any
 	local node = newNode(path)
-	if fs.isFile(path) then
+	if isFile(path) then
 		node.__file = path
 		return node
 	end
-	if not fs.isDir(path) then
+	if not isDir(path) then
 		return node
 	end
-	for _, entry in fs.readDir(path) do
+	for _, entry in readDir(path) do
 		local childPath = path .. "/" .. entry
-		if fs.isDir(childPath) then
+		if isDir(childPath) then
 			local child = scan(childPath)
 			node.children[entry] = child
-		elseif fs.isFile(childPath) then
+		elseif isFile(childPath) then
 			-- expose both "foo.luau" and "foo" (roblox-ts indexes without ext)
 			local child = node.children[entry] or newNode(childPath)
 			child.__file = childPath
@@ -161,7 +185,7 @@ local function loadModule(node): any
 		end,
 	}, { __index = _G })
 
-	local chunk = luau.load(src, { debugName = fsPath, environment = env })
+	local chunk = luau.load(luau.compile(src), { chunk_name = fsPath, env = env })
 	local value = chunk()
 	moduleCache[fsPath] = { value = value }
 	return value
