@@ -1,4 +1,4 @@
-import { Res, ResMut, World, system } from "@rovy/core";
+import { Commands, Res, ResMut, World, system } from "@rovy/core";
 import { PLAYER_MAX_HEALTH, PLAYER_RADIUS } from "shared/contracts";
 import { Health, PlayerUnit, Position, Radius, Velocity, WeaponCooldown } from "../components";
 import { PlayerLifecycleCollect } from "../collectors";
@@ -10,6 +10,7 @@ export class ApplyPlayerLifecycleIngress {
 	run(
 		ingress: PlayerLifecycleCollect,
 		world: World,
+		commands: Commands,
 		registry: ResMut<PlayerRegistry>,
 		arena: Res<ArenaState>,
 	) {
@@ -28,7 +29,7 @@ export class ApplyPlayerLifecycleIngress {
 			} else if (event.kind === "playerRemoving") {
 				const entity = registry.entitiesByUserId.get(event.userId);
 				if (entity !== undefined) {
-					world.despawn(entity);
+					commands.despawn(entity);
 					registry.entitiesByUserId.delete(event.userId);
 				}
 				registry.charactersByUserId.delete(event.userId);
