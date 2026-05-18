@@ -1,0 +1,103 @@
+{
+	"name": "rovy-ui-inventory-game",
+	"globIgnorePaths": [
+		"**/package.json",
+		"**/tsconfig.json"
+	],
+	"tree": {
+		"$className": "DataModel",
+		"ServerScriptService": {
+			"$className": "ServerScriptService",
+			"TS": {
+				"$path": "out/server"
+			}
+		},
+		"ReplicatedStorage": {
+			"$className": "ReplicatedStorage",
+			"rbxts_include": {
+				"$path": "include",
+				"node_modules": {
+					"$className": "Folder",
+					"@rbxts": {
+						"$path": "node_modules/@rbxts"
+					},
+					"@rovy": {
+						"$path": "node_modules/@rovy"
+					}
+				}
+			},
+			"TS": {
+				"$path": "out/shared"
+			}
+		},
+		"StarterPlayer": {
+			"$className": "StarterPlayer",
+			"StarterPlayerScripts": {
+				"$className": "StarterPlayerScripts",
+				"TS": {
+					"$path": "out/client"
+				}
+			}
+		},
+		"Workspace": {
+			"$className": "Workspace",
+			"$properties": {
+				"FilteringEnabled": true
+			},
+			"Baseplate": {
+				"$className": "Part",
+				"$properties": {
+					"Anchored": true,
+					"Color": [
+						0.38823529411764707,
+						0.37254901960784315,
+						0.34509803921568627
+					],
+					"Locked": true,
+					"Material": "Concrete",
+					"Position": [
+						0,
+						-0.5,
+						0
+					],
+					"Size": [
+						512,
+						1,
+						512
+					]
+				}
+			},
+			"SpawnLocation": {
+				"$className": "SpawnLocation",
+				"$properties": {
+					"Anchored": true,
+					"CanCollide": true,
+					"Duration": 0,
+					"Neutral": true,
+					"Position": [
+						0,
+						3,
+						0
+					],
+					"Size": [
+						6,
+						1,
+						6
+					]
+				}
+			}
+		},
+		"HttpService": {
+			"$className": "HttpService",
+			"$properties": {
+				"HttpEnabled": true
+			}
+		},
+		"SoundService": {
+			"$className": "SoundService",
+			"$properties": {
+				"RespectFilteringEnabled": true
+			}
+		}
+	}
+}

@@ -25,6 +25,7 @@ STUDIO_PROCESS_NAME = "RobloxStudio"
 
 RBXL: dict[str, Path] = {
     "example": ROOT / "build" / "rovy-example.rbxl",
+    "ui-inventory": ROOT / "build" / "rovy-ui-inventory-game.rbxl",
     "zombie": ROOT / "build" / "rovy-zombie-game.rbxl",
 }
 

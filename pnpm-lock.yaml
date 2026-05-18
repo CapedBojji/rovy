@@ -80,6 +80,55 @@ importers:
         specifier: 5.5.3
         version: 5.5.3
 
+  examples/ui-inventory-game:
+    dependencies:
+      '@rbxts/jecs':
+        specifier: ^0.11.0
+        version: 0.11.0
+      '@rovy/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@rovy/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+    devDependencies:
+      '@rbxts/compiler-types':
+        specifier: 3.0.0-types.0
+        version: 3.0.0-types.0
+      '@rbxts/types':
+        specifier: ^1.0.920
+        version: 1.0.920
+      '@typescript-eslint/eslint-plugin':
+        specifier: ^8.59.3
+        version: 8.59.3(@typescript-eslint/parser@8.59.3(eslint@10.4.0)(typescript@5.5.3))(eslint@10.4.0)(typescript@5.5.3)
+      '@typescript-eslint/parser':
+        specifier: ^8.59.3
+        version: 8.59.3(eslint@10.4.0)(typescript@5.5.3)
+      eslint:
+        specifier: ^10.3.0
+        version: 10.4.0
+      eslint-config-prettier:
+        specifier: ^10.1.8
+        version: 10.1.8(eslint@10.4.0)
+      eslint-plugin-prettier:
+        specifier: ^5.5.5
+        version: 5.5.5(eslint-config-prettier@10.1.8(eslint@10.4.0))(eslint@10.4.0)(prettier@3.8.3)
+      eslint-plugin-roblox-ts:
+        specifier: ^1.4.0
+        version: 1.4.0(@typescript-eslint/parser@8.59.3(eslint@10.4.0)(typescript@5.5.3))(eslint@10.4.0)(typescript@5.5.3)
+      prettier:
+        specifier: ^3.8.3
+        version: 3.8.3
+      roblox-ts:
+        specifier: ^3.0.0
+        version: 3.0.0
+      rovy-transformer:
+        specifier: workspace:*
+        version: link:../../packages/transformer
+      typescript:
+        specifier: 5.5.3
+        version: 5.5.3
+
   examples/zombie-game:
     dependencies:
       '@rbxts/egooe':

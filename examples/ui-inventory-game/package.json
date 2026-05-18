@@ -1,0 +1,45 @@
+{
+  "name": "@rovy/example-ui-inventory-game",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Rovy UI inventory example with system-owned rendering.",
+  "main": "index.js",
+  "scripts": {
+    "build": "rbxtsc --type game",
+    "watch": "rbxtsc --type game -w",
+    "build:place": "pnpm run build && mkdir -p ../../build && rojo build default.project.json -o ../../build/rovy-ui-inventory-game.rbxl",
+    "test:output": "node test/assert-output.js",
+    "test:luau": "lune run test/smoke",
+    "test:place": "node test/assert-place.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "^11.1.2",
+      "onFail": "download"
+    }
+  },
+  "type": "module",
+  "dependencies": {
+    "@rbxts/jecs": "^0.11.0",
+    "@rovy/core": "workspace:*",
+    "@rovy/ui": "workspace:*"
+  },
+  "devDependencies": {
+    "@rbxts/compiler-types": "3.0.0-types.0",
+    "@rbxts/types": "^1.0.920",
+    "@typescript-eslint/eslint-plugin": "^8.59.3",
+    "@typescript-eslint/parser": "^8.59.3",
+    "eslint": "^10.3.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "eslint-plugin-roblox-ts": "^1.4.0",
+    "prettier": "^3.8.3",
+    "roblox-ts": "^3.0.0",
+    "rovy-transformer": "workspace:*",
+    "typescript": "5.5.3"
+  }
+}

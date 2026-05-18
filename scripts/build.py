@@ -26,6 +26,16 @@ TARGETS: dict[str, dict] = {
         "rbxl": ROOT / "build" / "rovy-example.rbxl",
         "example_dir": ROOT / "examples" / "roblox-ts-game",
     },
+    "ui-inventory": {
+        "packages": [
+            ["--filter", "rovy-transformer", "build"],
+            ["--filter", "@rovy/core", "build"],
+            ["--filter", "@rovy/ui", "build"],
+            ["--filter", "@rovy/example-ui-inventory-game", "build:place"],
+        ],
+        "rbxl": ROOT / "build" / "rovy-ui-inventory-game.rbxl",
+        "example_dir": ROOT / "examples" / "ui-inventory-game",
+    },
     "zombie": {
         "packages": [
             ["--filter", "rovy-transformer", "build"],

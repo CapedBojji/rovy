@@ -17,11 +17,15 @@
     "open:example": "python3 scripts/start.py open example",
     "dev:example": "python3 scripts/start.py example",
     "test:integration": "pnpm --filter rovy-transformer build && pnpm --filter @rovy/core build && pnpm --filter @rovy/example-gameclock build && pnpm --filter @rovy/example-game test:output && pnpm --filter @rovy/example-game test:luau && pnpm --filter @rovy/example-game test:place",
+    "build:ui-inventory": "python3 scripts/build.py ui-inventory",
+    "open:ui-inventory": "python3 scripts/start.py open ui-inventory",
+    "dev:ui-inventory": "python3 scripts/start.py ui-inventory",
+    "test:ui-inventory": "pnpm run build:ui-inventory && pnpm --filter @rovy/example-ui-inventory-game test:output && pnpm --filter @rovy/example-ui-inventory-game test:luau && pnpm --filter @rovy/example-ui-inventory-game test:place",
     "build:zombie": "python3 scripts/build.py zombie",
     "open:zombie": "python3 scripts/start.py open zombie",
     "dev:zombie": "python3 scripts/start.py zombie",
     "test:zombie": "pnpm run build:zombie && pnpm --filter @rovy/example-zombie-game test:output && pnpm --filter @rovy/example-zombie-game test:luau && pnpm --filter @rovy/example-zombie-game test:place",
-    "build:examples": "pnpm run build:example && pnpm run build:zombie"
+    "build:examples": "pnpm run build:example && pnpm run build:ui-inventory && pnpm run build:zombie"
   },
   "devDependencies": {
     "typescript": "5.5.3"
