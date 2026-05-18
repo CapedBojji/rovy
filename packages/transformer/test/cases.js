@@ -54,6 +54,7 @@ import {
 	netEvent,
 	rovyNet,
 } from "@rovy/networking";
+import RovyUi, { Style, StyleScope, button, scope, useEffect, useInstance, useState } from "@rovy/ui";
 `;
 
 runCase("bare decorators inject registry calls", () => {
@@ -252,6 +253,144 @@ ${header}
 	assert.match(result.printed, /__resource\(InboxRefs, "src\/main@InboxRefs", \{[\s\S]*collectorRefs: \[\s*\{ key: "inbox", ctor: FireInbox \}\s*\]/);
 	assert.match(result.printed, /inbox = undefined as unknown as FireInbox/);
 	assert.doesNotMatch(result.printed, /\$collectRef<FireInbox>\(\)/);
+});
+
+runCase("JSDoc widget functions register and plain calls lower", () => {
+	const result = compileFixture(`
+${header}
+@resource class Theme { constructor(public title = "HUD") {} }
+
+/** @widget */
+export function Window(theme: Res<Theme>, options: { title: string }): void {
+	print(theme.title, options.title);
+}
+
+export function draw() {
+	Window({ title: "Inventory" });
+}
+`);
+	assertNoDiagnostics(result, "widget lowering");
+	assert.match(result.printed, /Window = RovyUi\.__widget\(Window,/);
+	assert.match(result.printed, /id: "src\/main@Window"/);
+	assert.match(result.printed, /name: "Window"/);
+	assert.match(result.printed, /kind: "res", ctor: Theme/);
+	assert.match(result.printed, /RovyUi\.__callWidget\(Window, "src\/main:0", \[\{ title: "Inventory" \}\]\)/);
+});
+
+runCase("JSDoc widget functions can use overloads for clean call signatures", () => {
+	const result = compileFixture(`
+${header}
+@resource class Theme { constructor(public title = "HUD") {} }
+
+/** @widget */
+export function Window(options: { title: string }): void;
+export function Window(theme: Res<Theme>, options?: { title: string }): void {
+	if (options) print(theme.title, options.title);
+}
+
+export function draw() {
+	Window({ title: "Inventory" });
+}
+`);
+	assertNoDiagnostics(result, "widget overload lowering");
+	assert.match(result.printed, /Window = RovyUi\.__widget\(Window,/);
+	assert.match(result.printed, /RovyUi\.__callWidget\(Window, "src\/main:0", \[\{ title: "Inventory" \}\]\)/);
+});
+
+runCase("widget state helpers remain public calls inside lowered widget", () => {
+	const result = compileFixture(`
+${header}
+/** @widget */
+export function Counter(): void {
+	const [count, setCount] = useState(0);
+	setCount(count + 1);
+}
+`);
+	assertNoDiagnostics(result, "widget state helper");
+	assert.match(result.printed, /RovyUi\.__useState\("src\/main:0", 0\)/);
+	assert.match(result.printed, /Counter = RovyUi\.__widget\(Counter,/);
+});
+
+runCase("UI built-in widgets and helpers lower with compile keys", () => {
+	const result = compileFixture(`
+${header}
+export function draw() {
+	const [count] = useState(0);
+	useEffect(() => {}, count);
+	useInstance((ref) => new Instance("Frame"));
+	scope(() => {
+		button("Named");
+		RovyUi.label("Namespaced");
+	});
+}
+`);
+	assertNoDiagnostics(result, "ui compile keys");
+	assert.match(result.printed, /RovyUi\.__useState\("src\/main:0", 0\)/);
+	assert.match(result.printed, /RovyUi\.__useEffect\("src\/main:1", \(\) => \{ \}, count\)/);
+	assert.match(result.printed, /RovyUi\.__useInstance\("src\/main:2", \(ref\) => new Instance\("Frame"\)\)/);
+	assert.match(result.printed, /RovyUi\.__scope\("src\/main:3", \(\) =>/);
+	assert.match(result.printed, /RovyUi\.__callWidget\(button, "src\/main:4", \["Named"\]\)/);
+	assert.match(result.printed, /RovyUi\.__callWidget\(RovyUi\.label, "src\/main:5", \["Namespaced"\]\)/);
+});
+
+runCase("widget style param lowers to active style lookup", () => {
+	const result = compileFixture(`
+${header}
+/** @widget */
+export function Label(style: Style, options: { text: string }): void {
+	print(style.textColor, options.text);
+}
+`);
+	assertNoDiagnostics(result, "widget style lowering");
+	assert.match(result.printed, /function Label\(options: \{ text: string; \}\): void \{ const style = RovyUi\.getActiveStyle\(\); print\(style\.textColor, options\.text\); \}/);
+	assert.match(result.printed, /params: \[\]/);
+});
+
+runCase("StyleScope lowers to RovyUi.withStyleScope", () => {
+	const result = compileFixture(`
+${header}
+export function draw() {
+	StyleScope({ patch: { textColor: Color3.fromRGB(255, 220, 120) }, discriminator: "rare" }, () => {
+		print("inside");
+	});
+}
+`);
+	assertNoDiagnostics(result, "StyleScope lowering");
+	assert.match(result.printed, /RovyUi\.__withStyleScope\("src\/main:0", \{ patch: \{ textColor: Color3\.fromRGB\(255, 220, 120\) \}, discriminator: "rare" \}, \(\) =>/);
+});
+
+runCase("widget declaration without same-file implementation emits diagnostic", () => {
+	const result = compileFixture(`
+${header}
+/** @widget */
+export function Missing(options: { title: string }): void;
+`);
+	assert.match(result.diagnostics.join("\n"), /@widget caller 'Missing' requires a same-file implementation/);
+});
+
+runCase("widget injected params must precede call args", () => {
+	const result = compileFixture(`
+${header}
+@resource class Theme { constructor(public title = "HUD") {} }
+
+/** @widget */
+export function Window(options: { title: string }, theme: Res<Theme>): void {
+	print(theme.title, options.title);
+}
+`);
+	assert.match(result.diagnostics.join("\n"), /@widget injected params must come before call args/);
+});
+
+runCase("Local params on widgets are treated as call args, not injected state", () => {
+	const result = compileFixture(`
+${header}
+/** @widget */
+export function Window(_state: Local<{ count: number }>): void {
+	print("state is a caller arg");
+}
+`);
+	assertNoDiagnostics(result, "widget Local call arg");
+	assert.match(result.printed, /params: \[\]/);
 });
 
 runCase("system query and injection params lower into descriptors", () => {

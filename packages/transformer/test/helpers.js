@@ -25,7 +25,47 @@ function createFixtureDir() {
 			},
 		}),
 	);
+	writeRovyUiStub(temp);
 	return { temp, src, rojo: path.join(temp, "test.project.json") };
+}
+
+// The transformer reads the `/** @widget */` JSDoc tag off the resolved
+// `@rovy/ui` declaration to decide which built-in calls get a callsite key.
+// Fixture temp dirs have no node_modules, so provide a minimal tagged stub
+// that mirrors the real package surface.
+const ROVY_UI_WIDGETS = [
+	"window", "button", "checkbox", "slider", "input", "label", "heading",
+	"separator", "row", "space", "portal", "radioButton", "selectableLabel",
+	"comboBox", "dragValue", "progressBar", "collapsingHeader", "toggle",
+	"clickableLabel", "modal", "popup", "childWindow", "table", "tableRow",
+	"tableCell", "demoWindow",
+];
+
+function writeRovyUiStub(temp) {
+	const dir = path.join(temp, "node_modules", "@rovy", "ui");
+	fs.mkdirSync(dir, { recursive: true });
+	fs.writeFileSync(
+		path.join(dir, "package.json"),
+		JSON.stringify({ name: "@rovy/ui", version: "0.0.0", types: "index.d.ts" }),
+	);
+	const lines = [
+		"export interface Style { [key: string]: unknown; }",
+		"export interface StyleScopeOptions { patch: Partial<Style>; discriminator?: string | number; }",
+		"export declare function scope<T>(fn: () => T): T;",
+		"export declare function StyleScope<T>(options: StyleScopeOptions, fn: () => T): T;",
+		"export declare function withStyleScope<T>(options: StyleScopeOptions, fn: () => T): T;",
+		"export declare function useState<T>(initial: T): [T, (next: T) => void];",
+		"export declare function useEffect(fn: () => void, ...deps: unknown[]): void;",
+		"export declare function useInstance<T>(creator: (ref: Record<string, unknown>) => unknown): T;",
+	];
+	for (const name of ROVY_UI_WIDGETS) {
+		lines.push(`/** @widget */`);
+		lines.push(`export declare const ${name}: (...args: any[]) => any;`);
+	}
+	const objectMembers = ROVY_UI_WIDGETS.map((name) => `${name}: typeof ${name};`).join(" ");
+	lines.push(`declare const RovyUi: { ${objectMembers} };`);
+	lines.push("export default RovyUi;");
+	fs.writeFileSync(path.join(dir, "index.d.ts"), lines.join("\n") + "\n");
 }
 
 function createProgram(entryPath, rootDir, currentDirectory) {
