@@ -13,6 +13,8 @@ import { CommandsImpl } from "./commands";
 import { EventReaderHandle, EventRegistry, EventWriterHandle, wireEvents } from "./events";
 import { flush } from "./flush";
 import { runAppExtensions } from "./extensions";
+import type { Plugin } from "./plugin";
+import { logRegistry, resolvePluginName } from "./log-registry";
 import { MonitorRegistry } from "./monitors";
 import { buildQueryHandle } from "./query";
 import { TraitQueryHandle, descriptorUsesTraits } from "./traits";
@@ -34,8 +36,9 @@ export class App {
 	/** Overrides supplied before start(); applied after resource registration. */
 	private resourceOverrides = new Map<Ctor, object>();
 
-	/** Plugin support is Phase 11 — accepted now, build() invoked at start. */
-	private plugins: Array<{ build(app: App): void }> = [];
+	private plugins: Array<Plugin> = [];
+	private pluginNames: Array<string> = [];
+	logRegistryAtStart = false;
 
 	constructor() {
 		this.commands = new CommandsImpl(this.world);
@@ -70,7 +73,8 @@ export class App {
 		return this;
 	}
 
-	addPlugin(plugin: { build(app: App): void }): this {
+	addPlugin(plugin: Plugin): this {
+		this.pluginNames.push(resolvePluginName(plugin));
 		this.plugins.push(plugin);
 		return this;
 	}
@@ -114,6 +118,7 @@ export class App {
 			plugin.build(this);
 		}
 		runAppExtensions(this, reg);
+		if (this.logRegistryAtStart) logRegistry(reg, this.pluginNames, this.externalParams);
 
 		// 1. components → jecs ids + change-detection hooks
 		for (const entry of reg.components) {

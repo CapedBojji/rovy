@@ -311,6 +311,17 @@ Spec to keep open while implementing: `docs/19-compiled-output.md`, `docs/20-run
 - [ ] Add regression coverage that normal component/tag bundle handling still works after prefab detection lands
 - [ ] **Exit:** docs match runtime reality and prefab additions do not regress collectors/resources/system injection or normal bundle behavior
 
+## ⬜ Phase 20 — Plugin API surface + docs + example
+
+- [x] Add `Plugin` interface to `packages/core/src/runtime/plugin.ts`
+- [x] Update `app.ts` to use `Plugin` type (replace anonymous duck-type)
+- [x] Export `Plugin` from `packages/core/src/index.ts`
+- [x] Write `docs/25-plugins.md`
+- [x] Add `examples/plugin-example/` (`@rovy/example-gameclock` roblox-ts package)
+- [x] Update `examples/roblox-ts-game` to consume plugin via `app.addPlugin`
+- [ ] Verify both examples build clean with `rbxtsc`
+- [ ] **Exit:** `Plugin` exported from `@rovy/core`; plugin-example package builds; roblox-ts-game shows explicit `addPlugin` usage; docs cover full authoring model
+
 ---
 
 ## Risks

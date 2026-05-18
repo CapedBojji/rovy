@@ -48,6 +48,7 @@ export { MonitorRegistry } from "./runtime/monitors";
 export { TraitQueryHandle } from "./runtime/traits";
 export { RelationQueryHandle } from "./runtime/relations";
 export { registerAppExtension, runAppExtensions, resetAppExtensions } from "./runtime/extensions";
+export type { Plugin } from "./runtime/plugin";
 
 // Frozen transformer↔runtime contract.
 export * from "./contract";
