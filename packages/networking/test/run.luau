@@ -3,12 +3,11 @@
 -- test/specs/*.luau against the compiled `out/`. Exits nonzero on failure.
 -- Usage: `pnpm --filter @rovy/networking test`
 
-local process = zune.process
-
 local runner = require("../../../test/luau/harness/spec_runner")
 
-process.exit(runner.run({
-	runtimeModule = "./harness/runtime",
+runner.run({
+	runtimeModule = "../../../packages/networking/test/harness/runtime",
 	loadPath = "out/init",
+	specsRequirePrefix = "../../../packages/networking/test/specs/",
 	successMessage = "ok  harness loaded out/init",
-}))
+})

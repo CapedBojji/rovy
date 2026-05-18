@@ -9,7 +9,7 @@
     "watch": "pnpm --dir ../../packages/transformer exec node scripts/watch-blink.js ../../examples/zombie-game",
     "build:place": "pnpm run build && mkdir -p ../../build && rojo build default.project.json -o ../../build/rovy-zombie-game.rbxl",
     "test:output": "node test/assert-output.js",
-    "test:luau": "zune run test/smoke",
+    "test:luau": "zune test test/smoke",
     "test:place": "node test/assert-place.js"
   },
   "keywords": [],

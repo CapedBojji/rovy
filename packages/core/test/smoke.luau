@@ -5,9 +5,7 @@
 -- runtime (the published .d.ts only types 3). Run: `zune run test/smoke`.
 
 local jecs = require("../node_modules/@rbxts/jecs/src/jecs")
-local process = zune.process
 local testing = zune.testing
-local testingHarness = require("../../../test/luau/harness/testing")
 local expect = testing.expect
 
 testing.test("core substrate smoke", function()
@@ -62,5 +60,3 @@ testing.test("core substrate smoke", function()
 	local rec = jecs.record(world, a) :: any
 	expect(rec ~= nil and rec.archetype ~= nil).toBeTruthy()
 end)
-
-process.exit(testingHarness.failedCount())

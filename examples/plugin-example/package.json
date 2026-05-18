@@ -6,7 +6,7 @@
   "types": "out/index.d.ts",
   "license": "MIT",
   "scripts": {
-    "build": "pnpm --filter @rovy/core build && rbxtsc",
+    "build": "corepack pnpm@10.17.1 --filter @rovy/core build && rbxtsc",
     "dev": "rbxtsc -w"
   },
   "files": [

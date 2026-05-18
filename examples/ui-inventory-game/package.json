@@ -9,7 +9,7 @@
     "watch": "rbxtsc --type game -w",
     "build:place": "pnpm run build && mkdir -p ../../build && rojo build default.project.json -o ../../build/rovy-ui-inventory-game.rbxl",
     "test:output": "node test/assert-output.js",
-    "test:luau": "zune run test/smoke",
+    "test:luau": "zune test test/smoke",
     "test:place": "node test/assert-place.js"
   },
   "keywords": [],
