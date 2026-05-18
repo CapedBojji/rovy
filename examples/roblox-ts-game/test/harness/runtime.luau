@@ -165,6 +165,7 @@ end
 ensureRoot("out")
 ensureRoot("node_modules/@rbxts")
 ensureRepoRoot("packages/core")
+ensureRepoRoot("examples/plugin-example")
 
 local replicatedStorage = newNode(ROOT .. "/$services/ReplicatedStorage", "ReplicatedStorage")
 replicatedStorage.children.TS = treeIndex(ROOT .. "/out/shared")
@@ -187,6 +188,9 @@ nodeModules.children["@rovy"] = rovyScope
 local rovyCore = treeIndex(REPO .. "/packages/core/out")
 assert(rovyCore, "rovy example harness: missing packages/core/out")
 rovyScope.children["rovy-core"] = rovyCore
+local gameClockPlugin = treeIndex(REPO .. "/examples/plugin-example")
+assert(gameClockPlugin, "rovy example harness: missing examples/plugin-example")
+rovyScope.children["example-gameclock"] = gameClockPlugin
 
 local gameObject = roblox.createGame({
 	ReplicatedStorage = replicatedStorage,
@@ -202,11 +206,14 @@ local function loadModule(node): any
 	end
 	local fsPath = rawget(node, "__file")
 	assert(fsPath, "rovy example harness: not a ModuleScript: " .. tostring(rawget(node, "__path")))
-	local cached = moduleCache[fsPath]
-	if cached ~= nil then
-		return cached.value
+	local shouldCache = not (string.find(fsPath, "/examples/plugin-example/out/", 1, true) ~= nil)
+	if shouldCache then
+		local cached = moduleCache[fsPath]
+		if cached ~= nil then
+			return cached.value
+		end
+		moduleCache[fsPath] = { value = nil }
 	end
-	moduleCache[fsPath] = { value = nil }
 
 	local src = fs.readFile(fsPath)
 	local scriptNode = node
@@ -245,7 +252,9 @@ local function loadModule(node): any
 
 	local chunk = luau.load(luau.compile(src), { chunk_name = fsPath, env = env })
 	local value = chunk()
-	moduleCache[fsPath] = { value = value }
+	if shouldCache then
+		moduleCache[fsPath] = { value = value }
+	end
 	return value
 end
 

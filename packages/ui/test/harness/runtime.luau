@@ -172,10 +172,33 @@ end
 
 local allInstances = {}
 local FakeInstance = {}
+local signalKeys = {
+	Changed = true,
+	Destroying = true,
+	AncestryChanged = true,
+	Heartbeat = true,
+	RenderStepped = true,
+	Stepped = true,
+	MouseButton1Click = true,
+	MouseButton1Down = true,
+	MouseButton1Up = true,
+	MouseEnter = true,
+	MouseLeave = true,
+	InputBegan = true,
+	InputChanged = true,
+	InputEnded = true,
+}
 FakeInstance.__index = function(self, key)
 	local value = rawget(FakeInstance, key)
 	if value ~= nil then
 		return value
+	end
+	local existing = rawget(self, key)
+	if existing ~= nil then
+		return existing
+	end
+	if signalKeys[key] ~= true then
+		return nil
 	end
 	local events = rawget(self, "__events")
 	if events[key] == nil then

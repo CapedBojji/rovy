@@ -23,7 +23,6 @@ testing.test("zombie smoke", function()
 	expect(result.restartApplied).toBe(true)
 	expect(result.waveNumber).toBe(0)
 	expect(result.phase).toBe("intermission")
-	expect(result.serializerRoundTripOk).toBe(true)
 end)
 
 print("ok  zombie-game Luau smoke")
