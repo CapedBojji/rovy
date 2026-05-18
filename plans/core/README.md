@@ -62,6 +62,8 @@ Keep these specs nearby while working:
 
 ### Milestone 7 — UI Docs / Widget Model (Planned)
 
+Future UI work is docs-first for now: full Roblox TS authoring, one JSDoc-tagged widget function per widget, plain calls like `Window(args)`, wrapped through `RovyUi.__widget(...)`, `style: Style` lowered to `RovyUi.getActiveStyle()`, and temporary style changes expressed through callback-bounded `StyleScope(...)`, with no public widget classes or hook model.
+
 - [Phase 21](/Users/reikan404/Documents/rovy/plans/core/phases/phase-21.md)
 - [Phase 22](/Users/reikan404/Documents/rovy/plans/core/phases/phase-22.md)
 - [Phase 23](/Users/reikan404/Documents/rovy/plans/core/phases/phase-23.md)

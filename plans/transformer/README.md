@@ -8,6 +8,8 @@
 
 `@rovy/core` is implemented and the transformer/runtime boundary is frozen in `packages/core/src/contract.ts`. The transformer must emit registry calls matching that contract, even where older docs still show conceptual snippets.
 
+Planned UI docs currently lock a separate, function-first contract for `@rovy/ui`: JSDoc-tagged widget functions, wrapping through `RovyUi.__widget(...)`, `style: Style` lowered to `RovyUi.getActiveStyle()`, and callback-bounded `StyleScope(...)` for temporary style changes.
+
 Main doc references:
 
 - [docs/10-transformer.md](/Users/reikan404/Documents/rovy/docs/10-transformer.md)
