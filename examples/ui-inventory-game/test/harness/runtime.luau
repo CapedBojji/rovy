@@ -3,6 +3,7 @@ local fs = require("@lune/fs")
 local luau = require("@lune/luau")
 local task = require("@lune/task")
 local process = require("@lune/process")
+local roblox = require("../../../test/luau/harness/roblox")
 
 local TS = {}
 local moduleCache: { [string]: { value: any } } = {}
@@ -71,13 +72,7 @@ end
 local ROOT = normalize((process.cwd :: string):gsub("[/\\]+$", ""))
 local REPO = normalize(ROOT .. "/../..")
 
-local function signal()
-	return {
-		Connect = function(_self, _fn)
-			return { Disconnect = function() end }
-		end,
-	}
-end
+local signal = roblox.createSignal
 
 local FakeInstance = {}
 FakeInstance.__index = function(self, key)
@@ -336,30 +331,20 @@ local playersService = {
 	LocalPlayer = localPlayer,
 }
 
-local runService = {
-	RenderStepped = signal(),
-}
+local runService = roblox.createRunService()
+local stepper = roblox.createStepper(runService)
 
 local workspaceService = newInstance("Workspace")
 workspaceService.Name = "Workspace"
 
-local gameObject = {}
-function gameObject:GetService(name: string)
-	if name == "ReplicatedStorage" then
-		return replicatedStorage
-	elseif name == "ServerScriptService" then
-		return serverScriptService
-	elseif name == "StarterPlayer" then
-		return starterPlayer
-	elseif name == "Players" then
-		return playersService
-	elseif name == "RunService" then
-		return runService
-	elseif name == "Workspace" then
-		return workspaceService
-	end
-	error("unknown fake service: " .. name)
-end
+local gameObject = roblox.createGame({
+	ReplicatedStorage = replicatedStorage,
+	ServerScriptService = serverScriptService,
+	StarterPlayer = starterPlayer,
+	Players = playersService,
+	RunService = runService,
+	Workspace = workspaceService,
+})
 
 local sharedG = setmetatable(fakeGlobals, { __index = _G })
 
@@ -473,6 +458,14 @@ function TS.loadPath(relPath: string)
 	local n = treeIndex(ROOT .. "/" .. relPath) or treeIndex(ROOT .. "/" .. relPath .. ".luau")
 	assert(n, "ui inventory harness: no module at " .. relPath)
 	return loadModule(n)
+end
+
+function TS.step(dt: number?)
+	stepper.step(dt)
+end
+
+function TS.stepN(count: number, dt: number?)
+	stepper.stepN(count, dt)
 end
 
 return TS

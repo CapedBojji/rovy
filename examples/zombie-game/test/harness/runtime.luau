@@ -3,6 +3,7 @@ local fs = require("@lune/fs")
 local luau = require("@lune/luau")
 local task = require("@lune/task")
 local process = require("@lune/process")
+local roblox = require("../../../test/luau/harness/roblox")
 
 local TS = {}
 local moduleCache: { [string]: { value: any } } = {}
@@ -132,29 +133,7 @@ local function newNode(path: string, className: string?)
 	return setmetatable({ __path = normalize(path), __file = nil, __className = className or "Folder", children = {} }, Node)
 end
 
-local function newSignal()
-	local listeners = {}
-	return {
-		Connect = function(_self, fn)
-			table.insert(listeners, fn)
-			return {
-				Disconnect = function()
-					for i = #listeners, 1, -1 do
-						if listeners[i] == fn then
-							table.remove(listeners, i)
-							break
-						end
-					end
-				end,
-			}
-		end,
-		Fire = function(_self, ...)
-			for _, fn in listeners do
-				fn(...)
-			end
-		end,
-	}
-end
+local newSignal = roblox.createSignal
 
 local function newRemote(path: string, name: string)
 	local remote = newNode(path, "RemoteEvent")
@@ -328,17 +307,11 @@ local rovyNetworking = treeIndex(REPO .. "/packages/networking")
 assert(rovyNetworking, "rovy example harness: missing packages/networking")
 rovyScope.children.networking = rovyNetworking
 
-local gameObject = {}
-function gameObject:GetService(name: string)
-	if name == "ReplicatedStorage" then
-		return replicatedStorage
-	elseif name == "ServerScriptService" then
-		return serverScriptService
-	elseif name == "StarterPlayer" then
-		return starterPlayer
-	end
-	error("unknown fake service: " .. name)
-end
+local gameObject = roblox.createGame({
+	ReplicatedStorage = replicatedStorage,
+	ServerScriptService = serverScriptService,
+	StarterPlayer = starterPlayer,
+})
 
 local sharedG = setmetatable({}, { __index = _G })
 

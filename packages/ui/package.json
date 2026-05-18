@@ -8,7 +8,7 @@
   "scripts": {
     "build": "pnpm --filter @rovy/core build && rbxtsc",
     "dev": "rbxtsc -w",
-    "test": "pnpm run build && lune run test/run"
+    "test": "pnpm run build && zune run test/run"
   },
   "files": [
     "out",

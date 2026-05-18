@@ -1,5 +1,5 @@
 [tools]
-"github:lune-org/lune" = "0.10.4"
+"github:Scythe-Technology/zune" = "latest"
 "github:rojo-rbx/rojo" = "7.6.1"
 "npm:pnpm" = "11.1.2"
 "github:1Axen/blink" = "latest"

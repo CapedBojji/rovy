@@ -2,7 +2,7 @@
 -- Phase 0 substrate smoke test.
 -- Proves jecs runs headless under Lune AND empirically verifies the spike's
 -- load-bearing claim: world.added forwards a 4th `oldarchetype` arg at
--- runtime (the published .d.ts only types 3). Run: `lune run test/smoke`.
+-- runtime (the published .d.ts only types 3). Run: `zune run test/smoke`.
 
 local jecs = require("../node_modules/@rbxts/jecs/src/jecs")
 

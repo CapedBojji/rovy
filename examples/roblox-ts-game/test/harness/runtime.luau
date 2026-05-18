@@ -3,6 +3,7 @@ local fs = require("@lune/fs")
 local luau = require("@lune/luau")
 local task = require("@lune/task")
 local process = require("@lune/process")
+local roblox = require("../../../test/luau/harness/roblox")
 
 local TS = {}
 local moduleCache: { [string]: { value: any } } = {}
@@ -163,17 +164,11 @@ local rovyCore = treeIndex(REPO .. "/packages/core/out")
 assert(rovyCore, "rovy example harness: missing packages/core/out")
 rovyScope.children["rovy-core"] = rovyCore
 
-local gameObject = {}
-function gameObject:GetService(name: string)
-	if name == "ReplicatedStorage" then
-		return replicatedStorage
-	elseif name == "ServerScriptService" then
-		return serverScriptService
-	elseif name == "StarterPlayer" then
-		return starterPlayer
-	end
-	error("unknown fake service: " .. name)
-end
+local gameObject = roblox.createGame({
+	ReplicatedStorage = replicatedStorage,
+	ServerScriptService = serverScriptService,
+	StarterPlayer = starterPlayer,
+})
 
 local sharedG = setmetatable({}, { __index = _G })
 
