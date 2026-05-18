@@ -47,6 +47,8 @@ export { EventRegistry, EventReaderHandle, EventWriterHandle } from "./runtime/e
 export { MonitorRegistry } from "./runtime/monitors";
 export { TraitQueryHandle } from "./runtime/traits";
 export { RelationQueryHandle } from "./runtime/relations";
+export { resolveParams } from "./runtime/resolve-param";
+export type { ResolveCtx, LocalStore } from "./runtime/resolve-param";
 export { registerAppExtension, runAppExtensions, resetAppExtensions } from "./runtime/extensions";
 export type { Plugin } from "./runtime/plugin";
 

@@ -35,6 +35,10 @@ export class App {
 	private started = false;
 	/** Overrides supplied before start(); applied after resource registration. */
 	private resourceOverrides = new Map<Ctor, object>();
+	private readonly makeReader = (registry: EventRegistry, event: Ctor): EventReaderHandle =>
+		new EventReaderHandle(registry, event);
+	private readonly makeWriter = (registry: EventRegistry, event: Ctor): EventWriterHandle =>
+		new EventWriterHandle(registry, event);
 
 	private plugins: Array<Plugin> = [];
 	private pluginNames: Array<string> = [];
@@ -97,6 +101,12 @@ export class App {
 			this.resourceOverrides.set(getmetatable(instance) as unknown as Ctor, instance);
 		}
 		return this;
+	}
+
+	/** Build the same injection context systems use, for package-owned runtimes. */
+	createResolveCtx(lastRunTick = -1): ResolveCtx {
+		assert(this.started, "[rovy] App injection context is only available after app.start()");
+		return this.createInternalResolveCtx(new Map(), lastRunTick);
 	}
 
 	/** Finalize the registry into a live world. Must run after rovy.loadPaths. */
@@ -218,8 +228,6 @@ export class App {
 		for (const o of reg.observers) {
 			this.eventRegistry.registerObserver(o);
 		}
-		const makeReader = (r: EventRegistry, ev: Ctor) => new EventReaderHandle(r, ev);
-		const makeWriter = (r: EventRegistry, ev: Ctor) => new EventWriterHandle(r, ev);
 		const baseCtx = () => ({
 			world: this.world,
 			commands: this.commands,
@@ -227,8 +235,8 @@ export class App {
 			externalParams: this.externalParams,
 			queries: this.scheduler.queries,
 			events: this.eventRegistry,
-			makeReader,
-			makeWriter,
+			makeReader: this.makeReader,
+			makeWriter: this.makeWriter,
 			lastRunTick: -1,
 		});
 		this.eventRegistry.resolveBase = baseCtx;
@@ -244,7 +252,7 @@ export class App {
 			const inst = pe.instance as { __rovyTarget: Entity };
 			const savedTarget = inst.__rovyTarget;
 			(inst as { __rovyTarget: Entity }).__rovyTarget = entity;
-			const ctx: ResolveCtx = { ...(baseCtx() as ResolveCtx), locals: new Map() };
+			const ctx = this.createInternalResolveCtx(new Map());
 			const args = resolveParams(pe.params, ctx);
 			const buildFn = (inst as unknown as Record<string, (self: object, ...a: unknown[]) => Entity>).build;
 			const returned = buildFn(inst, ...args);
@@ -255,8 +263,8 @@ export class App {
 		this.scheduler.collectors = this.collectors;
 		this.scheduler.externalParams = this.externalParams;
 		this.scheduler.events = this.eventRegistry;
-		this.scheduler.makeReader = makeReader;
-		this.scheduler.makeWriter = makeWriter;
+		this.scheduler.makeReader = this.makeReader;
+		this.scheduler.makeWriter = this.makeWriter;
 		wireEvents(this.eventRegistry, this.commands, this.world);
 
 		// 5. monitors (public cached-query reconcile; see monitors.ts)
@@ -314,5 +322,20 @@ export class App {
 	/** True once finalize has run. */
 	isStarted(): boolean {
 		return this.started;
+	}
+
+	private createInternalResolveCtx(locals: Map<number, unknown>, lastRunTick = -1): ResolveCtx {
+		return {
+			world: this.world,
+			commands: this.commands,
+			collectors: this.collectors,
+			externalParams: this.externalParams,
+			locals,
+			queries: this.scheduler.queries,
+			events: this.eventRegistry,
+			makeReader: this.makeReader,
+			makeWriter: this.makeWriter,
+			lastRunTick,
+		};
 	}
 }
