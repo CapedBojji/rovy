@@ -59,6 +59,15 @@ export function importNamed(moduleName: string, exportedName: string, localName:
 	);
 }
 
+export function importDefault(moduleName: string, localName: string): ts.ImportDeclaration {
+	return ts.factory.createImportDeclaration(
+		undefined,
+		ts.factory.createImportClause(false, id(localName), undefined),
+		str(moduleName),
+		undefined,
+	);
+}
+
 export function propertyValue(object: ts.ObjectLiteralExpression | undefined, name: string): ts.Expression | undefined {
 	if (!object) return undefined;
 	for (const property of object.properties) {

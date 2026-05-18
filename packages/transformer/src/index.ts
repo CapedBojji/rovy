@@ -42,6 +42,12 @@ const DECORATORS = new Set([
 
 type MonitorMethod = "onEnter" | "onExit" | "onChange";
 
+const UI_KEYED_HELPERS = new Map([
+	["useState", "__useState"],
+	["useEffect", "__useEffect"],
+	["useInstance", "__useInstance"],
+]);
+
 interface DecoratorInfo {
 	readonly name: string;
 	readonly node: ts.Decorator;
@@ -59,6 +65,12 @@ interface ParamBuild {
 	readonly queryStatements: readonly ts.Statement[];
 }
 
+interface WidgetCallerInfo {
+	readonly implementation: ts.FunctionDeclaration;
+	readonly params: ParamBuild;
+	readonly hasStyleParam: boolean;
+}
+
 export default function rovyTransformer(
 	program: ts.Program,
 	config: TransformerConfig = {},
@@ -72,7 +84,8 @@ export default function rovyTransformer(
 
 function transformSourceFile(state: TransformState, sourceFile: ts.SourceFile): ts.SourceFile {
 	maybeGenerateNetArtifacts(state, sourceFile);
-	const visitor = createVisitor(state, sourceFile);
+	const widgetCallers = collectWidgetCallers(state, sourceFile);
+	const visitor = createVisitor(state, sourceFile, widgetCallers);
 	const statements: ts.Statement[] = [];
 	const runtimeConfig = state.netRuntimeConfigStatement(sourceFile);
 	if (runtimeConfig) statements.push(runtimeConfig);
@@ -81,6 +94,23 @@ function transformSourceFile(state: TransformState, sourceFile: ts.SourceFile): 
 		if (ts.isClassDeclaration(statement)) {
 			const transformed = transformClass(state, sourceFile, statement, visitor);
 			statements.push(...transformed);
+		} else if (ts.isFunctionDeclaration(statement)) {
+			const widget = statement.name ? widgetCallers.get(statement.name.text) : undefined;
+			const visited =
+				widget && widget.implementation === statement
+					? transformWidgetFunction(state, sourceFile, statement, visitor)
+					: ts.visitNode(statement, visitor, ts.isStatement);
+			if (visited) statements.push(visited);
+			if (widget && widget.implementation === statement && statement.name) {
+				const widgetId = classScopedId(state.stableIdForNode(statement), statement.name.text);
+				statements.push(
+					...widget.params.queryStatements,
+					assignWidget(statement.name, state.addRovyUiImport(sourceFile), [
+						statement.name,
+						buildWidgetMeta(widgetId, statement.name.text, widget.params),
+					]),
+				);
+			}
 		} else {
 			const visited = ts.visitNode(statement, visitor, ts.isStatement);
 			if (visited) statements.push(visited);
@@ -158,10 +188,14 @@ function dirname(value: string): string {
 	return value.replace(/\/[^/]+$/, "");
 }
 
-function createVisitor(state: TransformState, sourceFile: ts.SourceFile): ts.Visitor {
+function createVisitor(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	widgetCallers: ReadonlyMap<string, WidgetCallerInfo>,
+): ts.Visitor {
 	const visitor: ts.Visitor = (node) => {
 		if (ts.isCallExpression(node)) {
-			const rewritten = transformCall(state, sourceFile, node, visitor);
+			const rewritten = transformCall(state, sourceFile, node, visitor, widgetCallers);
 			if (rewritten) return rewritten;
 		}
 		return ts.visitEachChild(node, visitor, state.context);
@@ -174,6 +208,7 @@ function transformCall(
 	sourceFile: ts.SourceFile,
 	node: ts.CallExpression,
 	visitor: ts.Visitor,
+	widgetCallers: ReadonlyMap<string, WidgetCallerInfo>,
 ): ts.Expression | undefined {
 	const coreName = state.resolveCoreName(sourceFile, node.expression);
 	if (coreName === "trait") {
@@ -206,6 +241,48 @@ function transformCall(
 					return ts.visitNode(arg, visitor, ts.isExpression) ?? arg;
 				}),
 			);
+		}
+	}
+
+	const uiName = state.resolveUiName(sourceFile, node.expression);
+	if (uiName === "StyleScope" || uiName === "withStyleScope") {
+		return call(field(state.addRovyUiImport(sourceFile), "__withStyleScope"), [
+			str(state.nextWidgetCallsiteKey(node)),
+			...node.arguments.map((arg) => ts.visitNode(arg, visitor, ts.isExpression) ?? arg),
+		]);
+	}
+
+	if (uiName === "scope") {
+		return call(field(state.addRovyUiImport(sourceFile), "__scope"), [
+			str(state.nextWidgetCallsiteKey(node)),
+			...node.arguments.map((arg) => ts.visitNode(arg, visitor, ts.isExpression) ?? arg),
+		]);
+	}
+
+	const keyedHelper = uiName ? UI_KEYED_HELPERS.get(uiName) : undefined;
+	if (keyedHelper) {
+		return call(field(state.addRovyUiImport(sourceFile), keyedHelper), [
+			str(state.nextWidgetCallsiteKey(node)),
+			...node.arguments.map((arg) => ts.visitNode(arg, visitor, ts.isExpression) ?? arg),
+		]);
+	}
+
+	if (uiName && state.uiExportHasWidgetTag(sourceFile, uiName)) {
+		return call(field(state.addRovyUiImport(sourceFile), "__callWidget"), [
+			ts.visitNode(node.expression, visitor, ts.isExpression) ?? node.expression,
+			str(state.nextWidgetCallsiteKey(node)),
+			arr(node.arguments.map((arg) => ts.visitNode(arg, visitor, ts.isExpression) ?? arg)),
+		]);
+	}
+
+	if (ts.isIdentifier(node.expression)) {
+		const widget = widgetCallers.get(node.expression.text);
+		if (widget) {
+			return call(field(state.addRovyUiImport(sourceFile), "__callWidget"), [
+				node.expression,
+				str(state.nextWidgetCallsiteKey(node)),
+				arr(node.arguments.map((arg) => ts.visitNode(arg, visitor, ts.isExpression) ?? arg)),
+			]);
 		}
 	}
 
@@ -341,6 +418,84 @@ function getRovyDecorators(state: TransformState, sourceFile: ts.SourceFile, nod
 		});
 	}
 	return out;
+}
+
+function collectWidgetCallers(state: TransformState, sourceFile: ts.SourceFile): Map<string, WidgetCallerInfo> {
+	const implementations = new Map<string, ts.FunctionDeclaration>();
+	for (const statement of sourceFile.statements) {
+		if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) {
+			implementations.set(statement.name.text, statement);
+		}
+	}
+
+	const out = new Map<string, WidgetCallerInfo>();
+	for (const statement of sourceFile.statements) {
+		if (!ts.isFunctionDeclaration(statement) || !statement.name) continue;
+		if (!hasWidgetTag(statement)) continue;
+
+		const implementation = statement.body ? statement : implementations.get(statement.name.text);
+		if (implementation === undefined) {
+			state.diagnostic(statement, `@widget caller '${statement.name.text}' requires a same-file implementation`);
+			continue;
+		}
+		const widgetId = classScopedId(state.stableIdForNode(implementation), statement.name.text);
+		const params = lowerWidgetParams(state, sourceFile, implementation.parameters, widgetId);
+		out.set(statement.name.text, {
+			implementation,
+			params,
+			hasStyleParam: hasLeadingStyleParam(state, sourceFile, implementation),
+		});
+	}
+	return out;
+}
+
+function hasWidgetTag(node: ts.FunctionDeclaration): boolean {
+	for (const tag of ts.getJSDocTags(node)) {
+		if (tag.tagName.text === "widget") return true;
+	}
+	return false;
+}
+
+function transformWidgetFunction(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.FunctionDeclaration,
+	visitor: ts.Visitor,
+): ts.FunctionDeclaration {
+	if (!node.body) return node;
+	const hasStyleParam = hasLeadingStyleParam(state, sourceFile, node);
+	const params = hasStyleParam ? node.parameters.slice(1) : node.parameters;
+	const body = hasStyleParam
+		? ts.factory.updateBlock(node.body, [activeStyleStatement(state, sourceFile), ...node.body.statements])
+		: node.body;
+	const updated = ts.factory.updateFunctionDeclaration(
+		node,
+		node.modifiers,
+		node.asteriskToken,
+		node.name,
+		node.typeParameters,
+		params,
+		node.type,
+		body,
+	);
+	return ts.visitEachChild(updated, visitor, state.context);
+}
+
+function activeStyleStatement(state: TransformState, sourceFile: ts.SourceFile): ts.VariableStatement {
+	return ts.factory.createVariableStatement(
+		undefined,
+		ts.factory.createVariableDeclarationList(
+			[
+				ts.factory.createVariableDeclaration(
+					id("style"),
+					undefined,
+					undefined,
+					call(field(state.addRovyUiImport(sourceFile), "getActiveStyle")),
+				),
+			],
+			ts.NodeFlags.Const,
+		),
+	);
 }
 
 function removeRovyDecorators(state: TransformState, sourceFile: ts.SourceFile, node: ts.ClassDeclaration): ts.ClassDeclaration {
@@ -532,6 +687,10 @@ function buildNetEventMeta(
 		],
 		true,
 	);
+}
+
+function buildWidgetMeta(classId: string, name: string, params: ParamBuild): ts.ObjectLiteralExpression {
+	return obj([prop("id", str(classId)), prop("name", str(name)), prop("params", params.descriptor)], true);
 }
 
 function validateNetEvent(state: TransformState, node: ts.ClassDeclaration, decorator: DecoratorInfo): void {
@@ -1113,6 +1272,16 @@ function regCall(rovy: ts.Expression, name: string, args: readonly ts.Expression
 	return stmt(call(field(rovy, name), args));
 }
 
+function assignWidget(target: ts.Identifier, rovyUi: ts.Expression, args: readonly ts.Expression[]): ts.Statement {
+	return stmt(
+		ts.factory.createBinaryExpression(
+			target,
+			ts.factory.createToken(ts.SyntaxKind.EqualsToken),
+			call(field(rovyUi, "__widget"), args),
+		),
+	);
+}
+
 function regQuery(rovy: ts.Expression, descriptor: ts.ObjectLiteralExpression): ts.Statement {
 	return regCall(rovy, "__query", [descriptor]);
 }
@@ -1161,6 +1330,80 @@ function lowerPrefabParams(
 
 function buildPrefabMeta(classId: string, params: ParamBuild): ts.ObjectLiteralExpression {
 	return obj([prop("id", str(classId)), prop("params", params.descriptor)], true);
+}
+
+function lowerWidgetParams(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	params: ts.NodeArray<ts.ParameterDeclaration>,
+	classId: string,
+): ParamBuild {
+	const descriptors: ts.ObjectLiteralExpression[] = [];
+	const queryStatements: ts.Statement[] = [];
+	let sawCallArg = false;
+	for (let i = 0; i < params.length; i++) {
+		const param = params[i];
+		const type = param.type;
+		if (i === 0 && type && isUiType(state, sourceFile, type, "Style")) {
+			continue;
+		}
+		if (!type || !isWidgetInjectedParam(state, sourceFile, type)) {
+			sawCallArg = true;
+			continue;
+		}
+		if (sawCallArg) {
+			state.diagnostic(param, "@widget injected params must come before call args");
+			continue;
+		}
+		const lowered = lowerParam(state, sourceFile, param, {
+			kind: "system",
+			classId,
+			paramIndex: i,
+			localIndex: 0,
+		});
+		descriptors.push(lowered.descriptor);
+		queryStatements.push(...lowered.queryStatements);
+	}
+	return { descriptor: arr(descriptors, true), queryStatements };
+}
+
+function hasLeadingStyleParam(state: TransformState, sourceFile: ts.SourceFile, node: ts.FunctionDeclaration): boolean {
+	const first = node.parameters[0];
+	return first?.type !== undefined && isUiType(state, sourceFile, first.type, "Style");
+}
+
+function isUiType(state: TransformState, sourceFile: ts.SourceFile, type: ts.TypeNode, exportName: string): boolean {
+	if (!ts.isTypeReferenceNode(type)) return false;
+	const imports = state.getUiImports(sourceFile);
+	const name = type.typeName;
+	if (ts.isIdentifier(name)) return imports.named.get(name.text) === exportName || name.text === exportName;
+	return ts.isIdentifier(name.left) && imports.namespaces.has(name.left.text) && name.right.text === exportName;
+}
+
+function isWidgetInjectedParam(state: TransformState, sourceFile: ts.SourceFile, type: ts.TypeNode): boolean {
+	if (!ts.isTypeReferenceNode(type)) return false;
+	const name = lastTypeName(type.typeName);
+	if (name === "Local") return false;
+	if (
+		name === "Commands" ||
+		name === "World" ||
+		name === "Query" ||
+		name === "Res" ||
+		name === "ResMut" ||
+		name === "OptRes" ||
+		name === "EventReader" ||
+		name === "EventWriter"
+	) {
+		return true;
+	}
+	if (
+		isNetworkingType(state, sourceFile, type, "NetClient") ||
+		isNetworkingType(state, sourceFile, type, "NetServer") ||
+		isNetworkingType(state, sourceFile, type, "NetEventContext")
+	) {
+		return true;
+	}
+	return state.hasDecoratorOnTypeNode(type, "collect");
 }
 
 function classScopedId(moduleId: string, className: string): string {

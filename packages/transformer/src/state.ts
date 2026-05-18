@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { RojoResolver } from "@roblox-ts/rojo-resolver";
 import ts from "typescript";
-import { importNamed } from "./ast";
+import { importDefault, importNamed } from "./ast";
 import {
 	type ResolvedRovyConfig,
 	type RovyBlinkConfig,
@@ -14,6 +14,7 @@ export interface TransformerConfig {
 }
 
 export interface CoreImports {
+	readonly defaultName?: string;
 	readonly named: Map<string, string>;
 	readonly namespaces: Set<string>;
 }
@@ -34,8 +35,12 @@ export class TransformState {
 
 	private readonly coreImportCache = new Map<string, CoreImports>();
 	private readonly networkingImportCache = new Map<string, CoreImports>();
+	private readonly uiImportCache = new Map<string, CoreImports>();
 	private readonly pendingRovyImports = new Map<string, ts.Identifier>();
 	private readonly pendingRovyNetImports = new Map<string, ts.Identifier>();
+	private readonly pendingRovyUiImports = new Map<string, ts.Identifier>();
+	private readonly widgetCallsiteCounters = new Map<string, number>();
+	private uiWidgetExportNames?: Set<string>;
 	private readonly rojoResolver?: RojoResolver;
 	private netArtifactsGenerated = false;
 
@@ -65,6 +70,10 @@ export class TransformState {
 		return this.getImportsForModule(file, "@rovy/networking", this.networkingImportCache);
 	}
 
+	getUiImports(file: ts.SourceFile): CoreImports {
+		return this.getImportsForModule(file, "@rovy/ui", this.uiImportCache);
+	}
+
 	private getImportsForModule(file: ts.SourceFile, moduleName: string, cache: Map<string, CoreImports>): CoreImports {
 		const cached = cache.get(file.fileName);
 		if (cached) return cached;
@@ -77,6 +86,7 @@ export class TransformState {
 			if (statement.moduleSpecifier.text !== moduleName) continue;
 			const clause = statement.importClause;
 			if (!clause) continue;
+			const defaultName = clause.name?.text;
 			if (clause.namedBindings && ts.isNamedImports(clause.namedBindings)) {
 				for (const spec of clause.namedBindings.elements) {
 					const exported = spec.propertyName?.text ?? spec.name.text;
@@ -85,9 +95,11 @@ export class TransformState {
 			} else if (clause.namedBindings && ts.isNamespaceImport(clause.namedBindings)) {
 				namespaces.add(clause.namedBindings.name.text);
 			}
+			if (defaultName !== undefined) named.set(defaultName, "default");
 		}
 
-		const imports = { named, namespaces };
+		const defaultName = [...named.entries()].find(([, exported]) => exported === "default")?.[0];
+		const imports = { defaultName, named, namespaces };
 		cache.set(file.fileName, imports);
 		return imports;
 	}
@@ -108,6 +120,57 @@ export class TransformState {
 			if (imports.namespaces.has(expression.expression.text)) return expression.name.text;
 		}
 		return undefined;
+	}
+
+	resolveUiName(file: ts.SourceFile, expression: ts.Expression): string | undefined {
+		const imports = this.getUiImports(file);
+		if (ts.isIdentifier(expression)) return imports.named.get(expression.text);
+		if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression)) {
+			if (imports.namespaces.has(expression.expression.text)) return expression.name.text;
+			if (imports.defaultName === expression.expression.text) return expression.name.text;
+		}
+		return undefined;
+	}
+
+	// True when the `@rovy/ui` export named `uiName` carries a `/** @widget */`
+	// JSDoc tag. This is the single source of truth for which built-in widget
+	// calls get a stable callsite key inserted (replaces a hardcoded name list).
+	uiExportHasWidgetTag(file: ts.SourceFile, uiName: string): boolean {
+		return this.collectUiWidgetExportNames(file).has(uiName);
+	}
+
+	private collectUiWidgetExportNames(file: ts.SourceFile): Set<string> {
+		if (this.uiWidgetExportNames) return this.uiWidgetExportNames;
+		const names = new Set<string>();
+		this.uiWidgetExportNames = names;
+		const checker = this.typeChecker;
+		if (!checker) return names;
+
+		let moduleSpecifier: ts.StringLiteral | undefined;
+		for (const statement of file.statements) {
+			if (!ts.isImportDeclaration(statement)) continue;
+			if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
+			if (statement.moduleSpecifier.text !== "@rovy/ui") continue;
+			moduleSpecifier = statement.moduleSpecifier;
+			break;
+		}
+		if (!moduleSpecifier) return names;
+
+		const moduleSymbol = checker.getSymbolAtLocation(moduleSpecifier);
+		if (!moduleSymbol) return names;
+
+		for (const exportSymbol of checker.getExportsOfModule(moduleSymbol)) {
+			const resolved =
+				(exportSymbol.flags & ts.SymbolFlags.Alias) !== 0 ? skipAlias(checker, exportSymbol) : exportSymbol;
+			const declarations = resolved.declarations ?? exportSymbol.declarations ?? [];
+			for (const declaration of declarations) {
+				if (declarationHasWidgetTag(declaration)) {
+					names.add(exportSymbol.name);
+					break;
+				}
+			}
+		}
+		return names;
 	}
 
 	fileUsesNetworking(file: ts.SourceFile): boolean {
@@ -154,12 +217,29 @@ export class TransformState {
 		return identifier;
 	}
 
+	addRovyUiImport(file: ts.SourceFile): ts.Identifier {
+		const existingDefault = this.getUiImports(file).defaultName;
+		if (existingDefault !== undefined) return ts.factory.createIdentifier(existingDefault);
+		for (const [local, exported] of this.getUiImports(file).named) {
+			if (exported === "rovyUi") return ts.factory.createIdentifier(local);
+		}
+
+		let identifier = this.pendingRovyUiImports.get(file.fileName);
+		if (!identifier) {
+			identifier = ts.factory.createUniqueName("__rovyUi", ts.GeneratedIdentifierFlags.Optimistic);
+			this.pendingRovyUiImports.set(file.fileName, identifier);
+		}
+		return identifier;
+	}
+
 	withPendingImports(file: ts.SourceFile, statements: ReadonlyArray<ts.Statement>): ts.Statement[] {
 		const rovyImport = this.pendingRovyImports.get(file.fileName);
 		const rovyNetImport = this.pendingRovyNetImports.get(file.fileName);
+		const rovyUiImport = this.pendingRovyUiImports.get(file.fileName);
 		const imports: ts.Statement[] = [];
 		if (rovyImport) imports.push(importNamed("@rovy/core", "rovy", rovyImport.text));
 		if (rovyNetImport) imports.push(importNamed("@rovy/networking", "rovyNet", rovyNetImport.text));
+		if (rovyUiImport) imports.push(importDefault("@rovy/ui", rovyUiImport.text));
 		return [...imports, ...statements];
 	}
 
@@ -294,6 +374,18 @@ export class TransformState {
 		return modulePath(this.currentDirectory, node.getSourceFile().fileName);
 	}
 
+	/**
+	 * Stable per-callsite compile key for a widget invocation. Replaces
+	 * EgooE's `debug.info` source-position identity: `<modulePath>:<index>`,
+	 * where index increments per widget callsite in source-traversal order.
+	 */
+	nextWidgetCallsiteKey(node: ts.Node): string {
+		const moduleId = this.stableIdForNode(node);
+		const used = this.widgetCallsiteCounters.get(moduleId) ?? 0;
+		this.widgetCallsiteCounters.set(moduleId, used + 1);
+		return `${moduleId}:${used}`;
+	}
+
 	stableIdForTypeNode(node: ts.TypeNode): string {
 		const symbol = this.symbolForTypeNode(node);
 		const declaration = symbol?.declarations?.[0];
@@ -423,7 +515,7 @@ export class TransformState {
 export function decoratorName(state: TransformState, file: ts.SourceFile, decorator: ts.Decorator): string | undefined {
 	const expression = decorator.expression;
 	const target = ts.isCallExpression(expression) ? expression.expression : expression;
-	return state.resolveCoreName(file, target) ?? state.resolveNetworkingName(file, target);
+	return state.resolveCoreName(file, target) ?? state.resolveNetworkingName(file, target) ?? state.resolveUiName(file, target);
 }
 
 export function normalizePath(value: string): string {
@@ -464,4 +556,20 @@ function modulePath(root: string, fileName: string): string {
 function skipAlias(checker: ts.TypeChecker, symbol: ts.Symbol): ts.Symbol {
 	if ((symbol.flags & ts.SymbolFlags.Alias) !== 0) return checker.getAliasedSymbol(symbol);
 	return symbol;
+}
+
+function declarationHasWidgetTag(declaration: ts.Declaration): boolean {
+	const nodes: ts.Node[] = [declaration];
+	// JSDoc on `export const x = ...` / `declare const x: ...` attaches to the
+	// VariableStatement, not the VariableDeclaration the symbol points at.
+	if (ts.isVariableDeclaration(declaration)) {
+		const statement = declaration.parent?.parent;
+		if (statement) nodes.push(statement);
+	}
+	for (const node of nodes) {
+		for (const tag of ts.getJSDocTags(node)) {
+			if (tag.tagName.text === "widget") return true;
+		}
+	}
+	return false;
 }
