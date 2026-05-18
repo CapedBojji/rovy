@@ -146,6 +146,7 @@ local function signal()
 	}
 end
 
+local allInstances = {}
 local FakeInstance = {}
 FakeInstance.__index = function(self, key)
 	local value = rawget(FakeInstance, key)
@@ -182,22 +183,28 @@ function FakeInstance:IsA(className)
 end
 function FakeInstance:Destroy()
 	self.Destroyed = true
-	for _, child in ipairs(self.__children) do
+	for _, child in ipairs(self:GetChildren()) do
 		child:Destroy()
 	end
 	self.__children = {}
 end
 function FakeInstance:GetChildren()
-	return self.__children
+	local children = {}
+	for _, instance in ipairs(allInstances) do
+		if not instance.Destroyed and instance.Parent == self then
+			table.insert(children, instance)
+		end
+	end
+	return children
 end
 function FakeInstance:FindFirstChild(name)
-	for _, child in ipairs(self.__children) do
+	for _, child in ipairs(self:GetChildren()) do
 		if child.Name == name then return child end
 	end
 	return nil
 end
 function FakeInstance:FindFirstChildOfClass(className)
-	for _, child in ipairs(self.__children) do
+	for _, child in ipairs(self:GetChildren()) do
 		if child.ClassName == className then return child end
 	end
 	return nil
@@ -210,7 +217,7 @@ function FakeInstance:GetAttribute(name)
 end
 
 local function newInstance(className)
-	return setmetatable({
+	local instance = setmetatable({
 		ClassName = className,
 		Name = className,
 		__children = {},
@@ -222,6 +229,8 @@ local function newInstance(className)
 		AbsoluteSize = { X = 100, Y = 100 },
 		Visible = true,
 	}, FakeInstance)
+	table.insert(allInstances, instance)
+	return instance
 end
 
 local fakeGlobals = {
@@ -243,6 +252,12 @@ local fakeGlobals = {
 			})
 		end,
 	}),
+	typeof = function(value)
+		if type(value) == "table" and type(value.IsA) == "function" and value:IsA("Instance") then
+			return "Instance"
+		end
+		return type(value)
+	end,
 }
 for key, value in pairs(fakeGlobals) do
 	_G[key] = value

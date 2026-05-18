@@ -311,6 +311,12 @@ export function __useInstance<T extends object = Record<string, Instance>>(
 		}
 		if (container !== undefined) child.containerInstance = container;
 	}
+	if (currentFrame().node.instance === undefined && child.instance !== undefined) {
+		currentFrame().node.instance = child.instance;
+	}
+	if (currentFrame().node.containerInstance === undefined && child.containerInstance !== undefined) {
+		currentFrame().node.containerInstance = child.containerInstance;
+	}
 	if (child.instance !== undefined && (child.instance as Instance & { LayoutOrder?: number }).LayoutOrder !== undefined) {
 		parentFrame.childrenCount++;
 		(child.instance as Instance & { LayoutOrder: number }).LayoutOrder = parentFrame.childrenCount;

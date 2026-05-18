@@ -16,6 +16,10 @@ const GUI_BASE_2D = new Set<string>([
 	"SurfaceGui",
 ]);
 
+function isInstanceLike(value: unknown): value is Instance | (Record<string, unknown> & { Parent?: Instance }) {
+	return typeIs(value, "Instance") || (typeIs(value, "table") && typeIs((value as { GetChildren?: unknown }).GetChildren, "function"));
+}
+
 export function create<T extends keyof CreatableInstances>(
 	className: T,
 	props?: Record<string | number, unknown>,
@@ -49,8 +53,8 @@ export function create<T extends keyof CreatableInstances>(
 				const signal = (instance as Record<string, RBXScriptSignal | undefined>)[key];
 				signal?.Connect(value as Callback);
 			}
-		} else if (typeIs(key, "number") && typeIs(value, "Instance")) {
-			(value as Instance).Parent = instance;
+		} else if (typeIs(key, "number") && isInstanceLike(value)) {
+			value.Parent = instance;
 		} else if (typeIs(key, "table") && typeIs(value, "string")) {
 			(key as Record<string, Instance>)[value] = instance;
 			if ((instance as { Name?: string }).Name === undefined) (instance as { Name: string }).Name = value;
