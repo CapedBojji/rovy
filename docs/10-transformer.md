@@ -1,6 +1,6 @@
 # Transformer
 
-The roblox-ts transformer handles compile-time work that runtime TypeScript cannot do: resolving generic types, validating decorator usage, hoisting query descriptors, injecting `rovy.__*` registration calls after each decorated class, and eventually lowering planned UI widget calls discovered from JSDoc metadata.
+The roblox-ts transformer handles compile-time work that runtime TypeScript cannot do: resolving generic types, validating decorator usage, hoisting query descriptors, injecting `rovy.__*` registration calls after each decorated class, and lowering widget authoring for `@rovy/ui`.
 
 Shipped as the `rovy-transformer` package — a dev-only roblox-ts plugin, separate from the `@rovy/core` runtime. See [Packages](21-packages.md) for the split and `.rovy.json`-driven setup.
 
@@ -8,7 +8,7 @@ Shipped as the `rovy-transformer` package — a dev-only roblox-ts plugin, separ
 
 All of the following happen at **build time**. Nothing below runs at Luau startup.
 
-1. Scan every decorated class: `@component`, `@collect`, `@resource`, `@event`, `@system`, `@observer`, `@monitor`, `@relation`, `@schedule`, `@set`, `@plugin`, plus planned widget builder classes and JSDoc `@widget BuilderName` caller functions.
+1. Scan every decorated class: `@component`, `@collect`, `@resource`, `@event`, `@system`, `@observer`, `@monitor`, `@relation`, `@schedule`, `@set`, `@plugin`.
 2. Resolve trait macros (`trait<T>()`) and query macros (`query<...>()`), plus `Trait<T>` / `HasTrait<T>` / `AllTraits<T>` type references, via TypeScript `TypeChecker` (erased at runtime — must happen now).
 3. Generate stable trait IDs from canonical module paths.
 4. Scan `implements` clauses on `@component` classes to find trait implementers.
@@ -19,7 +19,7 @@ All of the following happen at **build time**. Nothing below runs at Luau startu
 
 The networking layer adds more transformer duties: detect `@netEvent` from `@rovy/networking`, treat it as implicit core `@event`, read network settings from `.rovy.json`, generate Blink-validated `.blink` schema metadata, lower `NetClient`/`NetServer` params through core's package-extension injection hook, and inject `rovyNet.__netEvent(...)` metadata. See [Networking](23-networking.md).
 
-The planned UI layer adds a separate future duty set: detect JSDoc `@widget BuilderName` on caller functions, resolve the named builder in the same file only, validate the linked `@widget` builder class, inject widget registration metadata, detect plain calls to tagged widget functions such as `Window(args)`, lower those calls into the future widget-runtime invocation surface, and optionally attach stable compile-time widget identity metadata. Explicit non-goal: UI does **not** add hook/state/effect transform work.
+UI work adds another compile-time path: detect JSDoc `@widget` functions, require a same-file implementation, inject widget registration metadata, wrap the function through `RovyUi.__widget(...)`, lower later plain widget calls and built-in `@rovy/ui` widget calls through `RovyUi.__callWidget(widget, "module:key", [args])`, erase leading `style: Style` authoring sugar into `RovyUi.getActiveStyle()`, lower storage helpers like `useState` / `useEffect` / `useInstance` to keyed internals, and lower `StyleScope(...)` / `scope(...)` as keyed callback-bounded runtime scopes. See [UI](26-ui.md).
 
 ## Transformer config
 
@@ -169,11 +169,110 @@ One injected call per decorator:
 | `@relation` | `rovy.__relation(C, { exclusive, onTargetDelete, onDelete })` |
 | `@schedule` | `rovy.__schedule(C, { runOnStart })` |
 | `implements Trait` on `@component` | `rovy.__traitImpl("src/traits/CrowdControl", C)` |
-| planned `@widget` builder | future `rovyUi.__widget(Builder, meta)`-style registration |
 
 Each `rovy.__*` call only **pushes into a global registry**. No jecs IDs, no hooks yet — registration is lazy. `app.start()` does the finalize pass.
 
-For planned UI, the same registration rule still applies: widget builders should self-register through module side effects, and `rovy.loadPaths(...)` should remain the discovery mechanism. The extra UI step is that callsites like `Window(args)` need the transformer to map the caller function to its same-file builder and route the call through the future widget runtime while authored TS remains a normal function call.
+## Widget lowering
+
+Widgets are not public classes. The intended authoring shape is one JSDoc-tagged function:
+
+```ts
+/** @widget */
+export function Window(style: Style, props: { title: string }): void {
+	print(style.windowBgColor, props.title);
+}
+
+Window({ title: "Inventory" });
+```
+
+The transformer is expected to:
+
+1. detect JSDoc `@widget` on the function declaration
+2. require a same-file implementation for the tagged function
+3. detect a leading `style: Style` param as special widget authoring sugar
+4. inject widget registration metadata as a module side effect
+5. wrap the function through `RovyUi.__widget(...)`
+6. lower later `Window(args)` callsites through `RovyUi.__callWidget(...)` with a stable callsite key
+7. erase the runtime `style` param and insert `const style = RovyUi.getActiveStyle()` at the start of the lowered body
+8. lower `StyleScope({ patch, discriminator? }, fn)` as callback-bounded runtime style scope
+
+Conceptually:
+
+```ts
+/** @widget */
+export function Window(style: Style, props: { title: string }): void {
+	print(style.windowBgColor, props.title);
+}
+
+const Window = RovyUi.__widget(function Window(props: { title: string }): void {
+	const style = RovyUi.getActiveStyle();
+	print(style.windowBgColor, props.title);
+}, {
+	id: "src/ui/Window@Window",
+	name: "Window",
+});
+
+RovyUi.__callWidget(Window, "src/ui/Window:0", [{ title: "Inventory" }]);
+```
+
+The public authoring stays `Window({ ... })`; the lowered helper gives `@rovy/ui` stable widget-call identity for `useState` and `useEffect`.
+
+### Style param lowering
+
+`style: Style` is not ordinary resource injection. It is runtime context sugar:
+
+```ts
+/** @widget */
+export function Window(style: Style, props: WindowProps): void { ... }
+```
+
+Lowered shape:
+
+```ts
+function Window(props: WindowProps): void {
+	const style = RovyUi.getActiveStyle();
+	...
+}
+```
+
+The widget body reads active style at call time. The style does not travel through `RovyUi.__widget(...)` registration metadata.
+
+### Style scope
+
+Temporary style changes are callback-bounded:
+
+```ts
+StyleScope(
+	{
+		patch: { textColor: Color3.fromRGB(255, 220, 120) },
+		discriminator: item.id,
+	},
+	() => {
+		Label({ text: "Rare Item" });
+	},
+);
+```
+
+The runtime model should behave like:
+
+- enter scoped active style for the callback body
+- partial-merge patch onto the parent active style
+- run child callback
+- restore parent active style automatically when callback exits
+
+This is intentionally not a public `pushStyle` / `popStyle` API.
+
+### Other widget params
+
+Other widget runtime inputs may still follow the "injected params before authored call args" rule, but `style: Style` is specifically active-style sugar rather than a `Res<T>`-style injection.
+
+### Non-goals
+
+UI lowering explicitly does **not** include:
+
+- a public widget-class construction path
+- React-style component trees
+- gameplay state hidden inside widget-local storage
 
 ## Module loading
 
@@ -209,18 +308,6 @@ __ecs.trait("src/shared/battle/traits/CrowdControl")
 
 Reason: avoid collisions across files that happen to share a type name. Same rule for hoisted query descriptors and monitor match tokens.
 
-## Planned UI note
-
-UI is intentionally being designed without hook semantics.
-
-The transformer should therefore not grow React-like responsibilities for:
-
-- state slot indexing
-- effect slot indexing
-- dependency-array comparison
-- hidden widget-local state buckets
-
-If compile-time UI keys are ever added, they are only for widget identity, transform metadata, or diagnostics. See [UI](26-ui.md).
 
 ## See also
 

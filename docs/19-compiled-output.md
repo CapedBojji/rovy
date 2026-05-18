@@ -10,6 +10,8 @@ roblox-ts compiles TS to Luau. Decorators and type annotations are erased. The t
 
 These calls run as **module side effects** when the module is required. `rovy.loadPaths(...)` forces the requires; `app.start()` finalizes. No central manifest module.
 
+`@rovy/ui` widget lowering follows the same idea: source authoring stays in TypeScript, the transformer injects registration/wrapping code, and later plain widget calls carry stable callsite identity. See [UI](26-ui.md).
+
 ---
 
 ## Components
@@ -41,71 +43,6 @@ rovy.__component(Dead, "src/components/Dead")
 ```
 
 `rovy.__component` pushes `{ ctor, id }` into the component registry. No jecs ID yet — that happens at `app.start()`.
-
----
-
-## Widgets
-
-> Planned surface. This section documents the intended compiled shape, not shipped behavior yet.
-
-Source:
-
-```ts
-/** @widget WindowBuilder */
-export function Window(options: { title: string }): void {
-	throw "transformer only";
-}
-
-@widget
-class WindowBuilder {
-	build(theme: Res<Theme>) {
-		return (options: { title: string }) => {
-			// widget runtime authoring
-		};
-	}
-}
-
-Window({ title: "Inventory" });
-```
-
-Planned compiled shape:
-
-```ts
-function Window(options) {
-	throw "transformer only";
-}
-class WindowBuilder {
-	build(theme) {
-		return (options) => {
-			// widget runtime authoring
-		};
-	}
-}
-rovyUi.__widget(WindowBuilder, {
-	id: "src/client/widgets/Window@Window",
-});
-
-rovyUi.__callWidget(WindowBuilder, {
-	id: "src/client/screens/InventoryScreen:0",
-	args: [{ title: "Inventory" }],
-});
-```
-
-Conceptually the transformer does two things:
-
-1. Inject widget registration for each `@widget` builder class.
-2. Resolve each JSDoc caller function to its same-file builder.
-3. Rewrite plain calls to caller functions into the future widget-runtime invocation surface.
-
-Important authored/runtime intent:
-
-- authors write `Window(args)`
-- authors expose widgets as normal functions with JSDoc metadata
-- the JSDoc explicitly maps caller to same-file builder
-- the builder owns `build(...)`
-- no class-construction path is part of the intended authoring model
-
-This is a stateless widget model. There are no hook slots, no `useState`, and no `useEffect` hidden behind the compiled output. If compile-time keys are eventually added for UI, they are for widget identity/metadata only, never for hook storage.
 
 ---
 
@@ -225,6 +162,80 @@ function DamageTaken.new(target, amount, source)
 end
 rovy.__event(DamageTaken, { capacity = 256 })
 ```
+
+---
+
+## Widgets
+
+Source:
+
+```ts
+/** @widget */
+export function Window(style: Style, props: { title: string }): void {
+	print(style.windowBgColor, props.title);
+}
+
+export function draw() {
+	Window({ title: "Inventory" });
+}
+```
+
+Conceptual compiled shape:
+
+```ts
+const Window = RovyUi.__widget(function Window(props: { title: string }): void {
+	const style = RovyUi.getActiveStyle();
+	print(style.windowBgColor, props.title);
+}, {
+	id: "src/ui/Window@Window",
+	name: "Window",
+});
+
+function draw() {
+	RovyUi.__callWidget(Window, "src/ui/Window:0", [{ title: "Inventory" }]);
+}
+```
+
+Scoped style source:
+
+```ts
+StyleScope(
+	{
+		patch: { textColor: Color3.fromRGB(255, 220, 120) },
+		discriminator: item.id,
+	},
+	() => {
+		Label({ text: "Rare Item" });
+	},
+);
+```
+
+Conceptual runtime lowering:
+
+```ts
+RovyUi.withStyleScope(
+	{
+		patch: { textColor: Color3.fromRGB(255, 220, 120) },
+		discriminator: item.id,
+	},
+	() => {
+		Label({ text: "Rare Item" });
+	},
+);
+```
+
+Inside the callback, widgets see the merged active style from `RovyUi.getActiveStyle()`. When the callback exits, the previous active style is visible again.
+
+The key contract points are:
+
+- public authoring stays as one JSDoc-tagged TS function
+- `style: Style` is removed from the runtime call signature
+- lowered widget bodies read `RovyUi.getActiveStyle()` first
+- authored `Window(...)` calls lower through `RovyUi.__callWidget(...)` so widget storage has stable callsite identity
+- `RovyUi.__widget(...)` registers metadata and returns the wrapped callable
+- style scope is callback-bounded and temporary
+- style does not travel through widget registration metadata
+- `useState` and `useEffect` use callsite-scoped widget storage
 
 ---
 

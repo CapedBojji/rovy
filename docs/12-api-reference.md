@@ -7,7 +7,6 @@ Full public surface. Authoring is decorator-based; the transformer reads decorat
 ```ts
 @component
 @collect
-/** @widget BuilderName */  // planned, on widget caller functions from @rovy/ui
 @prefab
 @resource
 @event(options?: { capacity?: number; label?: string })
@@ -52,7 +51,7 @@ These come from `@rovy/networking`, not `@rovy/core`. Core provides the package-
 
 Planned prefab `build(...)` injection is narrower. See [Prefabs](24-prefabs.md) for the proposed v1 allowed param list and exclusions.
 
-Planned widget authoring does not use hook params. The current docs direction is a stateless JSDoc-caller + builder model where dynamic behavior comes from args/resources/external state, not `useState` / `useEffect`.
+Widget functions in `@rovy/ui` also use injected params, but with a function-first public surface instead of a class-based one. See [UI](26-ui.md).
 
 ## rovy (global registry)
 
@@ -65,6 +64,8 @@ rovy.traitToken<T>();           // value-position trait handle (see Traits)
 // / __monitor / __relation / __schedule / __traitImpl / __query
 //   are transformer-injected — never hand-written
 ```
+
+UI discovery follows the same side-effect model: `rovy.loadPaths(...)` must require widget modules so injected widget registration/wrapping runs.
 
 ## App
 
@@ -211,47 +212,62 @@ Expected v1 semantics:
 - `build(...)` must return the runtime-selected target entity
 - prefab does not differentiate spawn vs insert; it only builds into `this.entity()`
 
-## Widget
+## UI
 
-> Planned, not shipped yet.
-
-Planned public authoring surface from `@rovy/ui`:
+Public authoring surface for `@rovy/ui`:
 
 ```ts
-/** @widget WindowBuilder */
-function Window(args: WindowArgs): void;
-
-@widget
-class WindowBuilder {
-	build(theme: Res<Theme>, units: Query<[Entity, Health]>): (args: WindowArgs) => void;
+/** @widget */
+export function Window(props: { title: string }): void;
+export function Window(style: Style, props?: { title: string }): void {
+	if (!props) return;
+	print(style.windowBgColor, props.title);
 }
+
+Window({ title: "Inventory" });
 ```
 
-Locked design decisions:
+Locked contract:
 
-- widgets use a normal caller function plus a same-file `@widget` builder class
-- `rovy.loadPaths(...)` auto-collects them through transformer-injected registration side effects
-- authored callsites are plain function calls such as `Window(args)`
-- the JSDoc tag explicitly names the builder
-- builder lookup is same-file-only
-- the builder class owns required `build(...)`
-- `build(...)` may receive resources, queries, and other allowed injected params
-- the returned function receives authored widget args and is passed through the future widget runtime / `useWidget(...)` path
+- one JSDoc-tagged widget function
+- plain calls like `Window(args)`
+- no widget classes as the public model
+- no `new Window()`
+- no `RovyUi.Window(...)` public surface
+- widget-local `useState` and `useEffect` are available for UI-local storage
+- gameplay state should still live in ECS resources/components/events or explicit external stores
 
-Planned transformer behavior:
+Widget implementation rules:
 
-- resolve JSDoc caller-to-builder mapping
-- inject registration metadata for `@widget` builder classes
-- detect calls to tagged widget functions
-- lower `WidgetFn(args)` into the future widget-runtime invocation surface
-- optionally attach stable compile-time widget identity metadata
+- `style: Style` is special widget-runtime authoring sugar, not normal resource injection
+- the runtime signature removes the `style` param and the lowered body reads `RovyUi.getActiveStyle()`
+- overloads are the recommended way to keep a clean public call signature
+- the transformer wraps the widget through `RovyUi.__widget(...)`
+- later widget callsites lower through `RovyUi.__callWidget(...)` so `useState`/`useEffect` have stable callsite identity
 
-Statelessness rules:
+Scoped style helper:
 
-- no `useState`
-- no `useEffect`
-- no widget-local persistent app state as public contract
-- changing behavior must come from args, resources, commands, events, or explicit external stores
+```ts
+StyleScope(
+	{
+		patch: { textColor: Color3.fromRGB(255, 220, 120) },
+		discriminator: item.id,
+	},
+	() => {
+		Label({ text: "Rare Item" });
+	},
+);
+```
+
+Locked scope behavior:
+
+- dedicated helper, not widget-class syntax
+- callback-bounded lifetime
+- partial merge onto current active style
+- parent style restored automatically when callback exits
+- optional discriminator for repeated scopes from the same callsite
+
+The docs describe the wrapped-callable contract intentionally, even if some current in-repo experimental code or tests still mention older helper naming.
 
 ## Macros
 
@@ -303,8 +319,8 @@ See [Networking](23-networking.md) for the full spec, current package boundary, 
 - [Queries](03-queries.md)
 - [Commands](04-commands.md)
 - [Observers](06-observers.md)
-- [UI](26-ui.md)
 - [Monitors](18-monitors.md)
 - [Systems and injection](17-systems-and-injection.md)
 - [Networking](23-networking.md)
 - [Prefabs](24-prefabs.md)
+- [UI](26-ui.md)
