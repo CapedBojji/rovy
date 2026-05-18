@@ -1,0 +1,29 @@
+{
+  "name": "@rovy/ui",
+  "version": "0.0.0",
+  "description": "Function-first UI package for Rovy widgets and style scopes",
+  "main": "out/init.luau",
+  "types": "out/index.d.ts",
+  "license": "MIT",
+  "scripts": {
+    "build": "pnpm --filter @rovy/core build && rbxtsc",
+    "dev": "rbxtsc -w",
+    "test": "pnpm run build && lune run test/run"
+  },
+  "files": [
+    "out",
+    "!**/*.tsbuildinfo"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@rovy/core": "workspace:*",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@rbxts/compiler-types": "3.0.0-types.0",
+    "@rbxts/types": "^1.0.920",
+    "roblox-ts": "^3.0.0"
+  }
+}

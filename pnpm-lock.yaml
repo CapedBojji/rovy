@@ -207,6 +207,25 @@ importers:
         specifier: ^22.15.31
         version: 22.19.19
 
+  packages/ui:
+    dependencies:
+      '@rovy/core':
+        specifier: workspace:*
+        version: link:../core
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+    devDependencies:
+      '@rbxts/compiler-types':
+        specifier: 3.0.0-types.0
+        version: 3.0.0-types.0
+      '@rbxts/types':
+        specifier: ^1.0.920
+        version: 1.0.920
+      roblox-ts:
+        specifier: ^3.0.0
+        version: 3.0.0
+
 packages:
 
   '@eslint-community/eslint-utils@4.9.1':
