@@ -16,7 +16,7 @@ export class DestroyModelOnExit {
 		this.parts.set(entity, model.part);
 	}
 
-	onExit(entity: Entity): void {
+	onExit(entity: Entity, _model: Model): void {
 		const part = this.parts.get(entity);
 		if (part !== undefined) part.Destroy();
 		this.parts.delete(entity);
