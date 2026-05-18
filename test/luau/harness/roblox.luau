@@ -109,7 +109,6 @@ local function createTree()
 		for _, child in ipairs(self:GetChildren()) do
 			child:Destroy()
 		end
-		self.__children = {}
 		local oldParent = rawget(self, "Parent")
 		if oldParent and oldParent.__children then
 			for i, child in ipairs(oldParent.__children) do
@@ -122,14 +121,13 @@ local function createTree()
 		-- Use rawset to avoid retriggering __newindex parent-walk logic during
 		-- teardown; we already detached this node from its previous parent above.
 		rawset(self, "Parent", nil)
+		self.__children = {}
 	end
 
 	function FakeInstance:GetChildren()
 		local children = {}
 		for _, child in ipairs(self.__children) do
-			if not child.Destroyed then
-				table.insert(children, child)
-			end
+			table.insert(children, child)
 		end
 		return children
 	end

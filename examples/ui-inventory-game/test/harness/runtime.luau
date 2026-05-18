@@ -86,6 +86,7 @@ local fakeGlobals = {
 	UDim2 = { new = function(xs, xo, ys, yo) return { X = { Scale = xs, Offset = xo }, Y = { Scale = ys, Offset = yo } } end },
 	UDim = { new = function(scale, offset) return { Scale = scale, Offset = offset } end },
 	Instance = tree.Instance,
+	typeof = tree.typeof,
 	Enum = setmetatable({}, {
 		__index = function(_, enumName)
 			return setmetatable({}, {
@@ -99,7 +100,6 @@ local fakeGlobals = {
 for key, value in pairs(fakeGlobals) do
 	_G[key] = value
 end
-_G.typeof = tree.typeof
 
 local function newNode(path: string, className: string?)
 	return setmetatable({ __path = normalize(path), __file = nil, __className = className or "Folder", children = {} }, Node)
