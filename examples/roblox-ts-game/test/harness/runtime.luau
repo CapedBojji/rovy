@@ -206,7 +206,7 @@ local function loadModule(node): any
 	end
 	local fsPath = rawget(node, "__file")
 	assert(fsPath, "rovy example harness: not a ModuleScript: " .. tostring(rawget(node, "__path")))
-	local shouldCache = not (string.find(fsPath, "/examples/plugin-example/out/", 1, true) ~= nil)
+	local shouldCache = string.find(fsPath, "/examples/plugin-example/out/", 1, true) == nil
 	if shouldCache then
 		local cached = moduleCache[fsPath]
 		if cached ~= nil then

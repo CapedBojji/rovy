@@ -7,7 +7,7 @@
   "scripts": {
     "build": "corepack pnpm@10.17.1 --filter @rovy/networking build && rbxtsc --type game && corepack pnpm@10.17.1 --dir ../../packages/transformer exec node scripts/generate-blink.js ../../examples/zombie-game",
     "watch": "corepack pnpm@10.17.1 --dir ../../packages/transformer exec node scripts/watch-blink.js ../../examples/zombie-game",
-    "build:place": "npm run build && mkdir -p ../../build && rojo build default.project.json -o ../../build/rovy-zombie-game.rbxl",
+    "build:place": "corepack pnpm@10.17.1 run build && mkdir -p ../../build && rojo build default.project.json -o ../../build/rovy-zombie-game.rbxl",
     "test:output": "node test/assert-output.js",
     "test:luau": "zune test test/smoke",
     "test:place": "node test/assert-place.js"

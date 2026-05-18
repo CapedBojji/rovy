@@ -197,7 +197,7 @@ FakeInstance.__index = function(self, key)
 	if existing ~= nil then
 		return existing
 	end
-	if signalKeys[key] ~= true then
+	if signalKeys[key] == nil then
 		return nil
 	end
 	local events = rawget(self, "__events")
