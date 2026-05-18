@@ -95,9 +95,9 @@ local function createTree()
 			if value and value.__children then
 				table.insert(value.__children, self)
 			end
-			return
+		else
+			rawset(self, key, value)
 		end
-		rawset(self, key, value)
 	end
 
 	function FakeInstance:IsA(className: string)
@@ -110,7 +110,18 @@ local function createTree()
 			child:Destroy()
 		end
 		self.__children = {}
-		self.Parent = nil
+		local oldParent = rawget(self, "Parent")
+		if oldParent and oldParent.__children then
+			for i, child in ipairs(oldParent.__children) do
+				if child == self then
+					table.remove(oldParent.__children, i)
+					break
+				end
+			end
+		end
+		-- Use rawset to avoid retriggering __newindex parent-walk logic during
+		-- teardown; we already detached this node from its previous parent above.
+		rawset(self, "Parent", nil)
 	end
 
 	function FakeInstance:GetChildren()
@@ -167,6 +178,24 @@ local function createTree()
 		return self.__attributes[name]
 	end
 
+	local GUI_CLASSES = {
+		ScreenGui = true,
+		PlayerGui = true,
+		Frame = true,
+		ScrollingFrame = true,
+		TextLabel = true,
+		TextButton = true,
+		ImageLabel = true,
+		ImageButton = true,
+		UIListLayout = true,
+		UIPadding = true,
+		UIStroke = true,
+	}
+
+	local function isGuiClass(className: string): boolean
+		return GUI_CLASSES[className] == true
+	end
+
 	local function createInstance(className: string)
 		local instance = setmetatable({
 			ClassName = className,
@@ -176,7 +205,7 @@ local function createTree()
 			__children = {},
 			__events = {},
 			__attributes = {},
-			__isGui = className:find("Gui") ~= nil or className == "Frame" or className == "TextLabel" or className == "TextButton",
+			__isGui = isGuiClass(className),
 			LayoutOrder = 0,
 			AbsolutePosition = { X = 0, Y = 0 },
 			AbsoluteSize = { X = 100, Y = 100 },

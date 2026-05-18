@@ -7,6 +7,7 @@
 local jecs = require("../node_modules/@rbxts/jecs/src/jecs")
 local process = zune.process
 local testing = zune.testing
+local testingHarness = require("../../../test/luau/harness/testing")
 local expect = testing.expect
 
 testing.test("core substrate smoke", function()
@@ -62,4 +63,4 @@ testing.test("core substrate smoke", function()
 	expect(rec ~= nil and rec.archetype ~= nil).toBeTruthy()
 end)
 
-process.exit(testing._failed)
+process.exit(testingHarness.failedCount())

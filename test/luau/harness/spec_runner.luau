@@ -3,6 +3,7 @@
 local fs = zune.fs
 local process = zune.process
 local testing = zune.testing
+local testingHarness = require("./testing")
 
 type RunnerOptions = {
 	runtimeModule: string?,
@@ -52,7 +53,7 @@ local function run(options: RunnerOptions?): number
 		end
 	end
 
-	return testing._failed
+	return testingHarness.failedCount()
 end
 
 return { run = run }

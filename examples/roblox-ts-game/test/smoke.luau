@@ -2,6 +2,7 @@
 local process = zune.process
 local testing = zune.testing
 local TS = require("./harness/runtime")
+local testingHarness = require("../../../test/luau/harness/testing")
 local expect = testing.expect
 
 local main = TS.loadPath("out/server/main.server")
@@ -18,4 +19,4 @@ testing.test("integration smoke", function()
 end)
 
 print("ok  integration Luau smoke")
-process.exit(testing._failed)
+process.exit(testingHarness.failedCount())

@@ -2,6 +2,7 @@
 local process = zune.process
 local testing = zune.testing
 local TS = require("./harness/runtime")
+local testingHarness = require("../../../test/luau/harness/testing")
 local expect = testing.expect
 
 -- The smoke loads main.server (which exports runZombieGameSmoke). The
@@ -28,4 +29,4 @@ testing.test("zombie smoke", function()
 end)
 
 print("ok  zombie-game Luau smoke")
-process.exit(testing._failed)
+process.exit(testingHarness.failedCount())
