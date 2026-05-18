@@ -2,7 +2,7 @@
 -- Phase 1+ spec runner.
 -- Usage: `pnpm --filter @rovy/core test`  (= rbxtsc && zune run test/run)
 
-local process = require("@lune/process")
+local process = zune.process
 local runner = require("../../../test/luau/harness/spec_runner")
 
 process.exit(runner.run({

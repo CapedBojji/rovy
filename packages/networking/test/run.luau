@@ -3,7 +3,7 @@
 -- test/specs/*.luau against the compiled `out/`. Exits nonzero on failure.
 -- Usage: `pnpm --filter @rovy/networking test`
 
-local process = require("@lune/process")
+local process = zune.process
 
 local runner = require("../../../test/luau/harness/spec_runner")
 

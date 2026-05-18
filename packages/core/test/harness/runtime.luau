@@ -1,19 +1,19 @@
 --!nocheck
 -- Minimal roblox-ts RuntimeLib emulation for running compiled `out/` Luau
--- under Lune without Roblox Studio. Implements only what roblox-ts emits for
+-- under Zune without Roblox Studio. Implements only what roblox-ts emits for
 -- the rovy core: `local TS = _G[script]`, `TS.import`, `TS.getModule`, and a
 -- filesystem-backed fake-Instance tree. Promise/generator/try are intentionally
 -- unsupported — core code must not depend on them (enforced by build).
 --
--- Lune `@lune/fs` is async (coroutine-yielding). Yielding inside an `__index`
+-- Zune `zune.fs` is async (coroutine-yielding). Yielding inside an `__index`
 -- metamethod (which roblox-ts triggers via node indexing) crashes with
 -- "attempt to yield across metamethod/C-call boundary". So the module tree is
 -- pre-scanned ONCE here (normal context); `__index` is pure table lookup.
 
-local fs = require("@lune/fs")
-local luau = require("@lune/luau")
-local task = require("@lune/task")
-local process = require("@lune/process")
+local fs = zune.fs
+local luau = zune.luau
+local task = zune.task
+local process = zune.process
 
 local ROOT = (process.cwd :: string):gsub("[/\\]+$", "")
 

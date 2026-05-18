@@ -1,9 +1,8 @@
 --!nocheck
 
-local fs = require("@lune/fs")
-local process = require("@lune/process")
-
-local t = require("./expect")
+local fs = zune.fs
+local process = zune.process
+local testing = zune.testing
 
 type RunnerOptions = {
 	runtimeModule: string?,
@@ -22,6 +21,11 @@ local function run(options: RunnerOptions?): number
 	local specsRequirePrefix = opts.specsRequirePrefix or "./specs/"
 	local successMessage = opts.successMessage or ("ok  harness loaded " .. loadPath)
 	local specHeaderFormat = opts.specHeaderFormat or "── %s ──"
+	local t = {
+		describe = testing.describe,
+		it = testing.test,
+		expect = testing.expect,
+	}
 
 	local TS = require(runtimeModule)
 	local ok, err = pcall(function()
@@ -48,7 +52,7 @@ local function run(options: RunnerOptions?): number
 		end
 	end
 
-	return t.report()
+	return testing._failed
 end
 
 return { run = run }

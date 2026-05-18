@@ -1,8 +1,8 @@
 --!nocheck
-local fs = require("@lune/fs")
-local luau = require("@lune/luau")
-local task = require("@lune/task")
-local process = require("@lune/process")
+local fs = zune.fs
+local luau = zune.luau
+local task = zune.task
+local process = zune.process
 local roblox = require("../../../test/luau/harness/roblox")
 
 local TS = {}
@@ -73,90 +73,7 @@ local ROOT = normalize((process.cwd :: string):gsub("[/\\]+$", ""))
 local REPO = normalize(ROOT .. "/../..")
 
 local signal = roblox.createSignal
-
-local FakeInstance = {}
-FakeInstance.__index = function(self, key)
-	local value = rawget(FakeInstance, key)
-	if value ~= nil then
-		return value
-	end
-	local events = rawget(self, "__events")
-	if events[key] == nil then
-		events[key] = signal()
-	end
-	return events[key]
-end
-FakeInstance.__newindex = function(self, key, value)
-	if key == "Parent" then
-		local old = rawget(self, "Parent")
-		if old and old.__children then
-			for i, child in ipairs(old.__children) do
-				if child == self then
-					table.remove(old.__children, i)
-					break
-				end
-			end
-		end
-		rawset(self, key, value)
-		if value and value.__children then
-			table.insert(value.__children, self)
-		end
-	else
-		rawset(self, key, value)
-	end
-end
-function FakeInstance:IsA(className)
-	return self.ClassName == className or className == "Instance" or (className == "GuiObject" and self.__isGui)
-end
-function FakeInstance:Destroy()
-	self.Destroyed = true
-	for _, child in ipairs(self.__children) do
-		child:Destroy()
-	end
-	self.__children = {}
-end
-function FakeInstance:GetChildren()
-	return self.__children
-end
-function FakeInstance:FindFirstChild(name)
-	for _, child in ipairs(self.__children) do
-		if child.Name == name then return child end
-	end
-	return nil
-end
-function FakeInstance:FindFirstChildOfClass(className)
-	for _, child in ipairs(self.__children) do
-		if child.ClassName == className then return child end
-	end
-	return nil
-end
-function FakeInstance:WaitForChild(name)
-	local child = self:FindFirstChild(name)
-	assert(child ~= nil, "WaitForChild miss: " .. tostring(name))
-	return child
-end
-function FakeInstance:SetAttribute(name, value)
-	self.__attributes[name] = value
-end
-function FakeInstance:GetAttribute(name)
-	return self.__attributes[name]
-end
-
-local function newInstance(className)
-	return setmetatable({
-		ClassName = className,
-		Name = className,
-		Parent = nil,
-		__children = {},
-		__events = {},
-		__attributes = {},
-		__isGui = true,
-		LayoutOrder = 0,
-		AbsolutePosition = { X = 0, Y = 0 },
-		AbsoluteSize = { X = 100, Y = 100 },
-		Visible = true,
-	}, FakeInstance)
-end
+local tree = roblox.createTree()
 
 local fakeGlobals = {
 	Color3 = {
@@ -168,7 +85,7 @@ local fakeGlobals = {
 	Vector3 = { new = function(x, y, z) return { X = x, Y = y, Z = z } end },
 	UDim2 = { new = function(xs, xo, ys, yo) return { X = { Scale = xs, Offset = xo }, Y = { Scale = ys, Offset = yo } } end },
 	UDim = { new = function(scale, offset) return { Scale = scale, Offset = offset } end },
-	Instance = { new = newInstance },
+	Instance = tree.Instance,
 	Enum = setmetatable({}, {
 		__index = function(_, enumName)
 			return setmetatable({}, {
@@ -182,6 +99,7 @@ local fakeGlobals = {
 for key, value in pairs(fakeGlobals) do
 	_G[key] = value
 end
+_G.typeof = tree.typeof
 
 local function newNode(path: string, className: string?)
 	return setmetatable({ __path = normalize(path), __file = nil, __className = className or "Folder", children = {} }, Node)
@@ -317,7 +235,7 @@ assert(rovyUi, "ui inventory harness: missing packages/ui")
 rovyScope.children["ui"] = rovyUi
 rovyScope.children["rovy-ui"] = rovyUi
 
-local playerGui = newInstance("PlayerGui")
+local playerGui = tree.Instance.new("PlayerGui")
 playerGui.Name = "PlayerGui"
 
 local localPlayer = {
@@ -334,7 +252,7 @@ local playersService = {
 local runService = roblox.createRunService()
 local stepper = roblox.createStepper(runService)
 
-local workspaceService = newInstance("Workspace")
+local workspaceService = tree.Instance.new("Workspace")
 workspaceService.Name = "Workspace"
 
 local gameObject = roblox.createGame({

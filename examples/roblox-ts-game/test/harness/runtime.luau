@@ -1,8 +1,8 @@
 --!nocheck
-local fs = require("@lune/fs")
-local luau = require("@lune/luau")
-local task = require("@lune/task")
-local process = require("@lune/process")
+local fs = zune.fs
+local luau = zune.luau
+local task = zune.task
+local process = zune.process
 local roblox = require("../../../test/luau/harness/roblox")
 
 local TS = {}

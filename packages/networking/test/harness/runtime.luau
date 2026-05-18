@@ -1,13 +1,13 @@
 --!nocheck
--- roblox-ts RuntimeLib emulation for @rovy/networking specs under Lune.
+-- roblox-ts RuntimeLib emulation for @rovy/networking specs under Zune.
 -- Same approach as packages/core/test/harness/runtime.luau, extended so
 -- networking can load the compiled @rovy/core package (and its @rbxts/jecs
 -- dependency) the way roblox-ts emits cross-package getModule(...) calls.
 
-local fs = require("@lune/fs")
-local luau = require("@lune/luau")
-local task = require("@lune/task")
-local process = require("@lune/process")
+local fs = zune.fs
+local luau = zune.luau
+local task = zune.task
+local process = zune.process
 
 local ROOT = (process.cwd :: string):gsub("[/\\]+$", "")
 local CORE = ROOT .. "/../core"

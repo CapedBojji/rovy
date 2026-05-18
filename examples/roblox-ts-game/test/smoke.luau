@@ -1,18 +1,21 @@
 --!nocheck
-local process = require("@lune/process")
+local process = zune.process
+local testing = zune.testing
 local TS = require("./harness/runtime")
-local check = require("../../../test/luau/harness/checks")
+local expect = testing.expect
 
 local main = TS.loadPath("out/server/main.server")
 local result = main.runIntegrationSmoke()
 
-check.equal("started", result.started, true)
-check.equal("spawned", result.spawned, 1)
-check.equal("pulses", result.pulses, 1)
-check.equal("observed", result.observed, 1)
-check.equal("deadEntered", result.deadEntered, 1)
-check.equal("finalHealth", result.finalHealth, 0)
-check.equal("traitId", result.traitId, "src/shared/module")
+testing.test("integration smoke", function()
+	expect(result.started).toBe(true)
+	expect(result.spawned).toBe(1)
+	expect(result.pulses).toBe(1)
+	expect(result.observed).toBe(1)
+	expect(result.deadEntered).toBe(1)
+	expect(result.finalHealth).toBe(0)
+	expect(result.traitId).toBe("src/shared/module")
+end)
 
 print("ok  integration Luau smoke")
-process.exit(0)
+process.exit(testing._failed)
