@@ -391,17 +391,18 @@ function invokeWidget(fn: WidgetFn, meta: WidgetMeta, args: ReadonlyArray<unknow
 	return fn(...(allArgs as unknown as Array<unknown>));
 }
 
-export function __widget<T extends WidgetFn>(fn: T, meta: WidgetMeta): T {
-	registry.push({ fn, meta });
-	return ((...args: ReadonlyArray<unknown>) => __scope(meta.id, () => invokeWidget(fn, meta, args))) as T;
+export function __widget<F extends (...args: any) => any>(fn: F, meta: WidgetMeta): F {
+	registry.push({ fn: fn as unknown as WidgetFn, meta });
+	return ((...args: ReadonlyArray<unknown>) =>
+		__scope(meta.id, () => invokeWidget(fn as unknown as WidgetFn, meta, args))) as unknown as F;
 }
 
-export function __callWidget<T>(
-	widgetFn: (...args: ReadonlyArray<unknown>) => T,
+export function __callWidget<TArgs extends ReadonlyArray<unknown>, TReturn>(
+	widgetFn: (...args: TArgs) => TReturn,
 	key: string,
-	args: ReadonlyArray<unknown>,
-): T {
-	return __scope(key, () => widgetFn(...args));
+	args: TArgs,
+): TReturn {
+	return __scope(key, () => (widgetFn as (...a: ReadonlyArray<unknown>) => TReturn)(...args));
 }
 
 export function __reset(): void {
