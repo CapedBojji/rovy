@@ -199,11 +199,19 @@ export function beginFrame<TArgs extends Array<unknown>>(
 	callback: (...args: TArgs) => void,
 	...args: TArgs
 ): ContinueHandle {
-	assert(stack.size() === 0, "Runtime.start cannot be called while Runtime.start is already running");
+	// A prior frame that threw mid-render leaves stale frames on the stack;
+	// discard them so one widget error does not wedge every later frame.
+	while (stack.size() > 0) stack.pop();
 	rootNode.generation = rootNode.generation === 0 ? 1 : 0;
 	stack.push(newFrame(rootNode));
-	__scope("root", () => callback(...args));
-	const frame = stack.pop() as StackFrame;
+	let frame: StackFrame;
+	try {
+		__scope("root", () => callback(...args));
+		frame = stack.pop() as StackFrame;
+	} catch (err) {
+		while (stack.size() > 0) stack.pop();
+		throw err;
+	}
 	return { frame };
 }
 
@@ -230,10 +238,13 @@ export function continueFrame<TArgs extends Array<unknown>>(
 	callback: (...args: TArgs) => void,
 	...args: TArgs
 ): void {
-	assert(stack.size() === 0, "Runtime.continueFrame cannot be called while Runtime.start is already running");
+	while (stack.size() > 0) stack.pop();
 	stack.push(handle.frame);
-	__scope("root", () => callback(...args));
-	stack.pop();
+	try {
+		__scope("root", () => callback(...args));
+	} finally {
+		while (stack.size() > 0) stack.pop();
+	}
 }
 
 export function __scope<T>(key: string, fn: () => T): T {
@@ -301,10 +312,17 @@ export function __useInstance<T extends object = Record<string, Instance>>(
 	if (child.instance === undefined) {
 		child.refs = {};
 		const result = creator(child.refs);
-		const instance = (typeIs(result, "table") && (result as Array<unknown>)[0] !== undefined
-			? (result as Array<unknown>)[0]
-			: result) as Instance | undefined;
-		const container = (typeIs(result, "table") ? (result as Array<unknown>)[1] : undefined) as Instance | undefined;
+		// Tuple form is [instance?, container?] (a Lua array). A real Roblox
+		// Instance is typeIs "Instance"; a non-Roblox polyfill instance is a
+		// plain table with no numeric indices. So treat result as a tuple only
+		// when it is a table that actually has [0] or [1] set — otherwise the
+		// table IS the instance. This keeps [undefined, container] correct
+		// (instance stays undefined) instead of storing the array as instance.
+		const isTuple =
+			typeIs(result, "table") &&
+			((result as Array<unknown>)[0] !== undefined || (result as Array<unknown>)[1] !== undefined);
+		const instance = (isTuple ? (result as Array<unknown>)[0] : result) as Instance | undefined;
+		const container = (isTuple ? (result as Array<unknown>)[1] : undefined) as Instance | undefined;
 		if (instance !== undefined) {
 			instance.Parent = parentFrame.node.containerInstance ?? parentFrame.node.instance;
 			child.instance = instance;

@@ -1,13 +1,7 @@
-import { currentFrame, newFrame, newNode, stack, widget } from "../runtime";
+import { widget, __scope, __useInstance } from "../runtime";
 
 /** @widget */
-export const portal = widget((targetInstance: Instance, children: () => void): void => {
-	const node = newNode(targetInstance);
-	node.generation = currentFrame().node.generation;
-	stack.push(newFrame(node));
-	try {
-		children();
-	} finally {
-		stack.pop();
-	}
+export const portal = widget((targetInstance: Instance, fn: () => void): void => {
+	__useInstance("portal:instance", () => [undefined, targetInstance] as [Instance | undefined, Instance]);
+	__scope("portal:children", fn);
 }, "@rovy/ui/portal");

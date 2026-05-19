@@ -5,13 +5,13 @@ import { udim2 } from "../primitives";
 
 /** @widget */
 export const separator = widget((): void => {
-	const style = useStyle();
-	__useInstance("separator:instance", () =>
-		create("Frame", {
+	__useInstance("separator:instance", () => {
+		const style = useStyle();
+		return create("Frame", {
 			BackgroundColor3: style.separatorColor,
 			BackgroundTransparency: style.separatorTransparency,
 			BorderSizePixel: 0,
 			Size: udim2(1, 0, 0, 1),
-		}),
-	);
+		});
+	});
 }, "@rovy/ui/separator");
