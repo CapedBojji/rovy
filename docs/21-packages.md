@@ -55,7 +55,7 @@ import { NetClient, netEvent } from "@rovy/networking";
 - **Authoring style** — plain calls such as `Window({ title: "Inventory" })`
 - **Not the public model** — widget classes, `new Window()`, `RovyUi.Window(...)`
 - **State model** — function-first widgets with compile-keyed helpers like `useState`, `useEffect`, and `useInstance`
-- **Transformer contract** — widget functions are wrapped through `RovyUi.__widget(...)`, widget calls lower through `RovyUi.__callWidget(...)`, and storage helpers lower to keyed internals for stable identity
+- **Transformer contract** — widget functions are wrapped through `RovyUi.__widget(...)`, widget calls lower through `RovyUi.__scope(...)`, and storage helpers lower to keyed internals for stable identity
 
 This package is meant to feel closer to EgooE's function-driven rendering style than to a React component tree, while still using Rovy's registration, identity, and injection machinery. Runtime does not use `debug.info(...)` for identity; transformer keys own that job.
 
@@ -69,7 +69,7 @@ A roblox-ts custom transformer. Pure build-time. It never ships to the game. Dut
 4. Inject a `rovy.__*` registration call after each decorated class.
 5. Rewrite `trait<T>()` → `rovy.traitToken("stable/path")`.
 6. Validate decorator usage (observer field exclusivity, monitor param order, `@resource` defaulted ctor, planned `@prefab` zero-arg ctor + `build(...)` shape).
-7. UI support: detect JSDoc `@widget` functions, inject widget registration, wrap them through `RovyUi.__widget(...)`, lower plain/custom and built-in widget calls through `RovyUi.__callWidget(...)`, lower storage helpers to keyed internals, and lower style sugar.
+7. UI support: detect JSDoc `@widget` functions, inject widget registration, wrap them through `RovyUi.__widget(...)`, lower plain/custom and built-in widget calls through `RovyUi.__scope(...)`, lower storage helpers to keyed internals, and lower style sugar.
 
 ## How they connect
 

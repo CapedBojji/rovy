@@ -1,4 +1,4 @@
-import { widget, __callWidget, __scope, __useInstance } from "../runtime";
+import { widget, __scope, __useInstance } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim2 } from "../primitives";
@@ -26,5 +26,5 @@ const rowWidget = widget((first: RowOptions | (() => void), second?: () => void)
 export function row(children: () => void): void;
 export function row(options: RowOptions, children: () => void): void;
 export function row(first: RowOptions | (() => void), second?: () => void): void {
-	__callWidget(rowWidget as (...args: ReadonlyArray<unknown>) => void, "row", [first, second]);
+	__scope("row", () => rowWidget(first, second));
 }

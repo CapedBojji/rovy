@@ -3,6 +3,7 @@ import fs from "node:fs";
 import ts from "typescript";
 import {
 	arr,
+	arrow,
 	bool,
 	call,
 	entityNameToExpression,
@@ -268,20 +269,21 @@ function transformCall(
 	}
 
 	if (uiName && state.uiExportHasWidgetTag(sourceFile, uiName)) {
-		return call(field(state.addRovyUiImport(sourceFile), "__callWidget"), [
-			ts.visitNode(node.expression, visitor, ts.isExpression) ?? node.expression,
+		const visitedExpr = ts.visitNode(node.expression, visitor, ts.isExpression) ?? node.expression;
+		const visitedArgs = node.arguments.map((arg) => ts.visitNode(arg, visitor, ts.isExpression) ?? arg);
+		return call(field(state.addRovyUiImport(sourceFile), "__scope"), [
 			str(state.nextWidgetCallsiteKey(node)),
-			arr(node.arguments.map((arg) => ts.visitNode(arg, visitor, ts.isExpression) ?? arg)),
+			arrow(call(visitedExpr, visitedArgs)),
 		]);
 	}
 
 	if (ts.isIdentifier(node.expression)) {
 		const widget = widgetCallers.get(node.expression.text);
 		if (widget) {
-			return call(field(state.addRovyUiImport(sourceFile), "__callWidget"), [
-				node.expression,
+			const visitedArgs = node.arguments.map((arg) => ts.visitNode(arg, visitor, ts.isExpression) ?? arg);
+			return call(field(state.addRovyUiImport(sourceFile), "__scope"), [
 				str(state.nextWidgetCallsiteKey(node)),
-				arr(node.arguments.map((arg) => ts.visitNode(arg, visitor, ts.isExpression) ?? arg)),
+				arrow(call(node.expression, visitedArgs)),
 			]);
 		}
 	}

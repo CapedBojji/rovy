@@ -274,7 +274,7 @@ export function draw() {
 	assert.match(result.printed, /id: "src\/main@Window"/);
 	assert.match(result.printed, /name: "Window"/);
 	assert.match(result.printed, /kind: "res", ctor: Theme/);
-	assert.match(result.printed, /RovyUi\.__callWidget\(Window, "src\/main:0", \[\{ title: "Inventory" \}\]\)/);
+	assert.match(result.printed, /RovyUi\.__scope\("src\/main:0", \(\) => Window\(\{ title: "Inventory" \}\)\)/);
 });
 
 runCase("JSDoc widget functions can use overloads for clean call signatures", () => {
@@ -294,7 +294,7 @@ export function draw() {
 `);
 	assertNoDiagnostics(result, "widget overload lowering");
 	assert.match(result.printed, /Window = RovyUi\.__widget\(Window,/);
-	assert.match(result.printed, /RovyUi\.__callWidget\(Window, "src\/main:0", \[\{ title: "Inventory" \}\]\)/);
+	assert.match(result.printed, /RovyUi\.__scope\("src\/main:0", \(\) => Window\(\{ title: "Inventory" \}\)\)/);
 });
 
 runCase("widget state helpers remain public calls inside lowered widget", () => {
@@ -329,8 +329,8 @@ export function draw() {
 	assert.match(result.printed, /RovyUi\.__useEffect\("src\/main:1", \(\) => \{ \}, count\)/);
 	assert.match(result.printed, /RovyUi\.__useInstance\("src\/main:2", \(ref\) => new Instance\("Frame"\)\)/);
 	assert.match(result.printed, /RovyUi\.__scope\("src\/main:3", \(\) =>/);
-	assert.match(result.printed, /RovyUi\.__callWidget\(button, "src\/main:4", \["Named"\]\)/);
-	assert.match(result.printed, /RovyUi\.__callWidget\(RovyUi\.label, "src\/main:5", \["Namespaced"\]\)/);
+	assert.match(result.printed, /RovyUi\.__scope\("src\/main:4", \(\) => button\("Named"\)\)/);
+	assert.match(result.printed, /RovyUi\.__scope\("src\/main:5", \(\) => RovyUi\.label\("Namespaced"\)\)/);
 });
 
 runCase("widget style param lowers to active style lookup", () => {

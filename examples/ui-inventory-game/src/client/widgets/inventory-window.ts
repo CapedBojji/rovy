@@ -1,5 +1,5 @@
 import {
-	__callWidget,
+	__scope,
 	button,
 	heading,
 	label,
@@ -37,43 +37,43 @@ export const InventoryWindow = widget((items: ReadonlyArray<InventoryItem>): voi
 	const [status, setStatus] = useState("Select an item to inspect it.");
 	const selected = items[selectedIndex] ?? items[0];
 
-	__callWidget(
-		windowWidget,
-		"example/ui-inventory/window",
-		[{
+	__scope("example/ui-inventory/window", () => windowWidget(
+		{
 			title: "Inventory",
 			size: new Vector2(340, 320),
 			position: new Vector2(380, 60),
 		}, () => {
-			__callWidget(headingWidget, "example/ui-inventory/heading", ["Starter Pack"]);
-			__callWidget(labelWidget, "example/ui-inventory/intro", ["Custom widget authored in example game code."]);
+			__scope("example/ui-inventory/heading", () => headingWidget("Starter Pack"));
+			__scope("example/ui-inventory/intro", () => labelWidget("Custom widget authored in example game code."));
 
 			for (let index = 0; index < items.size(); index++) {
 				const item = items[index];
 				if (item === undefined) continue;
 
 				useKey(item.id);
-				const handle = __callWidget(selectableLabelWidget, "example/ui-inventory/item", [
-					itemLine(item, equippedId),
-					{ selected: index === selectedIndex },
-				]);
+				const handle = __scope("example/ui-inventory/item", () =>
+					selectableLabelWidget(
+						itemLine(item, equippedId),
+						{ selected: index === selectedIndex },
+					),
+				);
 				if (handle.clicked()) {
 					setSelectedIndex(index);
 					setStatus(`Selected ${item.name}.`);
 				}
 			}
 
-			__callWidget(separatorWidget, "example/ui-inventory/separator", []);
+			__scope("example/ui-inventory/separator", () => separatorWidget());
 
 			if (selected === undefined) {
-				__callWidget(labelWidget, "example/ui-inventory/empty", ["Inventory is empty."]);
+				__scope("example/ui-inventory/empty", () => labelWidget("Inventory is empty."));
 				return;
 			}
 
-			__callWidget(labelWidget, "example/ui-inventory/type", [`Type: ${selected.kind}`]);
-			__callWidget(labelWidget, "example/ui-inventory/description", [selected.description]);
+			__scope("example/ui-inventory/type", () => labelWidget(`Type: ${selected.kind}`));
+			__scope("example/ui-inventory/description", () => labelWidget(selected.description));
 
-			const action = __callWidget(buttonWidget, "example/ui-inventory/action", [actionLabel(selected)]);
+			const action = __scope("example/ui-inventory/action", () => buttonWidget(actionLabel(selected)));
 			if (action.clicked()) {
 				if (selected.kind === "consumable") {
 					setStatus(`Used ${selected.name}.`);
@@ -85,7 +85,7 @@ export const InventoryWindow = widget((items: ReadonlyArray<InventoryItem>): voi
 				}
 			}
 
-			__callWidget(labelWidget, "example/ui-inventory/status", [status]);
-		}],
-	);
+			__scope("example/ui-inventory/status", () => labelWidget(status));
+		},
+	));
 }, "example/ui-inventory/InventoryWindow");

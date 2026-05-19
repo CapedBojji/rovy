@@ -212,7 +212,7 @@ const Window = RovyUi.__widget(function Window(props: { title: string }): void {
 	name: "Window",
 });
 
-RovyUi.__callWidget(Window, "src/ui/Window:0", [{ title: "Inventory" }]);
+RovyUi.__scope("src/ui/Window:0", () => Window({ title: "Inventory" }));
 ```
 
 The public authoring stays `Window({ ... })`; the lowered helper gives `@rovy/ui` stable widget-call identity for `useState` and `useEffect`.

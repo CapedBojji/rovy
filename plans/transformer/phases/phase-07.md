@@ -5,9 +5,9 @@
 - [x] Inject widget registry metadata for consumer-authored tagged functions.
 - [x] Wrap consumer-authored tagged widget functions through `RovyUi.__widget(...)`.
 - [x] Detect plain calls to tagged widget functions such as `Window(args)`.
-- [x] Lower `WidgetFn(args)` to `RovyUi.__callWidget(widget, "module:key", [args])`.
+- [x] Lower `WidgetFn(args)` to `RovyUi.__scope("module:key", () => WidgetFn(args))`.
 - [x] Detect built-in `@rovy/ui` widgets via the `@widget` tag in the package `.d.ts` (resolved through the type checker, following re-export/alias chains) — no hardcoded `UI_WIDGET_EXPORTS` list.
-- [x] Two-key model: widget identity key in `__widget(fn, { id })`, per-callsite key in `__callWidget(widget, "module:N", args)`.
+- [x] Two-key model: widget identity key in `__widget(fn, { id })`, per-callsite key in `__scope("module:N", () => WidgetFn(args))`.
 - [x] Detect leading `style: Style` and erase it into `RovyUi.getActiveStyle()` in the lowered body.
 - [x] Lower `StyleScope({ patch, discriminator? }, fn)` as callback-bounded runtime style context.
 - [ ] Optionally attach stable compile-time widget identity metadata for widget reconciliation/debugging.

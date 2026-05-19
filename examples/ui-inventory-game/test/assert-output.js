@@ -29,8 +29,8 @@ const checks = [
 	["schedule registration", /:__schedule\(/],
 	["loadPaths Rojo lowering", /game:GetService\("ReplicatedStorage"\):WaitForChild\("TS"\)/],
 	["custom widget definition", /InventoryWindow = widget\(function/],
-	["widget call lowering", /__callWidget\(/],
-	["demo window usage", /__callWidget\(demoWindow/],
+	["widget call lowering", /__scope\(/],
+	["demo window usage", /demoWindow/],
 ];
 
 for (const [label, pattern] of checks) {

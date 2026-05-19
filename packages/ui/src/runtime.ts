@@ -379,9 +379,9 @@ export function __widget<T extends WidgetFn>(fn: T, meta: WidgetMeta): T {
 }
 
 export function __callWidget<T>(
-	widgetFn: (...args: ReadonlyArray<unknown>) => T,
 	key: string,
-	args: ReadonlyArray<unknown>,
+	widgetFn: (...args: unknown[]) => T,
+	...args: unknown[]
 ): T {
 	return __scope(key, () => widgetFn(...args));
 }
