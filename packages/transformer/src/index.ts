@@ -97,21 +97,22 @@ function transformSourceFile(state: TransformState, sourceFile: ts.SourceFile): 
 			statements.push(...transformed);
 		} else if (ts.isFunctionDeclaration(statement)) {
 			const widget = statement.name ? widgetCallers.get(statement.name.text) : undefined;
-			const visited =
-				widget && widget.implementation === statement
-					? transformWidgetFunction(state, sourceFile, statement, visitor)
-					: ts.visitNode(statement, visitor, ts.isStatement);
-			if (visited) statements.push(visited);
 			if (widget && widget.implementation === statement && statement.name) {
+				const visited = transformWidgetFunction(state, sourceFile, statement, visitor);
 				const widgetId = classScopedId(state.stableIdForNode(statement), statement.name.text);
 				const metaConstName = `__rovyWidgetMeta_${statement.name.text}`;
 				statements.push(constDecl(metaConstName, buildWidgetMeta(widgetId, statement.name.text)));
 				statements.push(
-					assignWidget(statement.name, state.addRovyUiImport(sourceFile), [
-						statement.name,
+					buildWidgetVarStatement(
+						state,
+						sourceFile,
+						visited,
 						id(metaConstName),
-					]),
+					),
 				);
+			} else {
+				const visited = ts.visitNode(statement, visitor, ts.isStatement);
+				if (visited) statements.push(visited);
 			}
 		} else {
 			const visited = ts.visitNode(statement, visitor, ts.isStatement);
@@ -1272,12 +1273,34 @@ function regCall(rovy: ts.Expression, name: string, args: readonly ts.Expression
 	return stmt(call(field(rovy, name), args));
 }
 
-function assignWidget(target: ts.Identifier, rovyUi: ts.Expression, args: readonly ts.Expression[]): ts.Statement {
-	return stmt(
-		ts.factory.createBinaryExpression(
-			target,
-			ts.factory.createToken(ts.SyntaxKind.EqualsToken),
-			call(field(rovyUi, "__widget"), args),
+function buildWidgetVarStatement(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	fnDecl: ts.FunctionDeclaration,
+	meta: ts.Expression,
+): ts.Statement {
+	const name = fnDecl.name;
+	if (!name || !fnDecl.body) {
+		state.diagnostic(fnDecl, "@widget requires named function with body");
+		return ts.factory.createEmptyStatement();
+	}
+	const fnExpr = ts.factory.createFunctionExpression(
+		undefined,
+		fnDecl.asteriskToken,
+		undefined,
+		fnDecl.typeParameters,
+		fnDecl.parameters,
+		fnDecl.type,
+		fnDecl.body,
+	);
+	const widgetCall = call(field(state.addRovyUiImport(sourceFile), "__widget"), [fnExpr, meta]);
+	const exportMod = fnDecl.modifiers?.find((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+	const modifiers = exportMod ? [ts.factory.createModifier(ts.SyntaxKind.ExportKeyword)] : undefined;
+	return ts.factory.createVariableStatement(
+		modifiers,
+		ts.factory.createVariableDeclarationList(
+			[ts.factory.createVariableDeclaration(name, undefined, undefined, widgetCall)],
+			ts.NodeFlags.Const,
 		),
 	);
 }

@@ -1,6 +1,8 @@
-import { widget, __scope, __useInstance } from "../runtime";
+import { widget, __callWidget, __scope, __useInstance, provideContext } from "../runtime";
+import { useStyle } from "../style";
 import { create } from "../create";
-import { udim2 } from "../primitives";
+import { udim, udim2 } from "../primitives";
+import * as contexts from "../contexts";
 
 export interface TableColumn {
 	width?: number;
@@ -20,12 +22,128 @@ export interface TableOptions {
 	stripeColumnTransparency?: number;
 }
 
-/** @widget */
-const _table = widget((options: TableOptions, children: () => void): void => {
-	__useInstance("table:instance", () =>
-		create("Frame", { BackgroundTransparency: 1, Size: udim2(1, 0, 0, options.rowHeight ?? 120) }),
-	);
-	__scope("table:children", children);
-}, "@rovy/ui/table");
+export interface TableState {
+	columns: TableColumn[];
+	columnWidths: number[];
+	rowHeight: number;
+	cellPadding: Vector2;
+	borders: boolean;
+	header: boolean;
+	stripeRows: boolean;
+	stripeColumns: boolean;
+	stripeRowColor: Color3;
+	stripeColumnColor: Color3;
+	stripeRowTransparency: number;
+	stripeColumnTransparency: number;
+	headerColor: Color3;
+	headerTransparency: number;
+	borderColor: Color3;
+	borderTransparency: number;
+	rowIndex: number;
+}
 
-export { _table as table };
+function normalizeColumns(columns?: TableColumn[]): TableColumn[] {
+	if (columns !== undefined && columns.size() > 0) return columns;
+	return [{ fill: true }];
+}
+
+function computeColumnWidths(totalWidth: number, columns: TableColumn[]): number[] {
+	const widths = new Array<number>(columns.size());
+	let fixedWidth = 0;
+	let fillCount = 0;
+
+	for (let index = 0; index < columns.size(); index++) {
+		const column = columns[index];
+		const width = column.width ?? 0;
+		widths[index] = width;
+		fixedWidth += width;
+		if (column.fill === true || width <= 0) fillCount += 1;
+	}
+
+	const remainingWidth = math.max(0, totalWidth - fixedWidth);
+	const fillWidth = fillCount > 0 ? remainingWidth / fillCount : 0;
+
+	for (let index = 0; index < columns.size(); index++) {
+		const column = columns[index];
+		if (column.fill === true || (column.width ?? 0) <= 0) widths[index] = fillWidth;
+	}
+
+	return widths;
+}
+
+const tableWidget = widget((options: TableOptions, fn: () => void): void => {
+	const refs = __useInstance("table:instance", (ref) => {
+		const style = useStyle();
+		return create("Frame", {
+			[ref as never]: "frame",
+			BackgroundTransparency: 1,
+			BorderSizePixel: 0,
+			Size: udim2(1, 0, 0, 0),
+			AutomaticSize: Enum.AutomaticSize.Y,
+			ClipsDescendants: true,
+			0: create("UIStroke", {
+				[ref as never]: "border",
+				Color: style.tableBorderColor,
+				Transparency: style.tableBorderTransparency,
+				Thickness: 1,
+				Enabled: false,
+			}),
+			1: create("UIListLayout", {
+				SortOrder: Enum.SortOrder.LayoutOrder,
+				Padding: udim(0, 0),
+			}),
+		});
+	}) as { frame: Frame; border: UIStroke };
+
+	const style = useStyle();
+	const columns = normalizeColumns(options.columns);
+	let absoluteWidth = refs.frame.AbsoluteSize.X;
+
+	const parent = refs.frame.Parent;
+	if (absoluteWidth <= 0 && parent !== undefined && parent.IsA("GuiObject")) {
+		absoluteWidth = parent.AbsoluteSize.X;
+	}
+	if (absoluteWidth <= 0) absoluteWidth = 300;
+
+	const tableState: TableState = {
+		columns,
+		columnWidths: computeColumnWidths(absoluteWidth, columns),
+		rowHeight: options.rowHeight ?? style.tableRowHeight ?? style.itemHeight,
+		cellPadding: options.cellPadding ?? style.tableCellPadding ?? style.framePadding,
+		borders: options.borders ?? false,
+		header: options.header ?? false,
+		stripeRows: options.stripeRows ?? false,
+		stripeColumns: options.stripeColumns ?? false,
+		stripeRowColor: options.stripeRowColor ?? style.tableStripeRowColor,
+		stripeColumnColor: options.stripeColumnColor ?? style.tableStripeColumnColor,
+		stripeRowTransparency:
+			options.stripeRowTransparency !== undefined
+				? options.stripeRowTransparency
+				: style.tableStripeRowTransparency,
+		stripeColumnTransparency:
+			options.stripeColumnTransparency !== undefined
+				? options.stripeColumnTransparency
+				: style.tableStripeColumnTransparency,
+		headerColor: style.tableHeaderColor,
+		headerTransparency: style.tableHeaderTransparency,
+		borderColor: style.tableBorderColor,
+		borderTransparency: style.tableBorderTransparency,
+		rowIndex: 0,
+	};
+
+	refs.border.Enabled = tableState.borders;
+	refs.border.Color = tableState.borderColor;
+	refs.border.Transparency = tableState.borderTransparency;
+
+	provideContext(contexts.tableState, tableState);
+	__scope("table:children", fn);
+}, "@rovy/ui/tableWidget");
+
+/** @widget */
+export function uiTable(options: TableOptions, children: () => void): void;
+export function uiTable(children: () => void): void;
+export function uiTable(first: TableOptions | (() => void), second?: () => void): void {
+	const fn = typeIs(first, "function") ? first : second;
+	const options: TableOptions = typeIs(first, "function") ? {} : first;
+	__callWidget(tableWidget as (...args: ReadonlyArray<unknown>) => void, "table", [options, fn]);
+}

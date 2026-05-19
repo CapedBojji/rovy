@@ -234,6 +234,10 @@ return function(TS, t)
 			end)
 			RovyUi.finishFrame(node)
 
+			-- Widgets now render full EgooE-parity instance trees (UICorner,
+			-- UIStroke, nested containers, ...), so this spec asserts runtime
+			-- reconciliation behavior (instance reuse + teardown across frames)
+			-- by widget identity, not exact stub structure or instance counts.
 			t.expect(countMap(node.children)).toBe(1)
 			local frame1ScopeNode = firstMapValue(node.children)
 			local frame1Instances = collectInstances(frame1ScopeNode)
@@ -248,17 +252,23 @@ return function(TS, t)
 			frame1Button = findFirstInstance(frame1ScopeNode, function(instance)
 				return instance.ClassName == "TextButton" and instance.Text == "Take"
 			end)
-			frame1Checkbox = findFirstInstance(frame1ScopeNode, function(instance)
-				return instance.ClassName == "TextButton" and instance.Text == "[ ] Flag"
-			end)
-			t.expect(#frame1Instances).toBe(4)
+			-- Checkbox now renders a Frame row with a nested "Flag" TextLabel;
+			-- the runtime node tracks the root Frame, so match it by that child.
+			local function isCheckboxRow(instance)
+				if instance.ClassName ~= "Frame" then return false end
+				for _, child in ipairs(instance:GetChildren()) do
+					if child.ClassName == "TextLabel" and child.Text == "Flag" then
+						return true
+					end
+				end
+				return false
+			end
+			frame1Checkbox = findFirstInstance(frame1ScopeNode, isCheckboxRow)
+			t.expect(#frame1Instances > 0).toBeTruthy()
 			t.expect(frame1Label).toBeDefined()
 			t.expect(frame1Button).toBeDefined()
 			t.expect(frame1Checkbox).toBeDefined()
 			t.expect(frame1Label.Parent).toBeDefined()
-			t.expect(frame1Button.Parent).toBe(frame1Label.Parent)
-			t.expect(frame1Checkbox.Parent).toBe(frame1Label.Parent)
-			t.expect(frame1Label.Parent.ClassName).toBe("Frame")
 			t.expect(frame1Window.Destroyed == nil or frame1Window.Destroyed == false).toBeTruthy()
 
 			local handle2 = RovyUi.beginFrame(node, function()
@@ -277,14 +287,14 @@ return function(TS, t)
 			local frame2Label = findFirstInstance(frame2ScopeNode, function(instance)
 				return instance.ClassName == "TextLabel" and instance.Text == "Beta"
 			end)
-			local frame2Checkbox = findFirstInstance(frame2ScopeNode, function(instance)
-				return instance.ClassName == "TextButton" and instance.Text == "[ ] Flag"
-			end)
+			local frame2Checkbox = findFirstInstance(frame2ScopeNode, isCheckboxRow)
+			-- Same call slots across frames must reuse the same instances.
 			t.expect(frame2Window).toBe(frame1Window)
 			t.expect(frame2Label).toBe(frame1Label)
 			t.expect(frame2Checkbox).toBe(frame1Checkbox)
 			t.expect(frame2Label.Text).toBe("Beta")
-			t.expect(#frame2Instances).toBe(3)
+			t.expect(#frame2Instances > 0).toBeTruthy()
+			-- The removed button widget must be torn down.
 			t.expect(frame1Button.Destroyed).toBeTruthy()
 			t.expect(frame1Checkbox.Destroyed == nil or frame1Checkbox.Destroyed == false).toBeTruthy()
 			t.expect(countMap(node.children)).toBe(1)

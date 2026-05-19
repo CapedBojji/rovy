@@ -272,7 +272,8 @@ export function draw() {
 	assert.match(result.printed, /id: "src\/main@Window"/);
 	assert.match(result.printed, /name: "Window"/);
 	assert.doesNotMatch(result.printed, /params:/);
-	assert.match(result.printed, /Window = RovyUi\.__widget\(Window, __rovyWidgetMeta_Window\)/);
+	assert.match(result.printed, /const Window = RovyUi\.__widget\(function /);
+	assert.match(result.printed, /__rovyWidgetMeta_Window\)/);
 	assert.match(result.printed, /RovyUi\.__scope\("src\/main:0", \(\) => Window\(\{ title: "Inventory" \}\)\)/);
 });
 
@@ -292,7 +293,8 @@ export function draw() {
 `);
 	assertNoDiagnostics(result, "widget overload lowering");
 	assert.match(result.printed, /const __rovyWidgetMeta_Window = \{/);
-	assert.match(result.printed, /Window = RovyUi\.__widget\(Window, __rovyWidgetMeta_Window\)/);
+	assert.match(result.printed, /const Window = RovyUi\.__widget\(function /);
+	assert.match(result.printed, /__rovyWidgetMeta_Window\)/);
 	assert.match(result.printed, /RovyUi\.__scope\("src\/main:0", \(\) => Window\(\{ title: "Inventory" \}\)\)/);
 });
 
@@ -308,7 +310,8 @@ export function Counter(): void {
 	assertNoDiagnostics(result, "widget state helper");
 	assert.match(result.printed, /RovyUi\.__useState\("src\/main:0", 0\)/);
 	assert.match(result.printed, /const __rovyWidgetMeta_Counter = \{/);
-	assert.match(result.printed, /Counter = RovyUi\.__widget\(Counter, __rovyWidgetMeta_Counter\)/);
+	assert.match(result.printed, /const Counter = RovyUi\.__widget\(function /);
+	assert.match(result.printed, /__rovyWidgetMeta_Counter\)/);
 });
 
 runCase("UI built-in widgets and helpers lower with compile keys", () => {
@@ -342,9 +345,9 @@ export function Label(style: Style, options: { text: string }): void {
 }
 `);
 	assertNoDiagnostics(result, "widget style lowering");
-	assert.match(result.printed, /function Label\(options: \{ text: string; \}\): void \{ const style = RovyUi\.getActiveStyle\(\); print\(style\.textColor, options\.text\); \}/);
+	assert.match(result.printed, /function \(options: \{ text: string; \}\): void \{ const style = RovyUi\.getActiveStyle\(\); print\(style\.textColor, options\.text\); \}/);
 	assert.match(result.printed, /const __rovyWidgetMeta_Label = \{/);
-	assert.match(result.printed, /Label = RovyUi\.__widget\(Label, __rovyWidgetMeta_Label\)/);
+	assert.match(result.printed, /const Label = RovyUi\.__widget\(function /);
 });
 
 runCase("StyleScope lowers to RovyUi.withStyleScope", () => {

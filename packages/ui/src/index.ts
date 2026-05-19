@@ -28,6 +28,9 @@ import {
 } from "./runtime";
 import { useStyle, getActiveStyle, setStyle, StyleScope, withStyleScope, __withStyleScope } from "./style";
 import { create } from "./create";
+import { createConnect } from "./createConnect";
+import { WINDOW_ATTRIBUTE } from "./windowConstants";
+import * as contexts from "./contexts";
 
 import { button } from "./widgets/button";
 import { checkbox } from "./widgets/checkbox";
@@ -51,14 +54,18 @@ import { input } from "./widgets/input";
 import { comboBox } from "./widgets/combo-box";
 import { progressBar } from "./widgets/progress-bar";
 import { collapsingHeader } from "./widgets/collapsing-header";
-import { table as _table } from "./widgets/table";
+import { uiTable as _table } from "./widgets/table";
 import { tableRow } from "./widgets/table-row";
 import { tableCell } from "./widgets/table-cell";
 import { demoWindow } from "./widgets/demo-window";
+import { errorWidget } from "./widgets/error";
 
 export * from "./runtime";
 export * from "./style";
 export * from "./create";
+export * from "./createConnect";
+export * from "./windowConstants";
+export * as contexts from "./contexts";
 export { newRoot as new } from "./runtime";
 
 export * from "./widgets/button";
@@ -87,6 +94,7 @@ export * from "./widgets/table";
 export * from "./widgets/table-row";
 export * from "./widgets/table-cell";
 export * from "./widgets/demo-window";
+export * from "./widgets/error";
 
 export const rovyUi = {
 	new: newRoot,
@@ -118,6 +126,9 @@ export const rovyUi = {
 	withStyleScope,
 	__withStyleScope,
 	create,
+	createConnect,
+	contexts,
+	WINDOW_ATTRIBUTE,
 	registry,
 	__reset,
 	window,
@@ -146,6 +157,7 @@ export const rovyUi = {
 	tableRow,
 	tableCell,
 	demoWindow,
+	error: errorWidget,
 };
 
 export default rovyUi;
