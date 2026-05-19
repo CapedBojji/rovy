@@ -19,7 +19,7 @@ All of the following happen at **build time**. Nothing below runs at Luau startu
 
 The networking layer adds more transformer duties: detect `@netEvent` from `@rovy/networking`, treat it as implicit core `@event`, read network settings from `.rovy.json`, generate Blink-validated `.blink` schema metadata, lower `NetClient`/`NetServer` params through core's package-extension injection hook, and inject `rovyNet.__netEvent(...)` metadata. See [Networking](23-networking.md).
 
-UI work adds another compile-time path: detect JSDoc `@widget` functions, require a same-file implementation, inject widget registration metadata, wrap the function through `RovyUi.__widget(...)`, lower later plain widget calls and built-in `@rovy/ui` widget calls through `RovyUi.__callWidget(widget, "module:key", [args])`, erase leading `style: Style` authoring sugar into `RovyUi.getActiveStyle()`, lower storage helpers like `useState` / `useEffect` / `useInstance` to keyed internals, and lower `StyleScope(...)` / `scope(...)` as keyed callback-bounded runtime scopes. See [UI](26-ui.md).
+UI work adds another compile-time path: detect JSDoc `@widget` functions, require a same-file implementation, hoist a module-level `const __rovyWidgetMeta_X = { id, name } as const` per widget, wrap the function through `RovyUi.__widget(fn, __rovyWidgetMeta_X)`, lower later plain widget calls and built-in `@rovy/ui` widget calls through `RovyUi.__scope("module:key", () => Widget(args))`, erase leading `style: Style` authoring sugar into `RovyUi.getActiveStyle()`, lower storage helpers like `useState` / `useEffect` / `useInstance` to keyed internals, and lower `StyleScope(...)` / `scope(...)` as keyed callback-bounded runtime scopes. See [UI](26-ui.md).
 
 ## Transformer config
 
@@ -190,9 +190,9 @@ The transformer is expected to:
 1. detect JSDoc `@widget` on the function declaration
 2. require a same-file implementation for the tagged function
 3. detect a leading `style: Style` param as special widget authoring sugar
-4. inject widget registration metadata as a module side effect
-5. wrap the function through `RovyUi.__widget(...)`
-6. lower later `Window(args)` callsites through `RovyUi.__callWidget(...)` with a stable callsite key
+4. hoist a module-level `const __rovyWidgetMeta_X = { id, name } as const` for the widget (created once at module load, not on every render)
+5. wrap the function through `RovyUi.__widget(fn, __rovyWidgetMeta_X)`
+6. lower later `Window(args)` callsites through `RovyUi.__scope("module:key", () => Window(args))` — no arg array, no `__callWidget`
 7. erase the runtime `style` param and insert `const style = RovyUi.getActiveStyle()` at the start of the lowered body
 8. lower `StyleScope({ patch, discriminator? }, fn)` as callback-bounded runtime style scope
 
@@ -204,18 +204,20 @@ export function Window(style: Style, props: { title: string }): void {
 	print(style.windowBgColor, props.title);
 }
 
-const Window = RovyUi.__widget(function Window(props: { title: string }): void {
-	const style = RovyUi.getActiveStyle();
-	print(style.windowBgColor, props.title);
-}, {
+const __rovyWidgetMeta_Window = {
 	id: "src/ui/Window@Window",
 	name: "Window",
-});
+} as const;
+
+Window = RovyUi.__widget(function Window(props: { title: string }): void {
+	const style = RovyUi.getActiveStyle();
+	print(style.windowBgColor, props.title);
+}, __rovyWidgetMeta_Window);
 
 RovyUi.__scope("src/ui/Window:0", () => Window({ title: "Inventory" }));
 ```
 
-The public authoring stays `Window({ ... })`; the lowered helper gives `@rovy/ui` stable widget-call identity for `useState` and `useEffect`.
+The meta object is created once when the ModuleScript loads. The public authoring stays `Window({ ... })`; the lowered helper gives `@rovy/ui` stable widget-call identity for `useState` and `useEffect`.
 
 ### Style param lowering
 
@@ -261,10 +263,6 @@ The runtime model should behave like:
 - restore parent active style automatically when callback exits
 
 This is intentionally not a public `pushStyle` / `popStyle` API.
-
-### Other widget params
-
-Other widget runtime inputs may still follow the "injected params before authored call args" rule, but `style: Style` is specifically active-style sugar rather than a `Res<T>`-style injection.
 
 ### Non-goals
 

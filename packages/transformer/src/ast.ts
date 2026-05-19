@@ -51,6 +51,16 @@ export function stmt(expr: ts.Expression): ts.ExpressionStatement {
 	return ts.factory.createExpressionStatement(expr);
 }
 
+export function constDecl(name: string, value: ts.Expression): ts.VariableStatement {
+	return ts.factory.createVariableStatement(
+		undefined,
+		ts.factory.createVariableDeclarationList(
+			[ts.factory.createVariableDeclaration(id(name), undefined, undefined, value)],
+			ts.NodeFlags.Const,
+		),
+	);
+}
+
 export function importNamed(moduleName: string, exportedName: string, localName: string): ts.ImportDeclaration {
 	return ts.factory.createImportDeclaration(
 		undefined,

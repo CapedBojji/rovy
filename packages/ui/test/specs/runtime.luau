@@ -112,7 +112,7 @@ return function(TS, t)
 			local seen
 			local Widget = RovyUi.__widget(function(value)
 				seen = value
-			end, { id = "spec@Widget", name = "Widget", params = {} })
+			end, { id = "spec@Widget", name = "Widget" })
 			run(function()
 				RovyUi.__callWidget("call:widget", Widget, "ok")
 			end)
@@ -128,7 +128,7 @@ return function(TS, t)
 				local count, setCount = state[1], state[2]
 				table.insert(seen, label .. ":" .. tostring(count))
 				setCount(count + 1)
-			end, { id = "spec@Counter", name = "Counter", params = {} })
+			end, { id = "spec@Counter", name = "Counter" })
 			local node = RovyUi.new(root())
 
 			RovyUi.start(node, function()
@@ -155,7 +155,7 @@ return function(TS, t)
 						cleanups += 1
 					end
 				end, dep)
-			end, { id = "spec@Effect", name = "Effect", params = {} })
+			end, { id = "spec@Effect", name = "Effect" })
 			local node = RovyUi.new(root())
 
 			RovyUi.start(node, function()
@@ -302,34 +302,5 @@ return function(TS, t)
 			t.expect(handle3.frame).toBeDefined()
 		end)
 
-		t.it("resolves injected params from active app context", function()
-			RovyUi.__reset()
-			local core = TS.import(nil, TS.getModule(nil, "@rovy", "rovy-core"))
-			local app = core.App.new()
-			local Theme = {}
-			Theme.__index = Theme
-			function Theme.new()
-				return setmetatable({ title = "HUD" }, Theme)
-			end
-
-			core.rovy:__reset()
-			core.rovy:__resource(Theme, "spec@Theme")
-			app:start()
-
-			local seen
-			local Widget = RovyUi.__widget(function(theme, label)
-				seen = theme.title .. ":" .. label
-			end, {
-				id = "spec@Inject",
-				name = "Inject",
-				params = { { kind = "res", ctor = Theme } },
-			})
-			run(function()
-				RovyUi.withApp(app, function()
-					RovyUi.__callWidget("call:inject", Widget, "Inventory")
-				end)
-			end)
-			t.expect(seen).toBe("HUD:Inventory")
-		end)
 	end)
 end

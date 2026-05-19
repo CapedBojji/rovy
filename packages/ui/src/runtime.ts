@@ -1,10 +1,6 @@
-import type { App, ParamDescriptor } from "@rovy/core";
-import { resolveParams, type ResolveCtx } from "@rovy/core";
-
 export interface WidgetMeta {
 	readonly id: string;
 	readonly name: string;
-	readonly params?: ReadonlyArray<ParamDescriptor>;
 }
 
 export type WidgetFn = (...args: ReadonlyArray<unknown>) => unknown;
@@ -59,7 +55,6 @@ export interface StackFrame {
 
 export const stack = new Array<StackFrame>();
 export const registry = new Array<WidgetReg>();
-let activeApp: App | undefined;
 
 export function newNode(instance?: Instance): Node {
 	return {
@@ -348,34 +343,9 @@ export function useEventCallback(): EventCallback | undefined {
 	return stack[0]?.node.eventCallback;
 }
 
-export function withApp<T>(app: App, fn: () => T): T {
-	const previous = activeApp;
-	activeApp = app;
-	try {
-		return fn();
-	} finally {
-		activeApp = previous;
-	}
-}
-
-function createWidgetResolveCtx(): ResolveCtx {
-	assert(activeApp !== undefined, "[rovy-ui] widget injected params require RovyUi.withApp(app, fn)");
-	return activeApp.createResolveCtx();
-}
-
-function invokeWidget(fn: WidgetFn, meta: WidgetMeta, args: ReadonlyArray<unknown>): unknown {
-	const params = meta.params ?? [];
-	if (params.size() === 0) return fn(...args);
-	const injected = resolveParams(params, createWidgetResolveCtx());
-	const allArgs = new Array<defined>();
-	for (const value of injected) allArgs.push(value as defined);
-	for (const value of args) allArgs.push(value as defined);
-	return fn(...(allArgs as unknown as Array<unknown>));
-}
-
 export function __widget<T extends WidgetFn>(fn: T, meta: WidgetMeta): T {
 	registry.push({ fn, meta });
-	return ((...args: ReadonlyArray<unknown>) => __scope(meta.id, () => invokeWidget(fn, meta, args))) as T;
+	return ((...args: ReadonlyArray<unknown>) => __scope(meta.id, () => fn(...args))) as T;
 }
 
 export function __callWidget<T>(
@@ -390,5 +360,4 @@ export function __reset(): void {
 	for (const frame of stack) destroyNode(frame.node);
 	while (stack.size() > 0) stack.pop();
 	while (registry.size() > 0) registry.pop();
-	activeApp = undefined;
 }

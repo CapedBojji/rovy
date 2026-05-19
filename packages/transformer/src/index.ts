@@ -6,6 +6,7 @@ import {
 	arrow,
 	bool,
 	call,
+	constDecl,
 	entityNameToExpression,
 	field,
 	id,
@@ -68,7 +69,6 @@ interface ParamBuild {
 
 interface WidgetCallerInfo {
 	readonly implementation: ts.FunctionDeclaration;
-	readonly params: ParamBuild;
 	readonly hasStyleParam: boolean;
 }
 
@@ -104,11 +104,12 @@ function transformSourceFile(state: TransformState, sourceFile: ts.SourceFile): 
 			if (visited) statements.push(visited);
 			if (widget && widget.implementation === statement && statement.name) {
 				const widgetId = classScopedId(state.stableIdForNode(statement), statement.name.text);
+				const metaConstName = `__rovyWidgetMeta_${statement.name.text}`;
+				statements.push(constDecl(metaConstName, buildWidgetMeta(widgetId, statement.name.text)));
 				statements.push(
-					...widget.params.queryStatements,
 					assignWidget(statement.name, state.addRovyUiImport(sourceFile), [
 						statement.name,
-						buildWidgetMeta(widgetId, statement.name.text, widget.params),
+						id(metaConstName),
 					]),
 				);
 			}
@@ -440,11 +441,8 @@ function collectWidgetCallers(state: TransformState, sourceFile: ts.SourceFile):
 			state.diagnostic(statement, `@widget caller '${statement.name.text}' requires a same-file implementation`);
 			continue;
 		}
-		const widgetId = classScopedId(state.stableIdForNode(implementation), statement.name.text);
-		const params = lowerWidgetParams(state, sourceFile, implementation.parameters, widgetId);
 		out.set(statement.name.text, {
 			implementation,
-			params,
 			hasStyleParam: hasLeadingStyleParam(state, sourceFile, implementation),
 		});
 	}
@@ -691,8 +689,8 @@ function buildNetEventMeta(
 	);
 }
 
-function buildWidgetMeta(classId: string, name: string, params: ParamBuild): ts.ObjectLiteralExpression {
-	return obj([prop("id", str(classId)), prop("name", str(name)), prop("params", params.descriptor)], true);
+function buildWidgetMeta(classId: string, name: string): ts.ObjectLiteralExpression {
+	return obj([prop("id", str(classId)), prop("name", str(name))], true);
 }
 
 function validateNetEvent(state: TransformState, node: ts.ClassDeclaration, decorator: DecoratorInfo): void {
@@ -1334,41 +1332,6 @@ function buildPrefabMeta(classId: string, params: ParamBuild): ts.ObjectLiteralE
 	return obj([prop("id", str(classId)), prop("params", params.descriptor)], true);
 }
 
-function lowerWidgetParams(
-	state: TransformState,
-	sourceFile: ts.SourceFile,
-	params: ts.NodeArray<ts.ParameterDeclaration>,
-	classId: string,
-): ParamBuild {
-	const descriptors: ts.ObjectLiteralExpression[] = [];
-	const queryStatements: ts.Statement[] = [];
-	let sawCallArg = false;
-	for (let i = 0; i < params.length; i++) {
-		const param = params[i];
-		const type = param.type;
-		if (i === 0 && type && isUiType(state, sourceFile, type, "Style")) {
-			continue;
-		}
-		if (!type || !isWidgetInjectedParam(state, sourceFile, type)) {
-			sawCallArg = true;
-			continue;
-		}
-		if (sawCallArg) {
-			state.diagnostic(param, "@widget injected params must come before call args");
-			continue;
-		}
-		const lowered = lowerParam(state, sourceFile, param, {
-			kind: "system",
-			classId,
-			paramIndex: i,
-			localIndex: 0,
-		});
-		descriptors.push(lowered.descriptor);
-		queryStatements.push(...lowered.queryStatements);
-	}
-	return { descriptor: arr(descriptors, true), queryStatements };
-}
-
 function hasLeadingStyleParam(state: TransformState, sourceFile: ts.SourceFile, node: ts.FunctionDeclaration): boolean {
 	const first = node.parameters[0];
 	return first?.type !== undefined && isUiType(state, sourceFile, first.type, "Style");
@@ -1380,32 +1343,6 @@ function isUiType(state: TransformState, sourceFile: ts.SourceFile, type: ts.Typ
 	const name = type.typeName;
 	if (ts.isIdentifier(name)) return imports.named.get(name.text) === exportName || name.text === exportName;
 	return ts.isIdentifier(name.left) && imports.namespaces.has(name.left.text) && name.right.text === exportName;
-}
-
-function isWidgetInjectedParam(state: TransformState, sourceFile: ts.SourceFile, type: ts.TypeNode): boolean {
-	if (!ts.isTypeReferenceNode(type)) return false;
-	const name = lastTypeName(type.typeName);
-	if (name === "Local") return false;
-	if (
-		name === "Commands" ||
-		name === "World" ||
-		name === "Query" ||
-		name === "Res" ||
-		name === "ResMut" ||
-		name === "OptRes" ||
-		name === "EventReader" ||
-		name === "EventWriter"
-	) {
-		return true;
-	}
-	if (
-		isNetworkingType(state, sourceFile, type, "NetClient") ||
-		isNetworkingType(state, sourceFile, type, "NetServer") ||
-		isNetworkingType(state, sourceFile, type, "NetEventContext")
-	) {
-		return true;
-	}
-	return state.hasDecoratorOnTypeNode(type, "collect");
 }
 
 function classScopedId(moduleId: string, className: string): string {

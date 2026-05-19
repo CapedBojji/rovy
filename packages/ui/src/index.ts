@@ -23,7 +23,6 @@ import {
 	createContext,
 	useContext,
 	provideContext,
-	withApp,
 	registry,
 	__reset,
 } from "./runtime";
@@ -119,7 +118,6 @@ export const rovyUi = {
 	withStyleScope,
 	__withStyleScope,
 	create,
-	withApp,
 	registry,
 	__reset,
 	window,
