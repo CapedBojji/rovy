@@ -25,7 +25,12 @@
     "open:zombie": "python3 scripts/start.py open zombie",
     "dev:zombie": "python3 scripts/start.py zombie",
     "test:zombie": "pnpm run build:zombie && pnpm --filter @rovy/example-zombie-game test:output && pnpm --filter @rovy/example-zombie-game test:luau && pnpm --filter @rovy/example-zombie-game test:place",
-    "build:examples": "pnpm run build:example && pnpm run build:ui-inventory && pnpm run build:zombie"
+    "build:examples": "pnpm run build:example && pnpm run build:ui-inventory && pnpm run build:zombie",
+    "clean": "bash scripts/clean.sh",
+    "clean:modules": "bash scripts/clean.sh --modules",
+    "docs:dev": "pnpm --filter @rovy/docs dev",
+    "docs:build": "pnpm --filter @rovy/docs build",
+    "docs:preview": "pnpm --filter @rovy/docs preview"
   },
   "devDependencies": {
     "typescript": "5.5.3"
