@@ -192,7 +192,7 @@ const Window = RovyUi.__widget(function Window(props: { title: string }): void {
 });
 
 function draw() {
-	RovyUi.__callWidget(Window, "src/ui/Window:0", [{ title: "Inventory" }]);
+	RovyUi.__scope("src/ui/Window:0", () => Window({ title: "Inventory" }));
 }
 ```
 
@@ -231,7 +231,7 @@ The key contract points are:
 - public authoring stays as one JSDoc-tagged TS function
 - `style: Style` is removed from the runtime call signature
 - lowered widget bodies read `RovyUi.getActiveStyle()` first
-- authored `Window(...)` calls lower through `RovyUi.__callWidget(...)` so widget storage has stable callsite identity
+- authored `Window(...)` calls lower through `RovyUi.__scope(...)` so widget storage has stable callsite identity
 - `RovyUi.__widget(...)` registers metadata and returns the wrapped callable
 - style scope is callback-bounded and temporary
 - style does not travel through widget registration metadata

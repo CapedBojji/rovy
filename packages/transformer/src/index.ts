@@ -3,8 +3,10 @@ import fs from "node:fs";
 import ts from "typescript";
 import {
 	arr,
+	arrow,
 	bool,
 	call,
+	constDecl,
 	entityNameToExpression,
 	field,
 	id,
@@ -67,7 +69,6 @@ interface ParamBuild {
 
 interface WidgetCallerInfo {
 	readonly implementation: ts.FunctionDeclaration;
-	readonly params: ParamBuild;
 	readonly hasStyleParam: boolean;
 }
 
@@ -99,14 +100,14 @@ function transformSourceFile(state: TransformState, sourceFile: ts.SourceFile): 
 			if (widget && widget.implementation === statement && statement.name) {
 				const visited = transformWidgetFunction(state, sourceFile, statement, visitor);
 				const widgetId = classScopedId(state.stableIdForNode(statement), statement.name.text);
+				const metaConstName = `__rovyWidgetMeta_${statement.name.text}`;
+				statements.push(constDecl(metaConstName, buildWidgetMeta(widgetId, statement.name.text)));
 				statements.push(
-					...widget.params.queryStatements,
 					buildWidgetVarStatement(
 						state,
 						sourceFile,
 						visited,
-						widgetId,
-						widget.params,
+						id(metaConstName),
 					),
 				);
 			} else {
@@ -270,20 +271,21 @@ function transformCall(
 	}
 
 	if (uiName && state.uiExportHasWidgetTag(sourceFile, uiName)) {
-		return call(field(state.addRovyUiImport(sourceFile), "__callWidget"), [
-			ts.visitNode(node.expression, visitor, ts.isExpression) ?? node.expression,
+		const visitedExpr = ts.visitNode(node.expression, visitor, ts.isExpression) ?? node.expression;
+		const visitedArgs = node.arguments.map((arg) => ts.visitNode(arg, visitor, ts.isExpression) ?? arg);
+		return call(field(state.addRovyUiImport(sourceFile), "__scope"), [
 			str(state.nextWidgetCallsiteKey(node)),
-			arr(node.arguments.map((arg) => ts.visitNode(arg, visitor, ts.isExpression) ?? arg)),
+			arrow(call(visitedExpr, visitedArgs)),
 		]);
 	}
 
 	if (ts.isIdentifier(node.expression)) {
 		const widget = widgetCallers.get(node.expression.text);
 		if (widget) {
-			return call(field(state.addRovyUiImport(sourceFile), "__callWidget"), [
-				node.expression,
+			const visitedArgs = node.arguments.map((arg) => ts.visitNode(arg, visitor, ts.isExpression) ?? arg);
+			return call(field(state.addRovyUiImport(sourceFile), "__scope"), [
 				str(state.nextWidgetCallsiteKey(node)),
-				arr(node.arguments.map((arg) => ts.visitNode(arg, visitor, ts.isExpression) ?? arg)),
+				arrow(call(node.expression, visitedArgs)),
 			]);
 		}
 	}
@@ -440,11 +442,8 @@ function collectWidgetCallers(state: TransformState, sourceFile: ts.SourceFile):
 			state.diagnostic(statement, `@widget caller '${statement.name.text}' requires a same-file implementation`);
 			continue;
 		}
-		const widgetId = classScopedId(state.stableIdForNode(implementation), statement.name.text);
-		const params = lowerWidgetParams(state, sourceFile, implementation.parameters, widgetId);
 		out.set(statement.name.text, {
 			implementation,
-			params,
 			hasStyleParam: hasLeadingStyleParam(state, sourceFile, implementation),
 		});
 	}
@@ -691,8 +690,8 @@ function buildNetEventMeta(
 	);
 }
 
-function buildWidgetMeta(classId: string, name: string, params: ParamBuild): ts.ObjectLiteralExpression {
-	return obj([prop("id", str(classId)), prop("name", str(name)), prop("params", params.descriptor)], true);
+function buildWidgetMeta(classId: string, name: string): ts.ObjectLiteralExpression {
+	return obj([prop("id", str(classId)), prop("name", str(name))], true);
 }
 
 function validateNetEvent(state: TransformState, node: ts.ClassDeclaration, decorator: DecoratorInfo): void {
@@ -1278,8 +1277,7 @@ function buildWidgetVarStatement(
 	state: TransformState,
 	sourceFile: ts.SourceFile,
 	fnDecl: ts.FunctionDeclaration,
-	widgetId: string,
-	params: ParamBuild,
+	meta: ts.Expression,
 ): ts.Statement {
 	const name = fnDecl.name;
 	if (!name || !fnDecl.body) {
@@ -1295,10 +1293,7 @@ function buildWidgetVarStatement(
 		fnDecl.type,
 		fnDecl.body,
 	);
-	const widgetCall = call(field(state.addRovyUiImport(sourceFile), "__widget"), [
-		fnExpr,
-		buildWidgetMeta(widgetId, name.text, params),
-	]);
+	const widgetCall = call(field(state.addRovyUiImport(sourceFile), "__widget"), [fnExpr, meta]);
 	const exportMod = fnDecl.modifiers?.find((m) => m.kind === ts.SyntaxKind.ExportKeyword);
 	const modifiers = exportMod ? [ts.factory.createModifier(ts.SyntaxKind.ExportKeyword)] : undefined;
 	return ts.factory.createVariableStatement(
@@ -1360,41 +1355,6 @@ function buildPrefabMeta(classId: string, params: ParamBuild): ts.ObjectLiteralE
 	return obj([prop("id", str(classId)), prop("params", params.descriptor)], true);
 }
 
-function lowerWidgetParams(
-	state: TransformState,
-	sourceFile: ts.SourceFile,
-	params: ts.NodeArray<ts.ParameterDeclaration>,
-	classId: string,
-): ParamBuild {
-	const descriptors: ts.ObjectLiteralExpression[] = [];
-	const queryStatements: ts.Statement[] = [];
-	let sawCallArg = false;
-	for (let i = 0; i < params.length; i++) {
-		const param = params[i];
-		const type = param.type;
-		if (i === 0 && type && isUiType(state, sourceFile, type, "Style")) {
-			continue;
-		}
-		if (!type || !isWidgetInjectedParam(state, sourceFile, type)) {
-			sawCallArg = true;
-			continue;
-		}
-		if (sawCallArg) {
-			state.diagnostic(param, "@widget injected params must come before call args");
-			continue;
-		}
-		const lowered = lowerParam(state, sourceFile, param, {
-			kind: "system",
-			classId,
-			paramIndex: i,
-			localIndex: 0,
-		});
-		descriptors.push(lowered.descriptor);
-		queryStatements.push(...lowered.queryStatements);
-	}
-	return { descriptor: arr(descriptors, true), queryStatements };
-}
-
 function hasLeadingStyleParam(state: TransformState, sourceFile: ts.SourceFile, node: ts.FunctionDeclaration): boolean {
 	const first = node.parameters[0];
 	return first?.type !== undefined && isUiType(state, sourceFile, first.type, "Style");
@@ -1406,32 +1366,6 @@ function isUiType(state: TransformState, sourceFile: ts.SourceFile, type: ts.Typ
 	const name = type.typeName;
 	if (ts.isIdentifier(name)) return imports.named.get(name.text) === exportName || name.text === exportName;
 	return ts.isIdentifier(name.left) && imports.namespaces.has(name.left.text) && name.right.text === exportName;
-}
-
-function isWidgetInjectedParam(state: TransformState, sourceFile: ts.SourceFile, type: ts.TypeNode): boolean {
-	if (!ts.isTypeReferenceNode(type)) return false;
-	const name = lastTypeName(type.typeName);
-	if (name === "Local") return false;
-	if (
-		name === "Commands" ||
-		name === "World" ||
-		name === "Query" ||
-		name === "Res" ||
-		name === "ResMut" ||
-		name === "OptRes" ||
-		name === "EventReader" ||
-		name === "EventWriter"
-	) {
-		return true;
-	}
-	if (
-		isNetworkingType(state, sourceFile, type, "NetClient") ||
-		isNetworkingType(state, sourceFile, type, "NetServer") ||
-		isNetworkingType(state, sourceFile, type, "NetEventContext")
-	) {
-		return true;
-	}
-	return state.hasDecoratorOnTypeNode(type, "collect");
 }
 
 function classScopedId(moduleId: string, className: string): string {

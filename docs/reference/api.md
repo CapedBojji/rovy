@@ -243,7 +243,7 @@ Widget implementation rules:
 - the runtime signature removes the `style` param and the lowered body reads `RovyUi.getActiveStyle()`
 - overloads are the recommended way to keep a clean public call signature
 - the transformer wraps the widget through `RovyUi.__widget(...)`
-- later widget callsites lower through `RovyUi.__callWidget(...)` so `useState`/`useEffect` have stable callsite identity
+- later widget callsites lower through `RovyUi.__scope(...)` so `useState`/`useEffect` have stable callsite identity
 
 Scoped style helper:
 
