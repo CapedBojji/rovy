@@ -27,7 +27,7 @@ The public authoring story stays entirely TypeScript-authored even though roblox
 ```
 packages/ui/src/
   index.ts              public surface — re-exports + rovyUi object + default export
-  runtime.ts            node/stack/scope, useState/useEffect/useInstance, __widget/__callWidget, context
+  runtime.ts            node/stack/scope, useState/useEffect/useInstance, __widget/__scope, context
   style.ts              Style interface, defaultStyle, useStyle/setStyle/StyleScope
   primitives.ts         c() / v2() / udim2() / udim() constructors
   create.ts             create() instance helper
@@ -928,7 +928,7 @@ The transformer owns widget discovery and call lowering.
 - Requires a same-file implementation for tagged functions authored in consumer code.
 - Injects widget registration metadata as a module side effect (consumer-authored widgets only).
 - Wraps consumer-authored widget functions through `RovyUi.__widget(fn, meta)`.
-- Lowers widget calls `Widget(args)` to `RovyUi.__callWidget(widget, "module:key", [args])` — stable callsite identity for storage helpers.
+- Lowers widget calls `Widget(args)` to `RovyUi.__scope("module:key", () => Widget(args))` — stable callsite identity with no array allocation.
 - Storage-bearing calls lower to keyed internals: `useState(x)` → `RovyUi.__useState("module:key", x)`.
 - `scope(fn)` lowers to `RovyUi.__scope("module:key", fn)`.
 - Leading `style: Style` param is removed from the runtime signature; body is prefixed with `const style = RovyUi.getActiveStyle()`.
@@ -938,11 +938,11 @@ The transformer owns widget discovery and call lowering.
 Mirroring EgooE's `Runtime.widget` / `scope` split (EgooE derives both from `debug.info`; Rovy bans `debug.info` and injects both at compile time):
 
 - **Widget identity key** — identifies the widget *definition*. Carried in the registry meta `id`: `RovyUi.__widget(fn, { id, name })`. For consumer widgets the transformer computes it from the declaration; for built-ins it is the literal passed to `widget(fn, "@rovy/ui/button")` inside the library.
-- **Callsite key** — identifies each *call* to a widget. `RovyUi.__callWidget(widget, "module:N", args)`, where `N` increments per widget callsite in source order. This is what gives loops and repeated calls stable, separated storage. `useKey(discriminator)` further refines it at runtime for per-item identity.
+- **Callsite key** — identifies each *call* to a widget. `RovyUi.__scope("module:N", () => widget(args))`, where `N` increments per widget callsite in source order. This is what gives loops and repeated calls stable, separated storage. `useKey(discriminator)` further refines it at runtime for per-item identity.
 
 ### Built-in widget detection
 
-Built-in `@rovy/ui` widgets are detected the **same way** as consumer widgets: via the `/** @widget */` JSDoc tag. The tag is preserved into the package's emitted `.d.ts` (on `export declare const button`, on the `_table` alias target, on `function` overloads). The consumer-side transformer resolves the `@rovy/ui` export through the type checker, follows re-export/alias chains, and lowers a call to `RovyUi.__callWidget(...)` when the resolved declaration carries `@widget`.
+Built-in `@rovy/ui` widgets are detected the **same way** as consumer widgets: via the `/** @widget */` JSDoc tag. The tag is preserved into the package's emitted `.d.ts` (on `export declare const button`, on the `_table` alias target, on `function` overloads). The consumer-side transformer resolves the `@rovy/ui` export through the type checker, follows re-export/alias chains, and lowers a call to `RovyUi.__scope(...)` when the resolved declaration carries `@widget`.
 
 There is **no hardcoded built-in widget list** — the tag is the single source of truth. The `@rovy/ui` package is itself built with plain `rbxtsc` (not the transformer; the injected `import __rovyUi from "@rovy/ui"` would be circular), so built-in widgets keep the runtime `widget(fn, "@rovy/ui/name")` wrapper for registration. The `@widget` tag on them exists purely as the consumer-side detection signal.
 
@@ -954,7 +954,7 @@ const Window = RovyUi.__widget(function Window(props: WindowProps): void {
 	print(style.windowBgColor, props.title);
 }, { id: "src/ui/Window@Window", name: "Window" });
 
-RovyUi.__callWidget(Window, "src/ui/Window:0", [{ title: "Inventory" }]);
+RovyUi.__scope("src/ui/Window:0", () => Window({ title: "Inventory" }));
 ```
 
 Widget discovery follows the Rovy side-effect model: `rovy.loadPaths(...)` requires the module so the injected registration runs. Runtime never uses `debug.info` for identity; compile-time keys are mandatory.

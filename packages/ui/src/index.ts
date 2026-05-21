@@ -23,7 +23,6 @@ import {
 	createContext,
 	useContext,
 	provideContext,
-	withApp,
 	registry,
 	__reset,
 } from "./runtime";
@@ -130,7 +129,6 @@ export const rovyUi = {
 	createConnect,
 	contexts,
 	WINDOW_ATTRIBUTE,
-	withApp,
 	registry,
 	__reset,
 	window,

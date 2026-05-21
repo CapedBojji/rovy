@@ -36,8 +36,29 @@ export function call(expr: ts.Expression, args: ReadonlyArray<ts.Expression> = [
 	return ts.factory.createCallExpression(expr, undefined, [...args]);
 }
 
+export function arrow(body: ts.ConciseBody): ts.ArrowFunction {
+	return ts.factory.createArrowFunction(
+		undefined,
+		undefined,
+		[],
+		undefined,
+		ts.factory.createToken(ts.SyntaxKind.EqualsGreaterThanToken),
+		body,
+	);
+}
+
 export function stmt(expr: ts.Expression): ts.ExpressionStatement {
 	return ts.factory.createExpressionStatement(expr);
+}
+
+export function constDecl(name: string, value: ts.Expression): ts.VariableStatement {
+	return ts.factory.createVariableStatement(
+		undefined,
+		ts.factory.createVariableDeclarationList(
+			[ts.factory.createVariableDeclaration(id(name), undefined, undefined, value)],
+			ts.NodeFlags.Const,
+		),
+	);
 }
 
 export function importNamed(moduleName: string, exportedName: string, localName: string): ts.ImportDeclaration {

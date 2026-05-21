@@ -1,10 +1,6 @@
-import type { App, ParamDescriptor } from "@rovy/core";
-import { resolveParams, type ResolveCtx } from "@rovy/core";
-
 export interface WidgetMeta {
 	readonly id: string;
 	readonly name: string;
-	readonly params?: ReadonlyArray<ParamDescriptor>;
 }
 
 export type WidgetFn = (...args: ReadonlyArray<unknown>) => unknown;
@@ -59,7 +55,6 @@ export interface StackFrame {
 
 export const stack = new Array<StackFrame>();
 export const registry = new Array<WidgetReg>();
-let activeApp: App | undefined;
 
 export function newNode(instance?: Instance): Node {
 	return {
@@ -366,48 +361,21 @@ export function useEventCallback(): EventCallback | undefined {
 	return stack[0]?.node.eventCallback;
 }
 
-export function withApp<T>(app: App, fn: () => T): T {
-	const previous = activeApp;
-	activeApp = app;
-	try {
-		return fn();
-	} finally {
-		activeApp = previous;
-	}
+export function __widget<T extends WidgetFn>(fn: T, meta: WidgetMeta): T {
+	registry.push({ fn, meta });
+	return ((...args: ReadonlyArray<unknown>) => __scope(meta.id, () => fn(...args))) as T;
 }
 
-function createWidgetResolveCtx(): ResolveCtx {
-	assert(activeApp !== undefined, "[rovy-ui] widget injected params require RovyUi.withApp(app, fn)");
-	return activeApp.createResolveCtx();
-}
-
-function invokeWidget(fn: WidgetFn, meta: WidgetMeta, args: ReadonlyArray<unknown>): unknown {
-	const params = meta.params ?? [];
-	if (params.size() === 0) return fn(...args);
-	const injected = resolveParams(params, createWidgetResolveCtx());
-	const allArgs = new Array<defined>();
-	for (const value of injected) allArgs.push(value as defined);
-	for (const value of args) allArgs.push(value as defined);
-	return fn(...(allArgs as unknown as Array<unknown>));
-}
-
-export function __widget<F extends (...args: any) => any>(fn: F, meta: WidgetMeta): F {
-	registry.push({ fn: fn as unknown as WidgetFn, meta });
-	return ((...args: ReadonlyArray<unknown>) =>
-		__scope(meta.id, () => invokeWidget(fn as unknown as WidgetFn, meta, args))) as unknown as F;
-}
-
-export function __callWidget<TArgs extends ReadonlyArray<unknown>, TReturn>(
-	widgetFn: (...args: TArgs) => TReturn,
+export function __callWidget<T>(
 	key: string,
-	args: TArgs,
-): TReturn {
-	return __scope(key, () => (widgetFn as (...a: ReadonlyArray<unknown>) => TReturn)(...args));
+	widgetFn: (...args: unknown[]) => T,
+	...args: unknown[]
+): T {
+	return __scope(key, () => widgetFn(...args));
 }
 
 export function __reset(): void {
 	for (const frame of stack) destroyNode(frame.node);
 	while (stack.size() > 0) stack.pop();
 	while (registry.size() > 0) registry.pop();
-	activeApp = undefined;
 }

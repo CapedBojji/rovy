@@ -112,9 +112,9 @@ return function(TS, t)
 			local seen
 			local Widget = RovyUi.__widget(function(value)
 				seen = value
-			end, { id = "spec@Widget", name = "Widget", params = {} })
+			end, { id = "spec@Widget", name = "Widget" })
 			run(function()
-				RovyUi.__callWidget(Widget, "call:widget", { "ok" })
+				RovyUi.__callWidget("call:widget", Widget, "ok")
 			end)
 			t.expect(#RovyUi.registry).toBe(1)
 			t.expect(seen).toBe("ok")
@@ -128,15 +128,15 @@ return function(TS, t)
 				local count, setCount = state[1], state[2]
 				table.insert(seen, label .. ":" .. tostring(count))
 				setCount(count + 1)
-			end, { id = "spec@Counter", name = "Counter", params = {} })
+			end, { id = "spec@Counter", name = "Counter" })
 			local node = RovyUi.new(root())
 
 			RovyUi.start(node, function()
-				RovyUi.__callWidget(Widget, "call:a", { "A" })
-				RovyUi.__callWidget(Widget, "call:b", { "B" })
+				RovyUi.__callWidget("call:a", Widget, "A")
+				RovyUi.__callWidget("call:b", Widget, "B")
 			end)
 			RovyUi.start(node, function()
-				RovyUi.__callWidget(Widget, "call:a", { "A" })
+				RovyUi.__callWidget("call:a", Widget, "A")
 			end)
 
 			t.expect(seen[1]).toBe("A:0")
@@ -155,17 +155,17 @@ return function(TS, t)
 						cleanups += 1
 					end
 				end, dep)
-			end, { id = "spec@Effect", name = "Effect", params = {} })
+			end, { id = "spec@Effect", name = "Effect" })
 			local node = RovyUi.new(root())
 
 			RovyUi.start(node, function()
-				RovyUi.__callWidget(Widget, "call:effect", { "a" })
+				RovyUi.__callWidget("call:effect", Widget, "a")
 			end)
 			RovyUi.start(node, function()
-				RovyUi.__callWidget(Widget, "call:effect", { "a" })
+				RovyUi.__callWidget("call:effect", Widget, "a")
 			end)
 			RovyUi.start(node, function()
-				RovyUi.__callWidget(Widget, "call:effect", { "b" })
+				RovyUi.__callWidget("call:effect", Widget, "b")
 			end)
 			t.expect(runs).toBe(2)
 			t.expect(cleanups).toBe(1)
@@ -312,34 +312,5 @@ return function(TS, t)
 			t.expect(handle3.frame).toBeDefined()
 		end)
 
-		t.it("resolves injected params from active app context", function()
-			RovyUi.__reset()
-			local core = TS.import(nil, TS.getModule(nil, "@rovy", "rovy-core"))
-			local app = core.App.new()
-			local Theme = {}
-			Theme.__index = Theme
-			function Theme.new()
-				return setmetatable({ title = "HUD" }, Theme)
-			end
-
-			core.rovy:__reset()
-			core.rovy:__resource(Theme, "spec@Theme")
-			app:start()
-
-			local seen
-			local Widget = RovyUi.__widget(function(theme, label)
-				seen = theme.title .. ":" .. label
-			end, {
-				id = "spec@Inject",
-				name = "Inject",
-				params = { { kind = "res", ctor = Theme } },
-			})
-			run(function()
-				RovyUi.withApp(app, function()
-					RovyUi.__callWidget(Widget, "call:inject", { "Inventory" })
-				end)
-			end)
-			t.expect(seen).toBe("HUD:Inventory")
-		end)
 	end)
 end
