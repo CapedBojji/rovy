@@ -42,6 +42,7 @@ export { App } from "./runtime/app";
 export { RovyWorld } from "./runtime/world";
 export { CommandsImpl } from "./runtime/commands";
 export { Scheduler } from "./runtime/schedule";
+export { ScheduleContext } from "./runtime/schedule-context";
 export { QueryHandle, FilteredQueryHandle } from "./runtime/query";
 export { EventRegistry, EventReaderHandle, EventWriterHandle } from "./runtime/events";
 export { MonitorRegistry } from "./runtime/monitors";

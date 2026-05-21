@@ -14,6 +14,7 @@ import { flush } from "./flush";
 import type { QueryLike } from "./query";
 import type { LocalStore } from "./resolve-param";
 import { resolveParams } from "./resolve-param";
+import type { ScheduleContext } from "./schedule-context";
 import type { RovyWorld } from "./world";
 
 type SystemInstance = { run: (self: unknown, ...args: Array<unknown>) => void };
@@ -51,6 +52,8 @@ export class Scheduler {
 	events!: EventRegistry;
 	makeReader!: (registry: EventRegistry, event: Ctor) => EventReaderHandle;
 	makeWriter!: (registry: EventRegistry, event: Ctor) => EventWriterHandle;
+	/** Built-in per-run schedule metadata resource (set by App after finalize). */
+	scheduleContext!: ScheduleContext;
 	/** Monitor reconcile, run after every set-boundary flush (set by App). */
 	onFlush?: () => void;
 
@@ -114,9 +117,19 @@ export class Scheduler {
 		return out;
 	}
 
-	run(schedule: Ctor): void {
+	run(schedule: Ctor, dt?: number): void {
 		const def = this.schedules.get(schedule);
 		assert(def !== undefined, `[rovy] unknown schedule: ${tostring(schedule)}`);
+		const ctx = this.scheduleContext;
+		const prevSchedule = ctx.schedule;
+		const prevDt = ctx.dt;
+		const prevRawDt = ctx.rawDt;
+		const raw = dt ?? 0;
+		ctx.schedule = schedule;
+		ctx.rawDt = raw;
+		ctx.dt = math.max(0, raw);
+		ctx.elapsed += ctx.dt;
+		ctx.frame += 1;
 
 		this.depth += 1;
 
@@ -160,6 +173,10 @@ export class Scheduler {
 			this.events.clearAll(); // event buffers live for one schedule run
 			this.world.clearRemoved(); // removed buffers drained per run
 		}
+
+		ctx.schedule = prevSchedule;
+		ctx.dt = prevDt;
+		ctx.rawDt = prevRawDt;
 	}
 
 	/** Stable topological sort by after/before within a set. */

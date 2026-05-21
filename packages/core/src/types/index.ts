@@ -137,7 +137,7 @@ export interface World {
 	hasRelation(source: Entity, relation: Ctor, target: Entity): boolean;
 	getRelation<T extends object>(source: Entity, relation: Ctor<T>, target: Entity): T | undefined;
 	trigger(event: object): void;
-	runSchedule(schedule: Ctor): void;
+	runSchedule(schedule: Ctor, dt?: number): void;
 	flush(): void;
 }
 

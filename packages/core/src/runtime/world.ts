@@ -268,10 +268,10 @@ export class RovyWorld implements World {
 		this.triggerImpl(event);
 	}
 	/** Set by App to delegate into the scheduler. */
-	runScheduleImpl?: (schedule: Ctor) => void;
-	runSchedule(schedule: Ctor): void {
+	runScheduleImpl?: (schedule: Ctor, dt?: number) => void;
+	runSchedule(schedule: Ctor, dt?: number): void {
 		assert(this.runScheduleImpl !== undefined, "[rovy] world.runSchedule unavailable (App not constructed?)");
-		this.runScheduleImpl(schedule);
+		this.runScheduleImpl(schedule, dt);
 	}
 	/** Set by App to delegate into the command flush. */
 	flushImpl?: () => void;

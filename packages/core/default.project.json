@@ -1,6 +1,9 @@
 {
-  "name": "rovy-core",
+  "name": "core",
   "tree": {
-    "$path": "out"
+    "$className": "Folder",
+    "out": {
+      "$path": "out"
+    }
   }
 }

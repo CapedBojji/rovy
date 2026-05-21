@@ -20,6 +20,7 @@ import { buildQueryHandle } from "./query";
 import { TraitQueryHandle, descriptorUsesTraits } from "./traits";
 import type { ResolvedTraits } from "./traits";
 import { RelationQueryHandle, descriptorUsesRelations } from "./relations";
+import { ScheduleContext } from "./schedule-context";
 import { Scheduler } from "./schedule";
 import { RovyWorld } from "./world";
 
@@ -32,6 +33,7 @@ export class App {
 	private readonly prefabs = new Map<Ctor, { instance: object; params: ReadonlyArray<ParamDescriptor>; id: string }>();
 	private readonly externalParams = new Map<string, unknown>();
 	private monitors?: MonitorRegistry;
+	private scheduleContext!: ScheduleContext;
 	private started = false;
 	/** Overrides supplied before start(); applied after resource registration. */
 	private resourceOverrides = new Map<Ctor, object>();
@@ -51,7 +53,7 @@ export class App {
 		this.commands.deferredRunSchedule = (s) => this.scheduler.run(s);
 		this.commands.deferredRelate = (s, r, t, d) => this.world.relate(s, r, t, d);
 		this.commands.deferredUnrelate = (s, r, t) => this.world.unrelate(s, r, t);
-		this.world.runScheduleImpl = (s) => this.scheduler.run(s);
+		this.world.runScheduleImpl = (s, dt) => this.scheduler.run(s, dt);
 		this.world.flushImpl = () => {
 			flush(this.commands);
 			this.monitors?.reconcileAll();
@@ -72,8 +74,8 @@ export class App {
 	}
 
 	/** Run a schedule now (drives the game loop). */
-	runSchedule(schedule: Ctor): this {
-		this.scheduler.run(schedule);
+	runSchedule(schedule: Ctor, dt?: number): this {
+		this.scheduler.run(schedule, dt);
 		return this;
 	}
 
@@ -137,15 +139,20 @@ export class App {
 		}
 
 		// 2. resources → jecs ids + auto-instantiate default ctor (or override)
-		for (const entry of reg.resources) {
-			this.world.registerResource(entry.ctor);
-			const override = this.resourceOverrides.get(entry.ctor);
+		const installResource = (ctor: Ctor): void => {
+			this.world.registerResource(ctor);
+			const override = this.resourceOverrides.get(ctor);
 			if (override !== undefined) {
-				this.world.setResource(entry.ctor, override);
+				this.world.setResource(ctor, override);
 			} else {
-				const factory = entry.ctor as unknown as new () => object;
-				this.world.setResource(entry.ctor, new factory());
+				const factory = ctor as unknown as new () => object;
+				this.world.setResource(ctor, new factory());
 			}
+		};
+		installResource(ScheduleContext);
+		this.scheduleContext = this.world.resource(ScheduleContext);
+		for (const entry of reg.resources) {
+			installResource(entry.ctor);
 		}
 
 		// 2b. collectors → singleton app-owned external ingress bridges
@@ -265,6 +272,7 @@ export class App {
 		this.scheduler.events = this.eventRegistry;
 		this.scheduler.makeReader = this.makeReader;
 		this.scheduler.makeWriter = this.makeWriter;
+		this.scheduler.scheduleContext = this.scheduleContext;
 		wireEvents(this.eventRegistry, this.commands, this.world);
 
 		// 5. monitors (public cached-query reconcile; see monitors.ts)
