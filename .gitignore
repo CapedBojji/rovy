@@ -14,3 +14,4 @@
 /examples/**/**/out
 /build
 .studio.pid
+.studio*.pid
