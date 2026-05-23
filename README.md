@@ -51,8 +51,9 @@ new App().start();
   query-level lifecycle monitors (`onEnter` / `onExit` / `onChange`).
 - **Commands & schedules** — deferred mutations, custom schedules, system sets, and
   explicit flush points.
-- **Networking & UI packages** — optional `@rovy/networking` (`@netEvent` over Blink)
-  and `@rovy/ui` (function-first immediate-mode widgets).
+- **Optional packages** — `@rovy/networking` (`@netEvent` over Blink),
+  `@rovy/ui` (function-first immediate-mode widgets), and
+  `@rovy/world-inspector` (live local/remote ECS inspection).
 
 ## Packages
 
@@ -61,6 +62,7 @@ new App().start();
 | `@rovy/core` | Decorators, macros, types, and the packaged runtime — what you import |
 | `@rovy/networking` | `@netEvent` authoring surface and runtime handles |
 | `@rovy/ui` | Function-first widget/render runtime |
+| `@rovy/world-inspector` | In-game ECS inspection and editing plugin |
 | `rovy-transformer` | roblox-ts compiler transformer plugin (dev dependency) |
 
 ## Install

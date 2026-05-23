@@ -49,11 +49,18 @@ Install UI only when you author widgets:
 npm i @rovy/ui
 ```
 
+Install the in-game inspector only when you want the debug tool:
+
+```sh
+npm i @rovy/world-inspector
+```
+
 | Package | Role | How you use it |
 |---------|------|----------------|
 | `@rovy/core` | Decorators, macros, types, **and the packaged runtime** | `import` it and write code |
 | `@rovy/networking` | `@netEvent` authoring surface + runtime handles | `import` when using net events |
 | `@rovy/ui` | Function-first widget/render runtime | `import` widget helpers |
+| `@rovy/world-inspector` | In-game ECS inspection and editing plugin | `import` when embedding the debug inspector |
 | `rovy-transformer` | roblox-ts compiler transformer plugin | List it in `tsconfig.json` |
 
 The runtime is packaged *inside* `@rovy/core` — there is no separate runtime package.
@@ -128,5 +135,6 @@ ran (no untransformed-macro error at startup). Continue to
 ## See also
 
 - [Packages Overview](/packages/packages) — full package breakdown.
+- [World Inspector](/packages/world-inspector) — in-game ECS inspection and editing.
 - [Transformer](/runtime/transformer) — build-time duty list.
 - [Runtime Lifecycle](/runtime/lifecycle) — how the runtime consumes registrations.

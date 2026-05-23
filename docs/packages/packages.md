@@ -1,4 +1,4 @@
-# Packages — core, networking, ui, and transformer
+# Packages — core, networking, ui, world inspector, and transformer
 
 Rovy ships as distinct packages, mirroring the split between runtime packages and build-time transformer tooling:
 
@@ -7,11 +7,18 @@ Rovy ships as distinct packages, mirroring the split between runtime packages an
 | `@rovy/core` | Decorators, macros, types, **and the packaged runtime** | `import` it and write code |
 | `@rovy/networking` | Net-event authoring surface and runtime handles | `import` it when using `@netEvent` |
 | `@rovy/ui` | Widget/render integration package | `import` widget helpers and JSDoc-tagged widget functions |
+| `@rovy/world-inspector` | In-game ECS inspection and editing plugin | `import` it when embedding the debug inspector |
 | `rovy-transformer` | roblox-ts compiler transformer plugin | Listing it in `tsconfig.json` and pointing it at `.rovy.json` |
 
-Most ECS code authors against `@rovy/core`. Networked event code additionally imports `@rovy/networking`. UI code authors against `@rovy/ui`. `rovy-transformer` runs silently at build time and rewrites decorated/widget code into the runtime calls the packages consume.
+Most ECS code authors against `@rovy/core`. Networked event code additionally
+imports `@rovy/networking`. UI code authors against `@rovy/ui`. Debug tooling
+can additionally import `@rovy/world-inspector`. `rovy-transformer` runs
+silently at build time and rewrites decorated and widget code into the runtime
+calls the packages consume.
 
-Inside this repo, the shipped packages live in a pnpm workspace at `packages/core`, `packages/networking`, `packages/ui`, and `packages/transformer`.
+Inside this repo, the shipped packages live in a pnpm workspace at
+`packages/core`, `packages/networking`, `packages/ui`,
+`packages/world-inspector`, and `packages/transformer`.
 
 ## What lives in `@rovy/core`
 
@@ -58,6 +65,21 @@ import { NetClient, netEvent } from "@rovy/networking";
 - **Transformer contract** — widget functions are wrapped through `RovyUi.__widget(...)`, widget calls lower through `RovyUi.__scope(...)`, and storage helpers lower to keyed internals for stable identity
 
 This package is meant to feel closer to EgooE's function-driven rendering style than to a React component tree, while still using Rovy's registration, identity, and injection machinery. Runtime does not use `debug.info(...)` for identity; transformer keys own that job.
+
+## What lives in `@rovy/world-inspector`
+
+`@rovy/world-inspector` is an optional debug package built on top of
+`@rovy/networking` and `@rovy/ui`.
+
+- **Client plugin** — `WorldInspectorPlugin`
+- **Server plugin** — `WorldInspectorServerPlugin`
+- **Events** — `ShowWorldInspector`, `HideWorldInspector`, `ToggleWorldInspector`
+- **State and DTO helpers** — target choices, snapshots, and edit payloads
+- **UI** — packaged inspector widget and runtime integration
+- **Remote behavior** — snapshot and edit requests over inspector-specific net events
+
+Use it when you want a live, in-game ECS debugging surface for local worlds,
+server worlds, or another player's client world.
 
 ## What `rovy-transformer` does
 
@@ -114,6 +136,12 @@ Install UI only when using widget authoring:
 
 ```sh
 npm i @rovy/ui
+```
+
+Install the inspector only when using the in-game debug tool:
+
+```sh
+npm i @rovy/world-inspector
 ```
 
 Register the transformer in `tsconfig.json` (roblox-ts reads `compilerOptions.plugins`) and point it at the shared Rovy config:
@@ -197,3 +225,4 @@ So a missing/misconfigured transformer surfaces as an immediate, explicit error 
 - [API reference](/reference/api.md)
 - [Prefabs](/concepts/prefabs.md)
 - [UI](/packages/ui.md)
+- [World Inspector](/packages/world-inspector.md)

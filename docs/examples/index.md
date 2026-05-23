@@ -49,7 +49,9 @@ Source: [`examples/ui-inventory-game/src`](https://github.com/CapedBojji/rovy/tr
 Package `@rovy/example-zombie-game`. The largest example: a full client/server game
 with components, resources, collectors (external Roblox/Flamework signal translation),
 shared network contracts, and a Blink-backed networking layer. Use it as a reference
-for [collectors](/concepts/collectors) and [networking](/packages/networking).
+for [collectors](/concepts/collectors), [networking](/packages/networking), and
+the in-game [World Inspector](/packages/world-inspector). The client example binds
+the inspector toggle to `F2`.
 
 Source: [`examples/zombie-game/src`](https://github.com/CapedBojji/rovy/tree/main/examples/zombie-game/src)
 

@@ -68,6 +68,7 @@ export default defineConfig({
           { text: "Packages Overview", link: "/packages/packages" },
           { text: "Networking", link: "/packages/networking" },
           { text: "UI", link: "/packages/ui" },
+          { text: "World Inspector", link: "/packages/world-inspector" },
         ],
       },
       {

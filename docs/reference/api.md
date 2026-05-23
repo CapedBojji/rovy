@@ -314,6 +314,44 @@ class NetServer {
 
 See [Networking](/packages/networking.md) for the full spec, current package boundary, backend-owned Blink generation, `.rovy.json` shape, scheduling, and boundary checks.
 
+## World Inspector (`@rovy/world-inspector`)
+
+Optional debug package for live ECS inspection and editing:
+
+```ts
+import {
+  WorldInspectorPlugin,
+  WorldInspectorServerPlugin,
+  ToggleWorldInspector,
+} from "@rovy/world-inspector";
+
+class WorldInspectorPlugin {
+  constructor(options?: {
+    uiRoot?: Instance | Node;
+    renderSchedule?: Ctor;
+    networkSchedule?: Ctor;
+  });
+}
+
+class WorldInspectorServerPlugin {
+  constructor(options: {
+    schedule: Ctor;
+    access?: (ctx: WorldInspectorAccessContext) => boolean;
+  });
+}
+
+class ToggleWorldInspector {}
+class ShowWorldInspector {}
+class HideWorldInspector {}
+```
+
+Use `WorldInspectorPlugin` on the client to render and drive the inspector UI.
+Use `WorldInspectorServerPlugin` on the server to expose remote snapshots and
+edits with explicit access control.
+
+See [World Inspector](/packages/world-inspector.md) for setup, target behavior,
+and instance-expression syntax like `Workspace/Zombie/HumanoidRootPart`.
+
 ## See also
 
 - [Queries](/concepts/queries.md)
@@ -324,3 +362,4 @@ See [Networking](/packages/networking.md) for the full spec, current package bou
 - [Networking](/packages/networking.md)
 - [Prefabs](/concepts/prefabs.md)
 - [UI](/packages/ui.md)
+- [World Inspector](/packages/world-inspector.md)

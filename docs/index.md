@@ -27,8 +27,8 @@ features:
     details: Buffered events with EventReader/EventWriter, event-only observers, and query-level lifecycle monitors (onEnter / onExit / onChange).
   - title: Commands & schedules
     details: Deferred mutations through Commands, custom schedules and system sets, and explicit flush points — ordered, predictable frame logic.
-  - title: Networking & UI packages
-    details: Optional @rovy/networking adds @netEvent over generated Blink transport; @rovy/ui adds a function-first immediate-mode widget runtime.
+  - title: Optional packages
+    details: Optional @rovy/networking adds @netEvent over generated Blink transport; @rovy/ui adds a function-first immediate-mode widget runtime; @rovy/world-inspector adds a live ECS inspection tool.
 ---
 
 ## What is Rovy?
