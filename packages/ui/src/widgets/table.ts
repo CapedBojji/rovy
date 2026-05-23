@@ -145,5 +145,5 @@ export function uiTable(children: () => void): void;
 export function uiTable(first: TableOptions | (() => void), second?: () => void): void {
 	const fn = typeIs(first, "function") ? first : second;
 	const options: TableOptions = typeIs(first, "function") ? {} : first;
-	__callWidget(tableWidget as (...args: ReadonlyArray<unknown>) => void, "table", [options, fn]);
+	__callWidget("table", tableWidget as (...args: unknown[]) => void, options, fn);
 }

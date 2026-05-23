@@ -188,9 +188,14 @@ nodeModules.children["@rovy"] = rovyScope
 local rovyCore = treeIndex(REPO .. "/packages/core/out")
 assert(rovyCore, "rovy example harness: missing packages/core/out")
 rovyScope.children["rovy-core"] = rovyCore
-local gameClockPlugin = treeIndex(REPO .. "/examples/plugin-example")
+local corePackage = newNode(ROOT .. "/$services/ReplicatedStorage/rbxts_include/node_modules/@rovy/core")
+corePackage.children.out = rovyCore
+rovyScope.children["core"] = corePackage
+local gameClockPlugin = treeIndex(REPO .. "/examples/plugin-example/out")
 assert(gameClockPlugin, "rovy example harness: missing examples/plugin-example")
-rovyScope.children["example-gameclock"] = gameClockPlugin
+local gameClockPackage = newNode(ROOT .. "/$services/ReplicatedStorage/rbxts_include/node_modules/@rovy/example-gameclock")
+gameClockPackage.children.out = gameClockPlugin
+rovyScope.children["example-gameclock"] = gameClockPackage
 
 local gameObject = roblox.createGame({
 	ReplicatedStorage = replicatedStorage,

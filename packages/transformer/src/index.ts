@@ -20,7 +20,7 @@ import {
 	str,
 	stripUndefinedProperties,
 } from "./ast";
-import { decoratorName, TransformState, TransformerConfig } from "./state";
+import { decoratorName, type PluginOwnerInfo, TransformState, TransformerConfig } from "./state";
 
 export interface TransformerExtras {
 	readonly ts: typeof ts;
@@ -65,6 +65,11 @@ interface QueryBuild {
 interface ParamBuild {
 	readonly descriptor: ts.ArrayLiteralExpression;
 	readonly queryStatements: readonly ts.Statement[];
+}
+
+interface PluginBinding {
+	readonly owner: PluginOwnerInfo;
+	readonly expr: ts.Expression;
 }
 
 interface WidgetCallerInfo {
@@ -321,36 +326,48 @@ function transformClass(
 	const resourceReadyClass = isResource ? stripCollectRefInitializers(state, sourceFile, stripped) : stripped;
 	const transformedClass = ts.visitEachChild(resourceReadyClass, visitor, state.context);
 	const moduleId = state.stableIdForNode(node);
-	const classId = classScopedId(moduleId, className.text);
+	const pluginBinding = resolvePluginBinding(state, sourceFile, node);
+	const localModuleId =
+		pluginBinding === undefined
+			? moduleId
+			: pluginBinding.owner.subtreeRoot
+				? state.stableIdForNodeWithin(node, pluginBinding.owner.rootDir)
+				: moduleId;
+	const classId = classScopedId(localModuleId, className.text);
 
 	for (const decorator of decorators) {
 		switch (decorator.name) {
 			case "component":
-				afterStatements.push(regCall(rovy, "__component", [className, str(classId)]));
+				afterStatements.push(
+					regCall(rovy, "__component", [className, str(classId), buildComponentMeta(state, sourceFile, node, pluginBinding)]),
+				);
 				afterStatements.push(...traitImplCalls(state, rovy, node, className));
 				break;
 			case "collect":
-				afterStatements.push(regCall(rovy, "__collect", [className, str(classId)]));
+				afterStatements.push(
+					regCall(rovy, "__collect", [className, str(classId), buildPluginOwnerMeta(pluginBinding)].filter(isExpression)),
+				);
 				break;
 			case "resource":
 				{
 					const args: ts.Expression[] = [className, str(classId)];
-					if (resourceCollectRefs.length > 0) args.push(buildResourceMeta(resourceCollectRefs));
-				afterStatements.push(
-					regCall(
-						rovy,
-						"__resource",
-						args,
-					),
-				);
+					const meta = buildResourceMeta(pluginBinding, resourceCollectRefs);
+					if (meta !== undefined) args.push(meta);
+					afterStatements.push(
+						regCall(
+							rovy,
+							"__resource",
+							args,
+						),
+					);
 				}
 				break;
 			case "event":
-				afterStatements.push(regCall(rovy, "__event", [className, decorator.args[0]].filter(isExpression)));
+				afterStatements.push(regCall(rovy, "__event", [className, buildEventMeta(decorator.args[0], pluginBinding)].filter(isExpression)));
 				break;
 			case "netEvent": {
 				validateNetEvent(state, node, decorator);
-				afterStatements.push(regCall(rovy, "__event", [className]));
+				afterStatements.push(regCall(rovy, "__event", [className, buildEventMeta(undefined, pluginBinding)].filter(isExpression)));
 				afterStatements.push(
 					regCall(state.addRovyNetImport(sourceFile), "__netEvent", [
 						className,
@@ -363,7 +380,9 @@ function transformClass(
 				const method = methodNamed(node, "run");
 				const params = method ? lowerParams(state, sourceFile, method.parameters, { kind: "system", classId }) : emptyParams();
 				queryStatements.push(...params.queryStatements);
-				afterStatements.push(regCall(rovy, "__system", [className, buildSystemMeta(state, decorator, classId, params)]));
+				afterStatements.push(
+					regCall(rovy, "__system", [className, buildSystemMeta(state, decorator, classId, params, pluginBinding)]),
+				);
 				break;
 			}
 			case "observer": {
@@ -374,7 +393,9 @@ function transformClass(
 					? lowerParams(state, sourceFile, method.parameters, { kind: "observer", classId, eventExpr })
 					: emptyParams();
 				queryStatements.push(...params.queryStatements);
-				afterStatements.push(regCall(rovy, "__observer", [className, buildObserverMeta(state, decorator, params)]));
+				afterStatements.push(
+					regCall(rovy, "__observer", [className, buildObserverMeta(state, decorator, params, pluginBinding)]),
+				);
 				break;
 			}
 			case "monitor": {
@@ -383,7 +404,13 @@ function transformClass(
 				const methods = monitorMethods(node);
 				const params = lowerMonitorParams(state, sourceFile, node, methods, match, classId);
 				queryStatements.push(...params.queryStatements);
-				afterStatements.push(regCall(rovy, "__monitor", [className, buildMonitorMeta(match?.id ?? `${classId}:match`, methods, params)]));
+				afterStatements.push(
+					regCall(
+						rovy,
+						"__monitor",
+						[className, buildMonitorMeta(match?.id ?? `${classId}:match`, methods, params, pluginBinding)],
+					),
+				);
 				break;
 			}
 			case "prefab": {
@@ -391,17 +418,19 @@ function transformClass(
 				const params = method
 					? lowerPrefabParams(state, sourceFile, method.parameters, classId)
 					: emptyParams();
-				afterStatements.push(regCall(rovy, "__prefab", [className, buildPrefabMeta(classId, params)]));
+				afterStatements.push(regCall(rovy, "__prefab", [className, buildPrefabMeta(classId, params, pluginBinding)]));
 				break;
 			}
 			case "relation":
-				afterStatements.push(regCall(rovy, "__relation", [className, buildRelationMeta(decorator)]));
+				afterStatements.push(regCall(rovy, "__relation", [className, buildRelationMeta(decorator, pluginBinding)]));
 				break;
 			case "schedule":
-				afterStatements.push(regCall(rovy, "__schedule", [className, buildScheduleMeta(decorator)]));
+				afterStatements.push(regCall(rovy, "__schedule", [className, buildScheduleMeta(decorator, pluginBinding)]));
 				break;
 			case "set":
+				break;
 			case "plugin":
+				afterStatements.push(regCall(rovy, "__plugin", [className, buildPluginMeta(state, node)]));
 				break;
 		}
 	}
@@ -422,6 +451,18 @@ function getRovyDecorators(state: TransformState, sourceFile: ts.SourceFile, nod
 		});
 	}
 	return out;
+}
+
+function resolvePluginBinding(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.ClassDeclaration,
+): PluginBinding | undefined {
+	const owner = state.resolvePluginOwner(node);
+	if (owner === undefined) return undefined;
+	const expr = state.pluginOwnerExpr(sourceFile, owner, node);
+	if (expr === undefined) return undefined;
+	return { owner, expr };
 }
 
 function collectWidgetCallers(state: TransformState, sourceFile: ts.SourceFile): Map<string, WidgetCallerInfo> {
@@ -606,6 +647,7 @@ function buildSystemMeta(
 	decorator: DecoratorInfo,
 	classId: string,
 	params: ParamBuild,
+	plugin?: PluginBinding,
 ): ts.ObjectLiteralExpression {
 	const options = objectArg(decorator);
 	const schedule = propertyValue(options, "schedule");
@@ -613,6 +655,7 @@ function buildSystemMeta(
 	return obj(
 		stripUndefinedProperties([
 			prop("id", str(classId)),
+			maybeProp("plugin", plugin?.expr),
 			prop("schedule", schedule ?? id("undefined")),
 			maybeProp("set", propertyValue(options, "set")),
 			prop("after", propertyValue(options, "after") ?? arr([])),
@@ -624,42 +667,221 @@ function buildSystemMeta(
 	);
 }
 
-function buildObserverMeta(state: TransformState, decorator: DecoratorInfo, params: ParamBuild): ts.ObjectLiteralExpression {
+function buildObserverMeta(
+	state: TransformState,
+	decorator: DecoratorInfo,
+	params: ParamBuild,
+	plugin?: PluginBinding,
+): ts.ObjectLiteralExpression {
 	const eventExpr = decoratorObjectValue(decorator, "event");
 	if (!eventExpr) state.diagnostic(decorator.node, "@observer requires an event option");
 	return obj(
-		[
+		stripUndefinedProperties([
+			maybeProp("plugin", plugin?.expr),
 			prop("event", eventExpr ?? id("undefined")),
 			prop("priority", decoratorObjectValue(decorator, "priority") ?? num(0)),
 			prop("params", params.descriptor),
-		],
+		]),
 		true,
 	);
 }
 
-function buildMonitorMeta(matchId: string, methods: readonly MonitorMethod[], params: ParamBuild): ts.ObjectLiteralExpression {
-	return obj([prop("match", str(matchId)), prop("methods", arr(methods.map(str))), prop("params", params.descriptor)], true);
+function buildMonitorMeta(
+	matchId: string,
+	methods: readonly MonitorMethod[],
+	params: ParamBuild,
+	plugin?: PluginBinding,
+): ts.ObjectLiteralExpression {
+	return obj(
+		stripUndefinedProperties([
+			maybeProp("plugin", plugin?.expr),
+			prop("match", str(matchId)),
+			prop("methods", arr(methods.map(str))),
+			prop("params", params.descriptor),
+		]),
+		true,
+	);
 }
 
-function buildRelationMeta(decorator: DecoratorInfo): ts.ObjectLiteralExpression {
+function buildRelationMeta(decorator: DecoratorInfo, plugin?: PluginBinding): ts.ObjectLiteralExpression {
 	const options = objectArg(decorator);
 	return obj(
-		[
+		stripUndefinedProperties([
+			maybeProp("plugin", plugin?.expr),
 			prop("exclusive", propertyValue(options, "exclusive") ?? bool(false)),
 			prop("onTargetDelete", propertyValue(options, "onTargetDelete") ?? str("none")),
 			prop("onDelete", propertyValue(options, "onDelete") ?? str("none")),
+		]),
+		true,
+	);
+}
+
+function buildResourceMeta(
+	plugin: PluginBinding | undefined,
+	collectorRefs: readonly ts.ObjectLiteralExpression[],
+): ts.ObjectLiteralExpression | undefined {
+	const properties = stripUndefinedProperties([
+		maybeProp("plugin", plugin?.expr),
+		collectorRefs.length > 0 ? prop("collectorRefs", arr(collectorRefs, true)) : undefined,
+	]);
+	return properties.length > 0 ? obj(properties, true) : undefined;
+}
+
+function buildComponentMeta(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.ClassDeclaration,
+	plugin?: PluginBinding,
+): ts.ObjectLiteralExpression {
+	return obj(
+		stripUndefinedProperties([
+			maybeProp("plugin", plugin?.expr),
+			prop("editor", buildComponentEditorMeta(state, sourceFile, node)),
+		]),
+		true,
+	);
+}
+
+function buildComponentEditorMeta(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.ClassDeclaration,
+): ts.ObjectLiteralExpression {
+	const ctor = node.members.find(ts.isConstructorDeclaration);
+	const params = [...(ctor?.parameters ?? [])];
+	const fields: ts.ObjectLiteralExpression[] = [];
+	for (const param of params) {
+		if (!ts.isIdentifier(param.name)) {
+			state.diagnostic(param, "@component editor metadata requires constructor parameter names");
+			continue;
+		}
+		const typeLabel = param.type?.getText(sourceFile) ?? "unknown";
+		fields.push(
+			obj(
+				[
+					prop("key", str(param.name.text)),
+					prop("typeLabel", str(typeLabel)),
+					prop("validator", validatorForType(state, sourceFile, param.type, param.questionToken !== undefined)),
+				],
+				true,
+			),
+		);
+	}
+	return obj(
+		[
+			prop("fields", arr(fields, true)),
+			prop("constructorValidator", constructorValidatorForParams(state, sourceFile, params)),
 		],
 		true,
 	);
 }
 
-function buildResourceMeta(collectorRefs: readonly ts.ObjectLiteralExpression[]): ts.ObjectLiteralExpression {
-	return obj([prop("collectorRefs", arr(collectorRefs, true))], true);
+function constructorValidatorForParams(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	params: readonly ts.ParameterDeclaration[],
+): ts.Expression {
+	if (!state.runtimeTypeChecksEnabled() || params.length === 0) return alwaysTrueValidator();
+	const validators = params.map((param) => validatorForType(state, sourceFile, param.type, param.questionToken !== undefined));
+	return call(field(state.addTImport(sourceFile), "tuple"), validators);
 }
 
-function buildScheduleMeta(decorator: DecoratorInfo): ts.ObjectLiteralExpression {
+function validatorForType(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	type: ts.TypeNode | undefined,
+	optional: boolean,
+): ts.Expression {
+	if (!state.runtimeTypeChecksEnabled() || type === undefined) return alwaysTrueValidator();
+	const validator = validatorForRequiredType(state, sourceFile, type);
+	if (!optional) return validator;
+	return call(field(state.addTImport(sourceFile), "optional"), [validator]);
+}
+
+function validatorForRequiredType(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	type: ts.TypeNode,
+): ts.Expression {
+	const t = state.addTImport(sourceFile);
+	switch (type.kind) {
+		case ts.SyntaxKind.StringKeyword:
+			return field(t, "string");
+		case ts.SyntaxKind.NumberKeyword:
+			return field(t, "number");
+		case ts.SyntaxKind.BooleanKeyword:
+			return field(t, "boolean");
+		case ts.SyntaxKind.ArrayType: {
+			const arrayType = type as ts.ArrayTypeNode;
+			return call(field(t, "array"), [validatorForType(state, sourceFile, arrayType.elementType, false)]);
+		}
+		case ts.SyntaxKind.TupleType: {
+			const tupleType = type as ts.TupleTypeNode;
+			return call(
+				field(t, "tuple"),
+				tupleType.elements.map((element) => validatorForType(state, sourceFile, element, false)),
+			);
+		}
+		case ts.SyntaxKind.UnionType: {
+			const unionType = type as ts.UnionTypeNode;
+			return call(
+				field(t, "union"),
+				unionType.types.map((item) => validatorForType(state, sourceFile, item, false)),
+			);
+		}
+	}
+	if (ts.isTypeReferenceNode(type)) {
+		const name = lastTypeName(type.typeName);
+		if (name === "Array" || name === "ReadonlyArray") {
+			const inner = type.typeArguments?.[0];
+			return call(field(t, "array"), [validatorForType(state, sourceFile, inner, false)]);
+		}
+		if (ROBLOX_INSTANCE_TYPES.has(name)) {
+			return call(field(t, "instanceIsA"), [str(name)]);
+		}
+	}
+	return alwaysTrueValidator();
+}
+
+function alwaysTrueValidator(): ts.ArrowFunction {
+	return arrow(bool(true));
+}
+
+const ROBLOX_INSTANCE_TYPES = new Set([
+	"Instance",
+	"Workspace",
+	"Model",
+	"BasePart",
+	"Part",
+	"MeshPart",
+	"UnionOperation",
+	"Folder",
+	"Player",
+	"Humanoid",
+	"Attachment",
+	"Tool",
+	"RemoteEvent",
+	"RemoteFunction",
+	"BindableEvent",
+	"BindableFunction",
+	"ScreenGui",
+	"Frame",
+	"GuiObject",
+	"TextLabel",
+	"TextButton",
+	"ImageLabel",
+	"ImageButton",
+]);
+
+function buildScheduleMeta(decorator: DecoratorInfo, plugin?: PluginBinding): ts.ObjectLiteralExpression {
 	const options = objectArg(decorator);
-	return obj([prop("runOnStart", propertyValue(options, "runOnStart") ?? bool(false))], true);
+	return obj(
+		stripUndefinedProperties([
+			maybeProp("plugin", plugin?.expr),
+			prop("runOnStart", propertyValue(options, "runOnStart") ?? bool(false)),
+		]),
+		true,
+	);
 }
 
 function buildNetEventMeta(
@@ -692,6 +914,41 @@ function buildNetEventMeta(
 
 function buildWidgetMeta(classId: string, name: string): ts.ObjectLiteralExpression {
 	return obj([prop("id", str(classId)), prop("name", str(name))], true);
+}
+
+function buildEventMeta(options: ts.Expression | undefined, plugin: PluginBinding | undefined): ts.Expression | undefined {
+	if (plugin === undefined) return options;
+	if (options !== undefined && ts.isObjectLiteralExpression(options)) {
+		return obj([...options.properties, prop("plugin", plugin.expr)], true);
+	}
+	return obj([prop("plugin", plugin.expr)], true);
+}
+
+function buildPluginMeta(state: TransformState, node: ts.ClassDeclaration): ts.ObjectLiteralExpression {
+	const moduleId = state.stableIdForNode(node);
+	const root = moduleId.endsWith("/index") ? moduleDirId(state, node) : moduleId;
+	return obj([prop("id", str(moduleId)), prop("root", str(root))], true);
+}
+
+function buildPrefabMeta(classId: string, params: ParamBuild, plugin?: PluginBinding): ts.ObjectLiteralExpression {
+	return obj(
+		stripUndefinedProperties([
+			prop("id", str(classId)),
+			maybeProp("plugin", plugin?.expr),
+			prop("params", params.descriptor),
+		]),
+		true,
+	);
+}
+
+function buildPluginOwnerMeta(plugin?: PluginBinding): ts.Expression | undefined {
+	if (plugin === undefined) return undefined;
+	return obj([prop("plugin", plugin.expr)], true);
+}
+
+function moduleDirId(state: TransformState, node: ts.Node): string {
+	const moduleId = state.stableIdForNode(node);
+	return dirname(moduleId);
 }
 
 function validateNetEvent(state: TransformState, node: ts.ClassDeclaration, decorator: DecoratorInfo): void {
@@ -1349,10 +1606,6 @@ function lowerPrefabParams(
 		descriptors.push(lowered.descriptor);
 	}
 	return { descriptor: arr(descriptors, true), queryStatements: [] };
-}
-
-function buildPrefabMeta(classId: string, params: ParamBuild): ts.ObjectLiteralExpression {
-	return obj([prop("id", str(classId)), prop("params", params.descriptor)], true);
 }
 
 function hasLeadingStyleParam(state: TransformState, sourceFile: ts.SourceFile, node: ts.FunctionDeclaration): boolean {

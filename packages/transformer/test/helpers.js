@@ -68,7 +68,7 @@ function writeRovyUiStub(temp) {
 	fs.writeFileSync(path.join(dir, "index.d.ts"), lines.join("\n") + "\n");
 }
 
-function createProgram(entryPath, rootDir, currentDirectory) {
+function createProgram(entryPaths, rootDir, currentDirectory) {
 	const options = {
 		target: ts.ScriptTarget.ES2020,
 		module: ts.ModuleKind.CommonJS,
@@ -83,19 +83,27 @@ function createProgram(entryPath, rootDir, currentDirectory) {
 
 	const host = ts.createCompilerHost(options);
 	host.getCurrentDirectory = () => currentDirectory;
-	return ts.createProgram([entryPath], options, host);
+	return ts.createProgram(entryPaths, options, host);
 }
 
 function compileFixture(source, options = {}) {
 	const { temp, src, rojo } = createFixtureDir();
 	const entry = path.join(src, options.fileName ?? "main.ts");
+	const rootNames = [];
+	for (const [name, contents] of Object.entries(options.files ?? {})) {
+		const filePath = path.join(src, name);
+		fs.mkdirSync(path.dirname(filePath), { recursive: true });
+		fs.writeFileSync(filePath, contents);
+		rootNames.push(filePath);
+	}
 	fs.mkdirSync(path.dirname(entry), { recursive: true });
 	fs.writeFileSync(entry, source);
+	rootNames.push(entry);
 	if (options.rovyConfig) {
 		fs.writeFileSync(path.join(temp, ".rovy.json"), JSON.stringify(options.rovyConfig, null, 2));
 	}
 
-	const program = createProgram(entry, src, temp);
+	const program = createProgram(rootNames, src, temp);
 	const transformer = factory(
 		program,
 		options.rovyConfig

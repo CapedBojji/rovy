@@ -1,5 +1,6 @@
-import { Commands, Entity, Query, With, system } from "@rovy/core";
+import { Commands, Entity, Query, Res, With, system } from "@rovy/core";
 import { ContactCooldown, Damage, Health, PlayerUnit, Position, Radius, Zombie } from "../components";
+import { DevPauseState } from "../resources";
 import { CombatSet, Update } from "../state";
 import { ZOMBIE_CONTACT_COOLDOWN } from "shared/contracts";
 import { ResolveProjectileHits } from "./resolve-projectile-hits";
@@ -8,9 +9,11 @@ import { ResolveProjectileHits } from "./resolve-projectile-hits";
 export class ResolveZombieContacts {
 	run(
 		commands: Commands,
+		pause: Res<DevPauseState>,
 		zombies: Query<[Entity, Position, Radius, Damage, ContactCooldown], With<Zombie>>,
 		players: Query<[Entity, PlayerUnit, Position, Radius, Health]>,
 	) {
+		if (pause.paused) return;
 		zombies.forEach((zEntity, zPos, zRadius, damage, cooldown) => {
 			if (cooldown.remaining > 0) return;
 			players.forEach((pEntity, _unit, pPos, pRadius, pHealth) => {

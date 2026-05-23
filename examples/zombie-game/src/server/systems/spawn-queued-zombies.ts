@@ -1,6 +1,6 @@
 import { Commands, Res, ResMut, system } from "@rovy/core";
 import { ContactCooldown, Damage, Health, MoveSpeed, Position, Radius, Velocity, WireId, Zombie } from "../components";
-import { ArenaState, ServerClock, SmokeStats, WaveState, WireIdAllocator } from "../resources";
+import { ArenaState, DevPauseState, ServerClock, SmokeStats, WaveState, WireIdAllocator } from "../resources";
 import {
 	ringSpawnPosition,
 	Update,
@@ -17,11 +17,13 @@ export class SpawnQueuedZombies {
 	run(
 		commands: Commands,
 		clock: Res<ServerClock>,
+		pause: Res<DevPauseState>,
 		wave: ResMut<WaveState>,
 		arena: Res<ArenaState>,
 		ids: ResMut<WireIdAllocator>,
 		stats: ResMut<SmokeStats>,
 	) {
+		if (pause.paused) return;
 		if (wave.phase !== "wave") return;
 		if (wave.spawnRemaining <= 0) return;
 		if (wave.spawnCooldown > 0) {

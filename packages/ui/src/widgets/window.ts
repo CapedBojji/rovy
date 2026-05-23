@@ -16,6 +16,8 @@ export interface WindowOptions {
 	scrollY?: boolean;
 	size?: Vector2;
 	position?: Vector2;
+	visible?: boolean;
+	onClose?: () => void;
 }
 export interface WindowHandle {
 	closed(): boolean;
@@ -178,6 +180,7 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 					},
 					Activated: () => {
 						setClosed(true);
+						opts.onClose?.();
 					},
 				}),
 				InputBegan: (...args: ReadonlyArray<unknown>) => {
@@ -350,7 +353,9 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 	const movable = opts.movable !== undefined ? opts.movable : true;
 	const resizable = opts.resizable !== undefined ? opts.resizable : true;
 	const minimizable = opts.minimizable ?? false;
+	const visible = opts.visible !== undefined ? opts.visible : true;
 
+	refs.frame.Visible = visible;
 	refs.titleBar.Active = movable || minimizable;
 	refs.frame.SetAttribute("movable", movable);
 	refs.frame.SetAttribute(WINDOW_ATTRIBUTE, true);

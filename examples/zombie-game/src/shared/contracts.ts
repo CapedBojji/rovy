@@ -73,6 +73,7 @@ export class WorldSnapshotPayload {
 		public playerPosition: Vector3 = new Vector3(),
 		public zombies: Array<ZombieSnapshot> = [],
 		public projectiles: Array<ProjectileSnapshot> = [],
+		public paused: boolean = false,
 	) {}
 }
 
@@ -89,6 +90,10 @@ export class RestartRequestPayload {
 	constructor(public clientTime: number = 0) {}
 }
 
+export class TogglePauseRequestPayload {
+	constructor(public paused: boolean = false) {}
+}
+
 // ── Smoke result (server-side test export) ──────────────────────────────────
 
 export interface ZombieGameSmokeResult {
@@ -103,4 +108,5 @@ export interface ZombieGameSmokeResult {
 	readonly defeatReached: boolean;
 	readonly restartApplied: boolean;
 	readonly snapshotCount: number;
+	readonly pauseFreezeVerified: boolean;
 }

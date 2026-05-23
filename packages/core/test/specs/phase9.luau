@@ -30,7 +30,13 @@ return function(TS, t)
 	end
 
 	local Stunned = class(function() return { kind = "stun" } end)
+	Stunned.blocksCasting = function()
+		return true
+	end
 	local Rooted = class(function() return { kind = "root" } end)
+	Rooted.blocksCasting = function()
+		return false
+	end
 	local Health = class(function(v) return { v = v } end)
 	local Update = {}
 	local CC = "t/CrowdControl"
@@ -70,6 +76,38 @@ return function(TS, t)
 			end
 			t.expect(nStun).toBe(2)
 			t.expect(nRoot).toBe(1)
+		end)
+
+		t.it("Trait<T> rows preserve implementer methods, not raw jecs ids", function()
+			rovy:__reset()
+			regTraits()
+			rovy:__query({
+				id = "qTraitMethods",
+				terms = { { t = "trait", traitId = CC } },
+				filters = {},
+			})
+			local seen = {}
+			local Sys = sysClass(function(_, q)
+				q:forEach(function(cc)
+					table.insert(seen, cc:blocksCasting())
+				end)
+			end)
+			rovy:__system(Sys, {
+				id = "t/TraitMethods",
+				schedule = Update,
+				params = { { kind = "query", handle = "qTraitMethods" } },
+			})
+			local app = App.new()
+			app:start()
+			app.world:spawn(Stunned.new(), Rooted.new())
+			app:runSchedule(Update)
+
+			table.sort(seen, function(a, b)
+				return (a and 1 or 0) < (b and 1 or 0)
+			end)
+			t.expect(#seen).toBe(2)
+			t.expect(seen[1]).toBe(false)
+			t.expect(seen[2]).toBe(true)
 		end)
 
 		t.it("AllTraits<T>: one row per entity with array of impls", function()

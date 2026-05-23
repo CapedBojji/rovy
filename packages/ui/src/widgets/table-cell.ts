@@ -105,5 +105,5 @@ export function tableCell(children: () => void): void;
 export function tableCell(first: TableCellOptions | (() => void), second?: () => void): void {
 	const fn = typeIs(first, "function") ? first : second;
 	const options: TableCellOptions = typeIs(first, "function") ? {} : first;
-	__callWidget(tableCellWidget as (...args: ReadonlyArray<unknown>) => void, "tableCell", [options, fn]);
+	__callWidget("tableCell", tableCellWidget as (...args: unknown[]) => void, options, fn);
 }

@@ -8,6 +8,7 @@
 import {
 	world as createJecsWorld,
 	pair as jecsPair,
+	record as jecsRecord,
 	Wildcard,
 	OnDelete,
 	OnDeleteTarget,
@@ -16,14 +17,18 @@ import {
 	Exclusive,
 } from "@rbxts/jecs";
 import type { Entity as JecsEntity, World as JecsWorld } from "@rbxts/jecs";
-import type { CleanupPolicy, Ctor } from "../contract";
-import type { Entity, World } from "../types";
+import type { CleanupPolicy, ComponentReg, Ctor } from "../contract";
+import type { ComponentInspection, Entity, World } from "../types";
 
 /** Sentinel entity that holds every resource singleton as a jecs component. */
 export class RovyWorld implements World {
 	readonly jecs: JecsWorld;
 	/** rovy component class → jecs component id. */
 	readonly componentMap = new Map<Ctor, JecsEntity>();
+	/** jecs component id → rovy component registry entry, for inspection. */
+	private readonly componentRegById = new Map<JecsEntity, ComponentReg>();
+	private readonly componentRegs = new Array<ComponentReg>();
+	private readonly trackedEntities = new Set<Entity>();
 	/** rovy resource class → jecs component id. */
 	readonly resourceMap = new Map<Ctor, JecsEntity>();
 	/** Bumped once per schedule run (Phase 4); change detection reads it. */
@@ -113,6 +118,21 @@ export class RovyWorld implements World {
 		return id;
 	}
 
+	/** Register a component and keep its authoring metadata available for tools. */
+	registerComponentEntry(entry: ComponentReg): JecsEntity {
+		const id = this.registerComponent(entry.ctor);
+		this.componentRegById.set(id, entry);
+		let seen = false;
+		for (const existing of this.componentRegs) {
+			if (existing.ctor === entry.ctor) {
+				seen = true;
+				break;
+			}
+		}
+		if (!seen) this.componentRegs.push(entry);
+		return id;
+	}
+
 	/** Register a resource class + return its jecs id (App.start finalize). */
 	registerResource(resource: Ctor): JecsEntity {
 		let id = this.resourceMap.get(resource);
@@ -144,11 +164,13 @@ export class RovyWorld implements World {
 
 	spawn(...bundle: ReadonlyArray<object>): Entity {
 		const entity = this.jecs.entity();
+		this.trackedEntities.add(entity);
 		this.applyBundle(entity, bundle);
 		return entity;
 	}
 
 	despawn(entity: Entity): void {
+		this.trackedEntities.delete(entity);
 		this.jecs.delete(entity);
 	}
 
@@ -279,4 +301,44 @@ export class RovyWorld implements World {
 		assert(this.flushImpl !== undefined, "[rovy] world.flush unavailable (App not constructed?)");
 		this.flushImpl();
 	}
+
+	inspectEntities(): Entity[] {
+		const out = new Array<Entity>();
+		for (const entity of this.trackedEntities) {
+			if (this.jecs.contains(entity)) out.push(entity);
+			else this.trackedEntities.delete(entity);
+		}
+		return out;
+	}
+
+	inspectRegisteredComponents(): ReadonlyArray<ComponentReg> {
+		return this.componentRegs;
+	}
+
+	inspectEntityComponents(entity: Entity): ReadonlyArray<ComponentInspection> {
+		if (!this.jecs.contains(entity)) return [];
+		const out = new Array<ComponentInspection>();
+		const rec = jecsRecord(this.jecs, entity);
+		for (const jecsId of rec.archetype.types) {
+			const entry = this.componentRegById.get(jecsId);
+			if (entry === undefined) continue;
+			const value = this.jecs.get(entity, jecsId as never) as unknown;
+			out.push({
+				ctor: entry.ctor,
+				id: entry.id,
+				name: shortComponentName(entry.id),
+				value,
+				tag: value === undefined,
+				editor: entry.editor,
+			});
+		}
+		return out;
+	}
+}
+
+function shortComponentName(id: string): string {
+	const pathParts = id.split("/");
+	const tail = pathParts[pathParts.size() - 1] ?? id;
+	const scopeParts = tail.split("@");
+	return scopeParts[scopeParts.size() - 1] ?? tail;
 }

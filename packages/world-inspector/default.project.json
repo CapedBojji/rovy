@@ -1,0 +1,9 @@
+{
+  "name": "world-inspector",
+  "tree": {
+    "$className": "Folder",
+    "out": {
+      "$path": "out"
+    }
+  }
+}

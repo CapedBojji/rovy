@@ -37,10 +37,9 @@ for (const [label, pattern] of rovyChecks) {
 	assert.match(output, pattern, `missing Rovy ${label}`);
 }
 
-// Flamework networking lowering must produce some recognisable artifact.
-// The exact string depends on the Flamework transformer; we look for the
-// Networking.createEvent surface that ends up in the compiled module.
-assert.match(output, /Networking|createEvent|GlobalEvents/, "missing Flamework networking output");
+// Rovy networking lowering must produce some recognisable artifact.
+// The example uses package-owned networking events for gameplay and inspector transport.
+assert.match(output, /__rovyNet|RovyNetworking|__netEvent/, "missing Rovy networking output");
 assert.doesNotMatch(output, /:__observer\(/, "zombie example should not emit observer registrations");
 
 // Macro / query lowering didn't leak diagnostics into the output.

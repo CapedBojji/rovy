@@ -129,11 +129,25 @@ export interface QueryDescriptor {
 export interface ComponentReg {
 	readonly ctor: Ctor;
 	readonly id: StableId;
+	readonly plugin?: Ctor;
+	readonly editor?: ComponentEditorReg;
+}
+
+export interface ComponentEditorFieldReg {
+	readonly key: string;
+	readonly typeLabel: string;
+	readonly validator: (value: unknown) => boolean;
+}
+
+export interface ComponentEditorReg {
+	readonly fields: ReadonlyArray<ComponentEditorFieldReg>;
+	readonly constructorValidator: (value: unknown) => boolean;
 }
 
 export interface CollectReg {
 	readonly ctor: Ctor;
 	readonly id: StableId;
+	readonly plugin?: Ctor;
 }
 
 export interface CollectorRefReg {
@@ -144,6 +158,7 @@ export interface CollectorRefReg {
 export interface ResourceReg {
 	readonly ctor: Ctor;
 	readonly id: StableId;
+	readonly plugin?: Ctor;
 	readonly collectorRefs?: ReadonlyArray<CollectorRefReg>;
 }
 
@@ -152,11 +167,13 @@ export interface EventReg {
 	/** Max buffered events; undefined = unbounded. */
 	readonly capacity?: number;
 	readonly label?: string;
+	readonly plugin?: Ctor;
 }
 
 export interface SystemReg {
 	readonly ctor: Ctor;
 	readonly id: StableId;
+	readonly plugin?: Ctor;
 	/** Schedule class this system runs in. */
 	readonly schedule: Ctor;
 	/** Optional SystemSet class (membership for ordering). */
@@ -170,6 +187,7 @@ export interface SystemReg {
 
 export interface ObserverReg {
 	readonly ctor: Ctor;
+	readonly plugin?: Ctor;
 	/** @event class this observer reacts to. */
 	readonly event: Ctor;
 	/** Higher runs first. Default 0. */
@@ -181,6 +199,7 @@ export type MonitorMethod = "onEnter" | "onExit" | "onChange";
 
 export interface MonitorReg {
 	readonly ctor: Ctor;
+	readonly plugin?: Ctor;
 	/** Stable id of the hoisted match QueryDescriptor. */
 	readonly match: StableId;
 	/** Which lifecycle methods the class actually implements. */
@@ -193,6 +212,7 @@ export type CleanupPolicy = "cascade" | "remove" | "none";
 
 export interface RelationReg {
 	readonly ctor: Ctor;
+	readonly plugin?: Ctor;
 	readonly exclusive: boolean;
 	readonly onTargetDelete: CleanupPolicy;
 	readonly onDelete: CleanupPolicy;
@@ -200,13 +220,21 @@ export interface RelationReg {
 
 export interface ScheduleReg {
 	readonly ctor: Ctor;
+	readonly plugin?: Ctor;
 	readonly runOnStart: boolean;
 }
 
 export interface PrefabReg {
 	readonly ctor: Ctor;
 	readonly id: StableId;
+	readonly plugin?: Ctor;
 	readonly params: ReadonlyArray<ParamDescriptor>;
+}
+
+export interface PluginReg {
+	readonly ctor: Ctor;
+	readonly id: StableId;
+	readonly root: StableId;
 }
 
 /** Set ordering within a schedule, declared via app.configureSets (not a decorator). */
@@ -218,6 +246,7 @@ export interface SetOrderReg {
 // ─── Registry shape ─────────────────────────────────────────────────────────
 
 export interface RovyRegistry {
+	readonly plugins: Array<PluginReg>;
 	readonly components: Array<ComponentReg>;
 	readonly collectors: Array<CollectReg>;
 	readonly resources: Array<ResourceReg>;

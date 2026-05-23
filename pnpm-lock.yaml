@@ -36,6 +36,9 @@ importers:
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0
+      rovy-transformer:
+        specifier: workspace:*
+        version: link:../../packages/transformer
 
   examples/roblox-ts-game:
     dependencies:
@@ -167,6 +170,12 @@ importers:
       '@rovy/networking':
         specifier: workspace:*
         version: link:../../packages/networking
+      '@rovy/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      '@rovy/world-inspector':
+        specifier: workspace:*
+        version: link:../../packages/world-inspector
     devDependencies:
       '@rbxts/compiler-types':
         specifier: 3.0.0-types.0
@@ -267,6 +276,31 @@ importers:
       '@rovy/core':
         specifier: workspace:*
         version: link:../core
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+    devDependencies:
+      '@rbxts/compiler-types':
+        specifier: 3.0.0-types.0
+        version: 3.0.0-types.0
+      '@rbxts/types':
+        specifier: ^1.0.920
+        version: 1.0.920
+      roblox-ts:
+        specifier: ^3.0.0
+        version: 3.0.0
+
+  packages/world-inspector:
+    dependencies:
+      '@rovy/core':
+        specifier: workspace:*
+        version: link:../core
+      '@rovy/networking':
+        specifier: workspace:*
+        version: link:../networking
+      '@rovy/ui':
+        specifier: workspace:*
+        version: link:../ui
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

@@ -29,6 +29,7 @@ export class HudState {
 	playerHealth = PLAYER_MAX_HEALTH;
 	playerMaxHealth = PLAYER_MAX_HEALTH;
 	gameOver = false;
+	paused = false;
 }
 
 @resource

@@ -24,6 +24,28 @@ class Health {
 }
 ```
 
+Queries return the stored component instance, so component methods are callable. That does **not** make queried components mutable ECS handles. Treat component methods as pure/read-only helpers.
+
+```ts
+@component
+class Health {
+	constructor(
+		public current: number,
+		public max: number,
+	) {}
+
+	isDead() {
+		return this.current <= 0;
+	}
+
+	withDamage(amount: number) {
+		return new Health(this.current - amount, this.max);
+	}
+}
+```
+
+Do **not** mutate component state directly, including from inside component methods, if you expect `Changed<T>` or monitor `onChange` to fire. All tracked mutation must go through `commands.set(...)` or `world.set(...)`. See [Change detection](/concepts/change-detection.md#mutation-must-go-through-commandsset--worldset).
+
 ## Tags
 
 Tags are empty `@component` classes. No fields, no instance state.

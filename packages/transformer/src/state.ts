@@ -24,6 +24,15 @@ export interface DecoratedClassInfo {
 	readonly decorators: ReadonlyArray<string>;
 }
 
+export interface PluginOwnerInfo {
+	readonly node: ts.ClassDeclaration;
+	readonly className: string;
+	readonly moduleId: string;
+	readonly rootDir: string;
+	readonly subtreeRoot: boolean;
+	readonly exported: boolean;
+}
+
 export class TransformState {
 	readonly typeChecker?: ts.TypeChecker;
 	readonly currentDirectory: string;
@@ -32,6 +41,7 @@ export class TransformState {
 	readonly rovyConfig?: ResolvedRovyConfig;
 	readonly classInfo = new Map<ts.ClassDeclaration, DecoratedClassInfo>();
 	readonly implementedInterfaces = new Map<ts.ClassDeclaration, ts.ExpressionWithTypeArguments[]>();
+	readonly pluginOwners: Array<PluginOwnerInfo> = [];
 
 	private readonly coreImportCache = new Map<string, CoreImports>();
 	private readonly networkingImportCache = new Map<string, CoreImports>();
@@ -39,6 +49,8 @@ export class TransformState {
 	private readonly pendingRovyImports = new Map<string, ts.Identifier>();
 	private readonly pendingRovyNetImports = new Map<string, ts.Identifier>();
 	private readonly pendingRovyUiImports = new Map<string, ts.Identifier>();
+	private readonly pendingTImports = new Map<string, ts.Identifier>();
+	private readonly pendingPluginImports = new Map<string, Map<string, ts.Identifier>>();
 	private readonly widgetCallsiteCounters = new Map<string, number>();
 	private uiWidgetExportNames?: Set<string>;
 	private readonly rojoResolver?: RojoResolver;
@@ -232,14 +244,43 @@ export class TransformState {
 		return identifier;
 	}
 
+	addTImport(file: ts.SourceFile): ts.Identifier {
+		for (const statement of file.statements) {
+			if (!ts.isImportDeclaration(statement)) continue;
+			if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
+			if (statement.moduleSpecifier.text !== "@rbxts/t") continue;
+			const clause = statement.importClause;
+			if (clause?.name !== undefined) return ts.factory.createIdentifier(clause.name.text);
+			if (clause?.namedBindings && ts.isNamespaceImport(clause.namedBindings)) {
+				return ts.factory.createIdentifier(clause.namedBindings.name.text);
+			}
+		}
+
+		let identifier = this.pendingTImports.get(file.fileName);
+		if (!identifier) {
+			identifier = ts.factory.createUniqueName("__t", ts.GeneratedIdentifierFlags.Optimistic);
+			this.pendingTImports.set(file.fileName, identifier);
+		}
+		return identifier;
+	}
+
 	withPendingImports(file: ts.SourceFile, statements: ReadonlyArray<ts.Statement>): ts.Statement[] {
 		const rovyImport = this.pendingRovyImports.get(file.fileName);
 		const rovyNetImport = this.pendingRovyNetImports.get(file.fileName);
 		const rovyUiImport = this.pendingRovyUiImports.get(file.fileName);
+		const tImport = this.pendingTImports.get(file.fileName);
 		const imports: ts.Statement[] = [];
 		if (rovyImport) imports.push(importNamed("@rovy/core", "rovy", rovyImport.text));
 		if (rovyNetImport) imports.push(importNamed("@rovy/networking", "rovyNet", rovyNetImport.text));
 		if (rovyUiImport) imports.push(importDefault("@rovy/ui", rovyUiImport.text));
+		if (tImport) imports.push(importDefault("@rbxts/t", tImport.text));
+		const pluginImports = this.pendingPluginImports.get(file.fileName);
+		if (pluginImports) {
+			for (const [key, localName] of pluginImports) {
+				const [moduleName, exportedName] = key.split("::");
+				imports.push(importNamed(moduleName, exportedName, localName.text));
+			}
+		}
 		return [...imports, ...statements];
 	}
 
@@ -291,6 +332,17 @@ export class TransformState {
 
 	strictBoundaryChecks(): boolean {
 		return this.netConfig()?.strictBoundaryChecks ?? true;
+	}
+
+	runtimeTypeChecksEnabled(): boolean {
+		const direct = booleanConfig(this.config.runtimeTypeChecks);
+		if (direct !== undefined) return direct;
+		if (isRecord(this.config.editor)) {
+			const editor = booleanConfig(this.config.editor.runtimeTypeChecks);
+			if (editor !== undefined) return editor;
+		}
+		const environment = this.rovyConfig?.environment;
+		return environment?.editor?.runtimeTypeChecks ?? environment?.debug ?? false;
 	}
 
 	resolveBoundary(file: ts.SourceFile): "server" | "client" | "shared" | "unknown" {
@@ -374,6 +426,56 @@ export class TransformState {
 		return modulePath(this.currentDirectory, node.getSourceFile().fileName);
 	}
 
+	stableIdForNodeWithin(node: ts.Node, rootDir: string): string {
+		return modulePath(rootDir, node.getSourceFile().fileName);
+	}
+
+	resolvePluginOwner(node: ts.ClassDeclaration): PluginOwnerInfo | undefined {
+		const fileName = normalizePath(node.getSourceFile().fileName);
+		let best: PluginOwnerInfo | undefined;
+		for (const owner of this.pluginOwners) {
+			if (owner.node === node) continue;
+			const ownsFile = owner.subtreeRoot ? isDescendant(fileName, owner.rootDir) : owner.node.getSourceFile().fileName === node.getSourceFile().fileName;
+			if (!ownsFile) continue;
+			if (best === undefined || owner.rootDir.length > best.rootDir.length) best = owner;
+		}
+		return best;
+	}
+
+	pluginOwnerExpr(file: ts.SourceFile, owner: PluginOwnerInfo, node: ts.Node): ts.Expression | undefined {
+		if (owner.node.getSourceFile() === file) return ts.factory.createIdentifier(owner.className);
+		if (!owner.exported) {
+			this.diagnostic(node, `@plugin '${owner.className}' must be exported to own decorated classes outside its file`);
+			return undefined;
+		}
+
+		const moduleName = relativeModuleSpecifier(file.fileName, owner.node.getSourceFile().fileName);
+		for (const statement of file.statements) {
+			if (!ts.isImportDeclaration(statement)) continue;
+			if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
+			if (statement.moduleSpecifier.text !== moduleName) continue;
+			const clause = statement.importClause;
+			if (!clause?.namedBindings || !ts.isNamedImports(clause.namedBindings)) continue;
+			for (const spec of clause.namedBindings.elements) {
+				const exported = spec.propertyName?.text ?? spec.name.text;
+				if (exported === owner.className) return ts.factory.createIdentifier(spec.name.text);
+			}
+		}
+
+		let fileImports = this.pendingPluginImports.get(file.fileName);
+		if (!fileImports) {
+			fileImports = new Map();
+			this.pendingPluginImports.set(file.fileName, fileImports);
+		}
+		const key = `${moduleName}::${owner.className}`;
+		let local = fileImports.get(key);
+		if (!local) {
+			local = ts.factory.createUniqueName(owner.className, ts.GeneratedIdentifierFlags.Optimistic);
+			fileImports.set(key, local);
+		}
+		return local;
+	}
+
 	/**
 	 * Stable per-callsite compile key for a widget invocation. Replaces
 	 * EgooE's `debug.info` source-position identity: `<modulePath>:<index>`,
@@ -449,7 +551,35 @@ export class TransformState {
 				const decorators = (ts.getDecorators(node) ?? [])
 					.map((decorator) => decoratorName(this, file, decorator))
 					.filter((name): name is string => name !== undefined);
-				if (decorators.length > 0) this.classInfo.set(node, { node, decorators });
+				if (decorators.length > 0) {
+					this.classInfo.set(node, { node, decorators });
+					if (decorators.includes("plugin") && node.name) {
+						const rootDir = dirname(normalizePath(file.fileName));
+						const subtreeRoot = isPluginIndexFile(file.fileName);
+						if (
+							this.pluginOwners.some((owner) =>
+								subtreeRoot
+									? owner.subtreeRoot && owner.rootDir === rootDir
+									: !owner.subtreeRoot && owner.node.getSourceFile().fileName === node.getSourceFile().fileName
+							)
+						) {
+							this.diagnostic(
+								node,
+								subtreeRoot
+									? `multiple @plugin roots share '${modulePath(this.currentDirectory, rootDir)}'; use one index.ts plugin per folder`
+									: `multiple @plugin declarations share '${modulePath(this.currentDirectory, file.fileName)}'; use one plugin per non-index module`,
+							);
+						}
+						this.pluginOwners.push({
+							node,
+							className: node.name.text,
+							moduleId: this.stableIdForNode(node),
+							rootDir,
+							subtreeRoot,
+							exported: classIsExported(node),
+						});
+					}
+				}
 				const impls = node.heritageClauses
 					?.filter((clause) => clause.token === ts.SyntaxKind.ImplementsKeyword)
 					.flatMap((clause) => [...clause.types]);
@@ -532,12 +662,35 @@ function join(left: string, right: string): string {
 	return normalizePath(`${left}/${right}`);
 }
 
+function dirname(value: string): string {
+	return normalizePath(value).replace(/\/[^/]+$/, "");
+}
+
 function relative(from: string, to: string): string {
 	const cleanFrom = normalizePath(from);
 	const cleanTo = normalizePath(to);
 	if (cleanTo === cleanFrom) return "";
 	if (cleanTo.startsWith(`${cleanFrom}/`)) return cleanTo.slice(cleanFrom.length + 1);
 	return cleanTo;
+}
+
+function relativeModuleSpecifier(fromFile: string, toFile: string): string {
+	const fromDir = dirname(fromFile);
+	const toModule = normalizePath(toFile).replace(/\.d\.ts$/, "").replace(/\.tsx?$/, "");
+	if (fromDir === toModule) return "./index";
+	if (isDescendant(toModule, fromDir)) {
+		const rel = relative(fromDir, toModule);
+		return rel.startsWith(".") ? rel : `./${rel}`;
+	}
+
+	const fromParts = fromDir.split("/").filter((part) => part !== "");
+	const toParts = toModule.split("/").filter((part) => part !== "");
+	let common = 0;
+	while (common < fromParts.length && common < toParts.length && fromParts[common] === toParts[common]) common += 1;
+	const up = fromParts.slice(common).map(() => "..");
+	const down = toParts.slice(common);
+	const joined = [...up, ...down].join("/");
+	return joined === "" ? "." : joined.startsWith(".") ? joined : `./${joined}`;
 }
 
 function isDescendant(child: string, parent: string): boolean {
@@ -551,6 +704,18 @@ function modulePath(root: string, fileName: string): string {
 		.replace(/\.d\.ts$/, "")
 		.replace(/\.tsx?$/, "");
 	return relative(root, noExt);
+}
+
+function classIsExported(node: ts.ClassDeclaration): boolean {
+	return (node.modifiers ?? []).some(
+		(modifier) =>
+			modifier.kind === ts.SyntaxKind.ExportKeyword || modifier.kind === ts.SyntaxKind.DefaultKeyword,
+	);
+}
+
+function isPluginIndexFile(fileName: string): boolean {
+	const normalized = normalizePath(fileName);
+	return normalized.endsWith("/index.ts") || normalized.endsWith("/index.tsx");
 }
 
 function skipAlias(checker: ts.TypeChecker, symbol: ts.Symbol): ts.Symbol {
@@ -572,4 +737,12 @@ function declarationHasWidgetTag(declaration: ts.Declaration): boolean {
 		}
 	}
 	return false;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
+function booleanConfig(value: unknown): boolean | undefined {
+	return typeof value === "boolean" ? value : undefined;
 }

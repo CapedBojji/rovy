@@ -7,7 +7,7 @@
  */
 
 import type { Entity as JecsEntity } from "@rbxts/jecs";
-import type { Ctor } from "../contract";
+import type { ComponentEditorReg, ComponentReg, Ctor, StableId } from "../contract";
 
 /** A jecs entity id. Add `Entity` to a query term tuple to bind it. */
 export type Entity = JecsEntity;
@@ -139,6 +139,18 @@ export interface World {
 	trigger(event: object): void;
 	runSchedule(schedule: Ctor, dt?: number): void;
 	flush(): void;
+	inspectEntities(): Entity[];
+	inspectRegisteredComponents(): ReadonlyArray<ComponentReg>;
+	inspectEntityComponents(entity: Entity): ReadonlyArray<ComponentInspection>;
+}
+
+export interface ComponentInspection {
+	readonly ctor: Ctor;
+	readonly id: StableId;
+	readonly name: string;
+	readonly value: unknown;
+	readonly tag: boolean;
+	readonly editor?: ComponentEditorReg;
 }
 
 // ─── Collector base (runtime value) ──────────────────────────────────────────

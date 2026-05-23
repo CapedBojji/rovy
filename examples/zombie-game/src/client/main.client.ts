@@ -31,9 +31,16 @@ function attachEngineHooks(runtime: {
 }): void {
 	const { app, game: gameMod } = runtime;
 	const RunService = game.GetService("RunService");
+	const UserInputService = game.GetService("UserInputService");
 	RunService.RenderStepped.Connect((dt) => {
 		gameMod.setClockDelta(app, dt);
 		app.runSchedule(gameMod.Render);
+	});
+	UserInputService.InputBegan.Connect((input, processed) => {
+		if (processed) return;
+		if (input.KeyCode === Enum.KeyCode.F2) {
+			gameMod.toggleInspector(app);
+		}
 	});
 }
 
@@ -43,4 +50,3 @@ if (hasRunService) {
 	attachEngineHooks(runtime);
 	print("[zombie-game] client runtime online");
 }
-

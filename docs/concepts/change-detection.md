@@ -178,10 +178,47 @@ const health = world.get(entity, Health);
 health.current -= 10; // ❌ no on_change fires, Changed<Health> misses this
 ```
 
+Same problem inside component methods:
+
+```ts
+@component
+class Health {
+	constructor(
+		public current: number,
+		public max: number,
+	) {}
+
+	takeDamage(amount: number) {
+		this.current -= amount; // ❌ mutates the stored instance, but no world.set/commands.set happens
+	}
+}
+
+const health = world.get(entity, Health);
+health.takeDamage(10); // ❌ Changed<Health> and monitor onChange miss this too
+```
+
 Required:
 
 ```ts
 commands.set(entity, Health, new Health(health.current - 10, health.max));
+```
+
+If you want method ergonomics, return a new value and pass it through `set`:
+
+```ts
+@component
+class Health {
+	constructor(
+		public current: number,
+		public max: number,
+	) {}
+
+	withDamage(amount: number) {
+		return new Health(this.current - amount, this.max);
+	}
+}
+
+commands.set(entity, Health, health.withDamage(10));
 ```
 
 Could enforce via `Object.freeze` on returned instances in dev builds; skip in release.

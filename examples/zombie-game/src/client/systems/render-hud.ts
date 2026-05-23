@@ -40,10 +40,15 @@ export class RenderHud {
 						EgooE.label(`Phase: ${hud.phase}`);
 						EgooE.label(`Wave: ${hud.waveNumber}`);
 						EgooE.label(`Enemies: ${hud.enemiesRemaining}`);
+						EgooE.label(`Inspector pause: ${hud.paused ? "on" : "off"}`);
 						EgooE.progressBar({
 							value: ratio,
 							label: `HP ${math.floor(hud.playerHealth)}/${hud.playerMaxHealth}`,
 						});
+						const pauseBtn = EgooE.button(hud.paused ? "Resume (P)" : "Pause (P)");
+						if (pauseBtn.clicked()) {
+							hudUi.local.setPaused(!hud.paused);
+						}
 
 						if (hud.gameOver) {
 							EgooE.label("You died.");

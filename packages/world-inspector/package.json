@@ -1,0 +1,31 @@
+{
+  "name": "@rovy/world-inspector",
+  "version": "0.0.0",
+  "description": "Client-side world inspector plugin for Rovy",
+  "main": "out/init.luau",
+  "types": "out/index.d.ts",
+  "license": "MIT",
+  "scripts": {
+    "build": "pnpm --filter @rovy/networking build && pnpm --filter @rovy/ui build && rbxtsc",
+    "dev": "rbxtsc -w",
+    "test": "npm run build && zune test test/run"
+  },
+  "files": [
+    "out",
+    "!**/*.tsbuildinfo"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@rovy/core": "workspace:*",
+    "@rovy/networking": "workspace:*",
+    "@rovy/ui": "workspace:*",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@rbxts/compiler-types": "3.0.0-types.0",
+    "@rbxts/types": "^1.0.920",
+    "roblox-ts": "^3.0.0"
+  }
+}

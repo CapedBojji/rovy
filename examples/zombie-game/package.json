@@ -33,7 +33,9 @@
     "@rbxts/signal": "^1.1.1",
     "@rbxts/t": "^3.2.1",
     "@rovy/core": "workspace:*",
-    "@rovy/networking": "workspace:*"
+    "@rovy/networking": "workspace:*",
+    "@rovy/ui": "workspace:*",
+    "@rovy/world-inspector": "workspace:*"
   },
   "devDependencies": {
     "@rbxts/compiler-types": "3.0.0-types.0",

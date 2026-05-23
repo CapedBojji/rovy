@@ -32,6 +32,7 @@ export function logRegistry(
 	};
 
 	section("plugins",    pluginNames as Array<string>);
+	section("plugin regs", reg.plugins.map((p) => shortId(p.id)));
 	section("schedules",  reg.schedules.map((s) => ctorLabel(s.ctor)));
 	section("components", reg.components.map((c) => shortId(c.id)));
 	section("resources",  reg.resources.map((r) => shortId(r.id)));

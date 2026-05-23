@@ -56,8 +56,9 @@ Source: [`examples/zombie-game/src`](https://github.com/CapedBojji/rovy/tree/mai
 ### Plugin example — `examples/plugin-example`
 
 Package `@rovy/example-gameclock`. A minimal `@plugin` package: a registry, a plugin
-class, and an entry point. Shows how to bundle components, systems, and set
-configuration into a reusable plugin. See [Plugins](/concepts/plugins).
+class, plugin-owned `@resource` / `@system` modules, and an entry point. Shows how
+discovery through module loads stays separate from runtime activation through
+`app.addPlugin(...)`. See [Plugins](/concepts/plugins).
 
 Source: [`examples/plugin-example/src`](https://github.com/CapedBojji/rovy/tree/main/examples/plugin-example/src)
 

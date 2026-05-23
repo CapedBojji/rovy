@@ -43,6 +43,11 @@ export class SnapshotState {
 }
 
 @resource
+export class DevPauseState {
+	paused = false;
+}
+
+@resource
 export class SmokeStats {
 	zombiesSpawned = 0;
 	zombiesKilled = 0;

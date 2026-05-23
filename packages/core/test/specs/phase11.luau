@@ -117,5 +117,42 @@ return function(TS, t)
 			rovy:loadPaths("b", "c")
 			t.expect(calls).toBe(2)
 		end)
+
+		t.it("plugin-owned systems/resources stay inactive until that plugin is added", function()
+			rovy:__reset()
+			rovy:__schedule(Update, { runOnStart = false })
+
+			local PluginOwner = {}
+			PluginOwner.__index = PluginOwner
+			PluginOwner.new = function()
+				return setmetatable({}, PluginOwner)
+			end
+			PluginOwner.build = function() end
+
+			local ClockRes = class(function(t) return { t = t or 0 } end)
+			local Tick = sysClass(function(_, clock)
+				clock.t += 1
+			end)
+
+			rovy:__plugin(PluginOwner, { id = "t/PluginOwner", root = "t" })
+			rovy:__resource(ClockRes, "plugin/ClockRes", { plugin = PluginOwner })
+			rovy:__system(Tick, {
+				id = "plugin/Tick",
+				plugin = PluginOwner,
+				schedule = Update,
+				params = { { kind = "resMut", ctor = ClockRes } },
+			})
+
+			local inactiveApp = App.new()
+			inactiveApp:start()
+			inactiveApp:runSchedule(Update)
+			t.expect(function() return inactiveApp.world:resource(ClockRes) end).toThrow()
+
+			local activeApp = App.new()
+			activeApp:addPlugin(PluginOwner.new())
+			activeApp:start()
+			activeApp:runSchedule(Update)
+			t.expect(activeApp.world:resource(ClockRes).t).toBe(1)
+		end)
 	end)
 end

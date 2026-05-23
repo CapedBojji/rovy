@@ -1,4 +1,5 @@
 import { App } from "@rovy/core";
+import { WorldInspectorServerPlugin } from "@rovy/world-inspector";
 import {
 	FireWeaponRequestPayload,
 	INITIAL_INTERMISSION_SECONDS,
@@ -37,11 +38,15 @@ import {
 	Update,
 	WaveSet,
 } from "./state";
-import { ArenaState, PlayerRegistry, SmokeStats, SnapshotState, WaveState } from "./resources";
+import { ArenaState, DevPauseState, PlayerRegistry, SmokeStats, SnapshotState, WaveState } from "./resources";
 
 export function boot(): App {
 	const app = new App();
 	app.configureSets(Update, [IngressSet, RemoteIngressSet, WaveSet, MovementSet, CombatSet, CleanupSet, SnapshotSet]);
+	app.addPlugin(new WorldInspectorServerPlugin({
+		schedule: Update,
+		access: () => true,
+	}));
 	app.start();
 	return app;
 }
@@ -65,6 +70,17 @@ export function runZombieGameSmoke(): ZombieGameSmokeResult {
 	enqueueSmokePlayerAdded(userId);
 	stepFixed(app);
 	setPlayerPosition(app, userId, arena.center);
+
+	const pause = app.world.resource(DevPauseState);
+	const waveBeforePause = app.world.resource(WaveState).waveNumber;
+	const intermissionBeforePause = app.world.resource(WaveState).intermissionRemaining;
+	pause.paused = true;
+	for (let i = 0; i < 8; i++) stepFixed(app);
+	const pausedWave = app.world.resource(WaveState);
+	const pauseFreezeVerified =
+		pausedWave.waveNumber === waveBeforePause &&
+		pausedWave.intermissionRemaining === intermissionBeforePause;
+	pause.paused = false;
 
 	let ticksRan = 0;
 	const stepN = (count: number) => {
@@ -124,5 +140,6 @@ export function runZombieGameSmoke(): ZombieGameSmokeResult {
 		defeatReached,
 		restartApplied: stats.restartApplied,
 		snapshotCount: snap.snapshotCount,
+		pauseFreezeVerified,
 	};
 }

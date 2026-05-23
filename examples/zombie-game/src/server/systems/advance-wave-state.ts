@@ -1,6 +1,6 @@
 import { Entity, Query, Res, ResMut, With, system } from "@rovy/core";
 import { Health, PlayerUnit, Zombie } from "../components";
-import { ServerClock, WaveState } from "../resources";
+import { DevPauseState, ServerClock, WaveState } from "../resources";
 import { quotaForWave, Update, WaveSet } from "../state";
 import { REGULAR_INTERMISSION_SECONDS } from "shared/contracts";
 
@@ -8,10 +8,12 @@ import { REGULAR_INTERMISSION_SECONDS } from "shared/contracts";
 export class AdvanceWaveState {
 	run(
 		clock: Res<ServerClock>,
+		pause: Res<DevPauseState>,
 		wave: ResMut<WaveState>,
 		zombies: Query<[Entity], With<Zombie>>,
 		players: Query<[Entity, PlayerUnit, Health]>,
 	) {
+		if (pause.paused) return;
 		const dt = clock.fixedDelta;
 		if (wave.phase === "defeat") return;
 

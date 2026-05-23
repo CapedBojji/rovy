@@ -80,6 +80,13 @@ if _G.Vector3 == nil then
 	function Vector3:div(value)
 		return self / value
 	end
+	function Vector3:Lerp(other, alpha)
+		return Vector3.new(
+			self.X + (other.X - self.X) * alpha,
+			self.Y + (other.Y - self.Y) * alpha,
+			self.Z + (other.Z - self.Z) * alpha
+		)
+	end
 	_G.Vector3 = Vector3
 end
 
@@ -115,6 +122,75 @@ if _G.Color3 == nil then
 	_G.Color3 = Color3
 end
 
+if _G.Vector2 == nil then
+	local Vector2 = {}
+	Vector2.__index = function(self, key)
+		if key == "Magnitude" then
+			return math.sqrt(self.X * self.X + self.Y * self.Y)
+		end
+		return Vector2[key]
+	end
+	Vector2.__add = function(a, b)
+		return Vector2.new(a.X + b.X, a.Y + b.Y)
+	end
+	Vector2.__sub = function(a, b)
+		return Vector2.new(a.X - b.X, a.Y - b.Y)
+	end
+	function Vector2.new(x, y)
+		return setmetatable({ X = x or 0, Y = y or 0 }, Vector2)
+	end
+	_G.Vector2 = Vector2
+end
+
+if _G.UDim == nil then
+	local UDim = {}
+	UDim.__index = UDim
+	function UDim.new(scale, offset)
+		return setmetatable({ Scale = scale or 0, Offset = offset or 0 }, UDim)
+	end
+	_G.UDim = UDim
+end
+
+if _G.UDim2 == nil then
+	local UDim2 = {}
+	UDim2.__index = UDim2
+	function UDim2.new(xScale, xOffset, yScale, yOffset)
+		return setmetatable({
+			X = _G.UDim.new(xScale, xOffset),
+			Y = _G.UDim.new(yScale, yOffset),
+		}, UDim2)
+	end
+	_G.UDim2 = UDim2
+end
+
+if _G.Instance == nil then
+	local Instance = {}
+	function Instance.new(className: string)
+		local object = {
+			ClassName = className,
+			Name = className,
+			Parent = nil,
+			Destroyed = false,
+			children = {},
+		}
+		function object:IsA(query: string)
+			return self.ClassName == query or query == "Instance" or (query == "BasePart" and self.ClassName == "Part")
+		end
+		function object:Destroy()
+			self.Destroyed = true
+			self.Parent = nil
+		end
+		function object:FindFirstChild(_name: string)
+			return nil
+		end
+		function object:FindFirstChildOfClass(_className: string)
+			return nil
+		end
+		return object
+	end
+	_G.Instance = Instance
+end
+
 if _G.Enum == nil then
 	_G.Enum = {
 		Material = {
@@ -125,13 +201,21 @@ if _G.Enum == nil then
 		SurfaceType = {
 			Smooth = "Smooth",
 		},
+		ZIndexBehavior = {
+			Sibling = "Sibling",
+		},
+		Font = {
+			Code = "Code",
+		},
 		KeyCode = {
 			R = "R",
+			P = "P",
 		},
 	}
 end
 
 local HarnessVector3 = _G.Vector3
+local HarnessVector2 = _G.Vector2
 local HarnessCFrame = _G.CFrame
 local HarnessColor3 = _G.Color3
 local HarnessEnum = _G.Enum
@@ -289,6 +373,8 @@ ensureRoot("node_modules/@rbxts")
 ensureRoot("node_modules/@flamework")
 ensureRepoRoot("packages/core")
 ensureRepoRoot("packages/networking")
+ensureRepoRoot("packages/ui")
+ensureRepoRoot("packages/world-inspector")
 
 local replicatedStorage = newNode(ROOT .. "/$services/ReplicatedStorage", "ReplicatedStorage")
 replicatedStorage.children.TS = treeIndex(ROOT .. "/out/shared")
@@ -309,6 +395,14 @@ local starterPlayerScripts = newNode(ROOT .. "/$services/StarterPlayer/StarterPl
 starterPlayer.children.StarterPlayerScripts = starterPlayerScripts
 starterPlayerScripts.children.TS = treeIndex(ROOT .. "/out/client")
 
+local dataModelRoot = newNode(ROOT, "DataModel")
+dataModelRoot.children.ReplicatedStorage = replicatedStorage
+dataModelRoot.children.ServerScriptService = serverScriptService
+dataModelRoot.children.StarterPlayer = starterPlayer
+local workspace = newNode(ROOT .. "/$services/Workspace", "Workspace")
+dataModelRoot.children.Workspace = workspace
+indexTree(dataModelRoot)
+
 local rbxtsInclude = newNode(ROOT .. "/$services/ReplicatedStorage/rbxts_include")
 replicatedStorage.children.rbxts_include = rbxtsInclude
 local runtimeLib = newNode(ROOT .. "/$services/ReplicatedStorage/rbxts_include/RuntimeLib", "ModuleScript")
@@ -324,18 +418,86 @@ assert(flameworkScope, "rovy example harness: missing node_modules/@flamework")
 nodeModules.children["@flamework"] = flameworkScope
 local rovyScope = newNode(ROOT .. "/$services/ReplicatedStorage/rbxts_include/node_modules/@rovy")
 nodeModules.children["@rovy"] = rovyScope
+local rovyCorePackage = treeIndex(REPO .. "/packages/core")
+assert(rovyCorePackage, "rovy example harness: missing packages/core")
 local rovyCore = treeIndex(REPO .. "/packages/core/out")
 assert(rovyCore, "rovy example harness: missing packages/core/out")
+rovyScope.children.core = rovyCorePackage
 rovyScope.children["rovy-core"] = rovyCore
 local rovyNetworking = treeIndex(REPO .. "/packages/networking")
 assert(rovyNetworking, "rovy example harness: missing packages/networking")
 rovyScope.children.networking = rovyNetworking
+local rovyUi = treeIndex(REPO .. "/packages/ui")
+assert(rovyUi, "rovy example harness: missing packages/ui")
+rovyScope.children.ui = rovyUi
+local rovyWorldInspector = treeIndex(REPO .. "/packages/world-inspector")
+assert(rovyWorldInspector, "rovy example harness: missing packages/world-inspector")
+rovyScope.children["world-inspector"] = rovyWorldInspector
+
+local textService = {
+	GetTextSize = function(_self, text, _textSize, _font, _bounds)
+		return _G.Vector2.new((tostring(text):len()) * 7, 16)
+	end,
+}
+
+local localPlayerGui = _G.Instance.new("PlayerGui")
+local localPlayer = {
+	UserId = 999,
+	Name = "LocalPlayer",
+	DisplayName = "LocalPlayer",
+	PlayerGui = localPlayerGui,
+	Character = nil,
+	CharacterAdded = newSignal(),
+	CharacterRemoving = newSignal(),
+	WaitForChild = function(self, name)
+		return self[name]
+	end,
+	GetMouse = function(_self)
+		return {
+			Hit = {
+				Position = _G.Vector3.new(),
+			},
+		}
+	end,
+}
+
+local playersService = {
+	LocalPlayer = localPlayer,
+	PlayerAdded = newSignal(),
+	PlayerRemoving = newSignal(),
+	GetPlayers = function(_self)
+		return {}
+	end,
+}
+
+local userInputService = {
+	InputBegan = newSignal(),
+}
+
+local guiService = {
+	GetGuiInset = function(_self)
+		return _G.Vector2.new(0, 0)
+	end,
+}
 
 local gameObject = roblox.createGame({
 	ReplicatedStorage = replicatedStorage,
 	ServerScriptService = serverScriptService,
 	StarterPlayer = starterPlayer,
+	Workspace = workspace,
+	TextService = textService,
+	Players = playersService,
+	UserInputService = userInputService,
+	GuiService = guiService,
 })
+gameObject.ReplicatedStorage = replicatedStorage
+gameObject.ServerScriptService = serverScriptService
+gameObject.StarterPlayer = starterPlayer
+gameObject.Workspace = workspace
+gameObject.TextService = textService
+gameObject.Players = playersService
+gameObject.UserInputService = userInputService
+gameObject.GuiService = guiService
 
 local sharedG = setmetatable({}, { __index = _G })
 
@@ -365,9 +527,13 @@ local function loadModule(node): any
 		game = gameObject,
 		task = task,
 		Vector3 = HarnessVector3,
+		Vector2 = HarnessVector2,
 		CFrame = HarnessCFrame,
 		Color3 = HarnessColor3,
+		UDim = _G.UDim,
+		UDim2 = _G.UDim2,
 		Enum = HarnessEnum,
+		Instance = _G.Instance,
 		require = function(target)
 			if type(target) == "string" then
 				local base = (fsPath:match("^(.*)[/\\][^/\\]+$")) or ROOT
@@ -399,6 +565,11 @@ end
 function TS.getModule(_context, scope: string, moduleName: string)
 	if scope == "@rovy" and moduleName == "rovy-core" then
 		return rovyCore
+	end
+	if scope == "@rovy" then
+		local n = rovyScope.children[moduleName]
+		assert(n, "rovy example harness: module not found " .. scope .. "/" .. moduleName)
+		return n
 	end
 	if scope == "@rbxts" then
 		local scopeNode = ensureRoot("node_modules/@rbxts")
@@ -437,6 +608,16 @@ end
 
 function TS.loadPath(relPath: string)
 	local n = treeIndex(ROOT .. "/" .. relPath) or treeIndex(ROOT .. "/" .. relPath .. ".luau")
+	if not n and relPath:sub(1, 10) == "$services/" then
+		local target = dataModelRoot
+		for segment in relPath:gmatch("[^/]+") do
+			if segment == "$services" then
+				continue
+			end
+			target = target and target[segment]
+		end
+		n = target
+	end
 	assert(n, "rovy example harness: no module at " .. relPath)
 	return loadModule(n)
 end

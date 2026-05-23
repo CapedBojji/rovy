@@ -1,5 +1,6 @@
-import { Commands, Entity, Query, With, system } from "@rovy/core";
+import { Commands, Entity, Query, Res, With, system } from "@rovy/core";
 import { Damage, Health, Position, Projectile, Radius, Zombie } from "../components";
+import { DevPauseState } from "../resources";
 import { CombatSet, Update } from "../state";
 import { TickCooldowns } from "./tick-cooldowns";
 
@@ -7,9 +8,11 @@ import { TickCooldowns } from "./tick-cooldowns";
 export class ResolveProjectileHits {
 	run(
 		commands: Commands,
+		pause: Res<DevPauseState>,
 		projectiles: Query<[Entity, Position, Radius, Damage], With<Projectile>>,
 		zombies: Query<[Entity, Position, Radius, Health], With<Zombie>>,
 	) {
+		if (pause.paused) return;
 		const consumed = new Set<Entity>();
 		projectiles.forEach((projEntity, projPos, projRadius, damage) => {
 			if (consumed.has(projEntity)) return;

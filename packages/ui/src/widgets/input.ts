@@ -121,7 +121,7 @@ export const input = widget((options: InputOptions = {}): InputHandle => {
 	const style = useStyle();
 	const box = refs.textBox;
 
-	if (options.text !== undefined && box.Text !== options.text) {
+	if (!focused && options.text !== undefined && box.Text !== options.text) {
 		box.Text = options.text;
 	}
 
@@ -141,7 +141,7 @@ export const input = widget((options: InputOptions = {}): InputHandle => {
 
 	return {
 		value() {
-			return textValue;
+			return box.Text;
 		},
 		changed() {
 			if (changed) {

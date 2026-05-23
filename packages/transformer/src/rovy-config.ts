@@ -17,7 +17,12 @@ export interface RovyNetConfig {
 	readonly blink?: RovyBlinkConfig;
 }
 
+export interface RovyEditorConfig {
+	readonly runtimeTypeChecks?: boolean;
+}
+
 export interface RovyEnvironmentConfig {
+	readonly debug?: boolean;
 	readonly rojo?: string;
 	readonly sourcemap?: string;
 	readonly boundaries?: {
@@ -25,13 +30,16 @@ export interface RovyEnvironmentConfig {
 		readonly client?: ReadonlyArray<string>;
 		readonly shared?: ReadonlyArray<string>;
 	};
+	readonly editor?: RovyEditorConfig;
 	readonly net?: RovyNetConfig;
 }
 
 interface MutableRovyEnvironmentConfig {
+	debug?: boolean;
 	rojo?: string;
 	sourcemap?: string;
 	boundaries?: RovyEnvironmentConfig["boundaries"];
+	editor?: RovyEditorConfig;
 	net?: RovyNetConfig;
 }
 
@@ -82,17 +90,35 @@ export function loadRovyConfig(
 	}
 
 	const legacyEnvironment: MutableRovyEnvironmentConfig = {};
+	if (typeof config.debug === "boolean") legacyEnvironment.debug = config.debug;
 	if (typeof config.rojo === "string") legacyEnvironment.rojo = config.rojo;
 	if (typeof config.sourcemap === "string") legacyEnvironment.sourcemap = config.sourcemap;
 	if (
+		legacyEnvironment.debug === undefined &&
 		legacyEnvironment.rojo === undefined &&
 		legacyEnvironment.sourcemap === undefined &&
 		config.boundaries === undefined &&
+		config.editor === undefined &&
+		config.runtimeTypeChecks === undefined &&
 		config.net === undefined
 	) {
 		return undefined;
 	}
 
+	if (isRecord(config.editor)) {
+		legacyEnvironment.editor = {
+			runtimeTypeChecks:
+				typeof config.editor.runtimeTypeChecks === "boolean"
+					? config.editor.runtimeTypeChecks
+					: undefined,
+		};
+	}
+	if (typeof config.runtimeTypeChecks === "boolean") {
+		legacyEnvironment.editor = {
+			...legacyEnvironment.editor,
+			runtimeTypeChecks: config.runtimeTypeChecks,
+		};
+	}
 	if (isRecord(config.boundaries)) {
 		legacyEnvironment.boundaries = {
 			server: asStringArray(config.boundaries.server),

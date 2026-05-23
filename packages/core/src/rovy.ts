@@ -19,6 +19,7 @@ import type {
 	MonitorReg,
 	ObserverReg,
 	ParamDescriptor,
+	PluginReg,
 	PrefabReg,
 	QueryDescriptor,
 	RelationReg,
@@ -44,6 +45,7 @@ export type ModuleProvider = (roots: ReadonlyArray<unknown>) => void;
 
 function createRegistry(): RovyRegistry {
 	return {
+		plugins: [],
 		components: [],
 		collectors: [],
 		resources: [],
@@ -92,17 +94,30 @@ export const rovy = {
 
 	// ── transformer-injected registration (pure data push) ──────────────────
 
-	__component(ctor: Ctor, id: StableId): void {
-		registry.components.push({ ctor, id } satisfies ComponentReg);
+	__plugin(ctor: Ctor, meta: Omit<PluginReg, "ctor">): void {
+		registry.plugins.push({ ctor, ...meta } satisfies PluginReg);
 	},
-	__collect(ctor: Ctor, id: StableId): void {
-		registry.collectors.push({ ctor, id } satisfies CollectReg);
+	__component(ctor: Ctor, id: StableId, meta?: { plugin?: Ctor; editor?: ComponentReg["editor"] }): void {
+		registry.components.push({ ctor, id, plugin: meta?.plugin, editor: meta?.editor } satisfies ComponentReg);
 	},
-	__resource(ctor: Ctor, id: StableId, meta?: { collectorRefs?: ReadonlyArray<CollectorRefReg> }): void {
-		registry.resources.push({ ctor, id, collectorRefs: meta?.collectorRefs } satisfies ResourceReg);
+	__collect(ctor: Ctor, id: StableId, meta?: { plugin?: Ctor }): void {
+		registry.collectors.push({ ctor, id, plugin: meta?.plugin } satisfies CollectReg);
 	},
-	__event(ctor: Ctor, options?: { capacity?: number; label?: string }): void {
-		registry.events.push({ ctor, capacity: options?.capacity, label: options?.label } satisfies EventReg);
+	__resource(ctor: Ctor, id: StableId, meta?: { plugin?: Ctor; collectorRefs?: ReadonlyArray<CollectorRefReg> }): void {
+		registry.resources.push({
+			ctor,
+			id,
+			plugin: meta?.plugin,
+			collectorRefs: meta?.collectorRefs,
+		} satisfies ResourceReg);
+	},
+	__event(ctor: Ctor, options?: { capacity?: number; label?: string; plugin?: Ctor }): void {
+		registry.events.push({
+			ctor,
+			capacity: options?.capacity,
+			label: options?.label,
+			plugin: options?.plugin,
+		} satisfies EventReg);
 	},
 	__system(ctor: Ctor, meta: Omit<SystemReg, "ctor">): void {
 		registry.systems.push({ ctor, ...meta });
@@ -119,7 +134,7 @@ export const rovy = {
 	__schedule(ctor: Ctor, meta: Omit<ScheduleReg, "ctor">): void {
 		registry.schedules.push({ ctor, ...meta });
 	},
-	__prefab(ctor: Ctor, meta: { id: StableId; params: ReadonlyArray<ParamDescriptor> }): void {
+	__prefab(ctor: Ctor, meta: { id: StableId; plugin?: Ctor; params: ReadonlyArray<ParamDescriptor> }): void {
 		registry.prefabs.push({ ctor, ...meta } satisfies PrefabReg);
 	},
 	__traitImpl(traitId: StableId, impl: Ctor): void {
@@ -160,6 +175,7 @@ export const rovy = {
 		const empty = (arr: Array<defined>): void => {
 			while (arr.size() > 0) arr.pop();
 		};
+		empty(registry.plugins);
 		empty(registry.components);
 		empty(registry.collectors);
 		empty(registry.resources);

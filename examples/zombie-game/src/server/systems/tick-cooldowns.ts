@@ -1,6 +1,6 @@
 import { Commands, Entity, Query, Res, With, system } from "@rovy/core";
 import { ContactCooldown, PlayerUnit, WeaponCooldown, Zombie } from "../components";
-import { ServerClock } from "../resources";
+import { DevPauseState, ServerClock } from "../resources";
 import { CombatSet, Update } from "../state";
 
 @system({ schedule: Update, set: CombatSet })
@@ -8,9 +8,11 @@ export class TickCooldowns {
 	run(
 		commands: Commands,
 		clock: Res<ServerClock>,
+		pause: Res<DevPauseState>,
 		players: Query<[Entity, WeaponCooldown], With<PlayerUnit>>,
 		zombies: Query<[Entity, ContactCooldown], With<Zombie>>,
 	) {
+		if (pause.paused) return;
 		const dt = clock.fixedDelta;
 		players.forEach((entity, cooldown) => {
 			if (cooldown.remaining > 0) {

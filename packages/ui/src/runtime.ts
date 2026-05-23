@@ -1,9 +1,11 @@
+import { App, ParamDescriptor, resolveParams, type ResolveCtx } from "@rovy/core";
+
 export interface WidgetMeta {
 	readonly id: string;
 	readonly name: string;
 }
 
-export type WidgetFn = (...args: ReadonlyArray<unknown>) => unknown;
+export type WidgetFn = (...args: any[]) => unknown;
 export interface WidgetReg {
 	readonly fn: WidgetFn;
 	readonly meta: WidgetMeta;

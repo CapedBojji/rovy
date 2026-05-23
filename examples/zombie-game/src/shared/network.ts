@@ -2,6 +2,7 @@ import { netEvent } from "@rovy/networking";
 import {
 	FireWeaponRequestPayload,
 	RestartRequestPayload,
+	TogglePauseRequestPayload,
 	WorldSnapshotPayload,
 } from "./contracts";
 
@@ -38,6 +39,7 @@ type WorldSnapshotWire = {
 	playerPosition: WireVector3;
 	zombies: Array<WireZombieSnapshot>;
 	projectiles: Array<WireProjectileSnapshot>;
+	paused: boolean;
 };
 
 @netEvent({ direction: "clientToServer", receive: "send" })
@@ -53,6 +55,11 @@ export class FireWeaponRequestNet {
 @netEvent({ direction: "clientToServer", receive: "send" })
 export class RestartRequestNet {
 	constructor(public clientTime: number = 0) {}
+}
+
+@netEvent({ direction: "clientToServer", receive: "send" })
+export class TogglePauseRequestNet {
+	constructor(public paused: boolean = false) {}
 }
 
 @netEvent({ direction: "serverToClient", receive: "send" })
@@ -75,6 +82,7 @@ export class WorldSnapshotNet {
 			id: number;
 			position: { x: number; y: number; z: number };
 		}> = [],
+		public paused: boolean = false,
 	) {}
 }
 
@@ -112,6 +120,14 @@ export function fromRestartRequestNet(event: RestartRequestNet): RestartRequestP
 	return new RestartRequestPayload(event.clientTime);
 }
 
+export function toTogglePauseRequestNet(payload: TogglePauseRequestPayload): TogglePauseRequestNet {
+	return new TogglePauseRequestNet(payload.paused);
+}
+
+export function fromTogglePauseRequestNet(event: TogglePauseRequestNet): TogglePauseRequestPayload {
+	return new TogglePauseRequestPayload(event.paused);
+}
+
 export function toWorldSnapshotNet(payload: WorldSnapshotPayload): WorldSnapshotNet {
 	return new WorldSnapshotNet(
 		payload.serverTick,
@@ -131,6 +147,7 @@ export function toWorldSnapshotNet(payload: WorldSnapshotPayload): WorldSnapshot
 			id: projectile.id,
 			position: toWireVector3(projectile.position),
 		})),
+		payload.paused,
 	);
 }
 
@@ -153,5 +170,6 @@ export function fromWorldSnapshotNet(event: WorldSnapshotNet): WorldSnapshotPayl
 			id: projectile.id,
 			position: fromWireVector3(projectile.position),
 		})),
+		event.paused,
 	);
 }

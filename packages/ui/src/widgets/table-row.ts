@@ -83,5 +83,5 @@ export function tableRow(children: () => void): void;
 export function tableRow(first: TableRowOptions | (() => void), second?: () => void): void {
 	const fn = typeIs(first, "function") ? first : second;
 	const options: TableRowOptions = typeIs(first, "function") ? {} : first;
-	__callWidget(tableRowWidget as (...args: ReadonlyArray<unknown>) => void, "tableRow", [options, fn]);
+	__callWidget("tableRow", tableRowWidget as (...args: unknown[]) => void, options, fn);
 }

@@ -6,10 +6,13 @@ export type LocalClientIngress =
 	| { kind: "player"; userId: number }
 	| { kind: "character"; character?: Model }
 	| { kind: "fire"; origin: Vector3; direction: Vector3 }
-	| { kind: "restart" };
+	| { kind: "restart" }
+	| { kind: "togglePause"; paused: boolean };
 
 @collect
 export class LocalClientCollect extends Collector<LocalClientIngress> {
+	private pauseRequested = false;
+
 	constructor() {
 		super();
 		const [ok, services] = pcall(() => ({
@@ -65,11 +68,18 @@ export class LocalClientCollect extends Collector<LocalClientIngress> {
 		services.UserInputService.InputBegan.Connect((input, processed) => {
 			if (!processed && input.KeyCode === Enum.KeyCode.R) {
 				this.enqueue({ kind: "restart" });
+			} else if (!processed && input.KeyCode === Enum.KeyCode.P) {
+				this.setPaused(!this.pauseRequested);
 			}
 		});
 	}
 
 	restart(): void {
 		this.enqueue({ kind: "restart" });
+	}
+
+	setPaused(paused: boolean): void {
+		this.pauseRequested = paused;
+		this.enqueue({ kind: "togglePause", paused });
 	}
 }

@@ -44,6 +44,7 @@ export class App {
 
 	private plugins: Array<Plugin> = [];
 	private pluginNames: Array<string> = [];
+	private activePluginOwners = new Map<object, true>();
 	logRegistryAtStart = false;
 
 	constructor() {
@@ -82,6 +83,8 @@ export class App {
 	addPlugin(plugin: Plugin): this {
 		this.pluginNames.push(resolvePluginName(plugin));
 		this.plugins.push(plugin);
+		const owner = this.pluginOwnerFor(plugin);
+		if (owner !== undefined) this.activePluginOwners.set(owner, true);
 		return this;
 	}
 
@@ -115,26 +118,28 @@ export class App {
 	start(): this {
 		assert(!this.started, "[rovy] app.start called twice");
 		const reg = rovy.registry;
-		assert(
-			reg.components.size() > 0 ||
-				reg.collectors.size() > 0 ||
-				reg.systems.size() > 0 ||
-				reg.resources.size() > 0 ||
-				reg.events.size() > 0 ||
-				reg.observers.size() > 0 ||
-				reg.schedules.size() > 0,
-			"[rovy] empty registry — call rovy.loadPaths(...) before app.start()",
-		);
 
 		for (const plugin of this.plugins) {
 			plugin.build(this);
 		}
-		runAppExtensions(this, reg);
-		if (this.logRegistryAtStart) logRegistry(reg, this.pluginNames, this.externalParams);
+		const activeReg = this.filterRegistry(reg);
+		assert(
+			activeReg.components.size() > 0 ||
+				activeReg.collectors.size() > 0 ||
+				activeReg.systems.size() > 0 ||
+				activeReg.resources.size() > 0 ||
+				activeReg.events.size() > 0 ||
+				activeReg.observers.size() > 0 ||
+				activeReg.schedules.size() > 0,
+			"[rovy] empty active registry — call rovy.loadPaths(...) before app.start() and add required plugins",
+		);
+		runAppExtensions(this, activeReg);
+		const finalReg = this.filterRegistry(reg);
+		if (this.logRegistryAtStart) logRegistry(finalReg, this.pluginNames, this.externalParams);
 
 		// 1. components → jecs ids + change-detection hooks
-		for (const entry of reg.components) {
-			const id = this.world.registerComponent(entry.ctor);
+		for (const entry of finalReg.components) {
+			const id = this.world.registerComponentEntry(entry);
 			this.world.registerChangeDetection(id);
 		}
 
@@ -151,12 +156,12 @@ export class App {
 		};
 		installResource(ScheduleContext);
 		this.scheduleContext = this.world.resource(ScheduleContext);
-		for (const entry of reg.resources) {
+		for (const entry of finalReg.resources) {
 			installResource(entry.ctor);
 		}
 
 		// 2b. collectors → singleton app-owned external ingress bridges
-		for (const entry of reg.collectors) {
+		for (const entry of finalReg.collectors) {
 			const factory = entry.ctor as unknown as new () => object;
 			const instance = new factory();
 			assert(
@@ -167,14 +172,14 @@ export class App {
 		}
 
 		// 2c. prefabs → singleton app-owned entity builders
-		for (const entry of reg.prefabs) {
+		for (const entry of finalReg.prefabs) {
 			const factory = entry.ctor as unknown as new () => object;
 			const instance = new factory();
 			this.prefabs.set(entry.ctor, { instance, params: entry.params, id: entry.id });
 		}
 
 		// 2d. collector-backed resource fields → singleton collector instances
-		for (const entry of reg.resources) {
+		for (const entry of finalReg.resources) {
 			if (entry.collectorRefs === undefined || entry.collectorRefs.size() === 0) continue;
 			const instance = this.world.resource(entry.ctor as never) as Record<string, unknown>;
 			for (const ref of entry.collectorRefs) {
@@ -195,7 +200,7 @@ export class App {
 		}
 
 		// 2d. relations → jecs relation ids + cleanup/exclusive policies
-		for (const r of reg.relations) {
+		for (const r of finalReg.relations) {
 			this.world.registerRelation(r.ctor, {
 				exclusive: r.exclusive,
 				onTargetDelete: r.onTargetDelete,
@@ -205,7 +210,7 @@ export class App {
 
 		// 3a. resolve trait registry (stable id → implementer ctors+jecs ids)
 		const resolvedTraits: ResolvedTraits = new Map();
-		for (const [traitId, impls] of reg.traits) {
+		for (const [traitId, impls] of finalReg.traits) {
 			const list: Array<{ ctor: Ctor; jecsId: Entity }> = [];
 			for (const implCtor of impls) {
 				const jid = this.world.componentMap.get(implCtor);
@@ -216,7 +221,7 @@ export class App {
 		}
 
 		// 3b. hoisted query handles (trait-using → TraitQueryHandle)
-		for (const [id, descriptor] of reg.queries) {
+		for (const [id, descriptor] of finalReg.queries) {
 			let handle;
 			if (descriptorUsesRelations(descriptor)) {
 				handle = new RelationQueryHandle(this.world, descriptor);
@@ -229,10 +234,10 @@ export class App {
 		}
 
 		// 4. events + observers
-		for (const e of reg.events) {
+		for (const e of finalReg.events) {
 			this.eventRegistry.registerEvent(e.ctor, e.capacity);
 		}
-		for (const o of reg.observers) {
+		for (const o of finalReg.observers) {
 			this.eventRegistry.registerObserver(o);
 		}
 		const baseCtx = () => ({
@@ -277,7 +282,7 @@ export class App {
 
 		// 5. monitors (public cached-query reconcile; see monitors.ts)
 		const monitors = new MonitorRegistry(this.world, baseCtx);
-		for (const m of reg.monitors) {
+		for (const m of finalReg.monitors) {
 			const base = this.scheduler.queries.get(m.match);
 			assert(base !== undefined, `[rovy] @monitor match query not hoisted: ${m.match}`);
 			monitors.register(m, base);
@@ -312,13 +317,13 @@ export class App {
 				}
 			}
 		};
-		for (const s of reg.systems) checkParams("system", s.id, s.params);
-		for (const o of reg.observers) checkParams("observer", tostring(o.ctor), o.params);
-		for (const m of reg.monitors) checkParams("monitor", tostring(m.ctor), m.params);
-		for (const p of reg.prefabs) checkParams("prefab", p.id, p.params);
+		for (const s of finalReg.systems) checkParams("system", s.id, s.params);
+		for (const o of finalReg.observers) checkParams("observer", tostring(o.ctor), o.params);
+		for (const m of finalReg.monitors) checkParams("monitor", tostring(m.ctor), m.params);
+		for (const p of finalReg.prefabs) checkParams("prefab", p.id, p.params);
 
 		// 6. build scheduler (schedules → sets → systems), then fire runOnStart
-		this.scheduler.build(reg);
+		this.scheduler.build(finalReg);
 		this.started = true;
 		monitors.reconcileAll(); // initial membership (pre-start spawns)
 		for (const s of this.scheduler.runOnStartList()) {
@@ -344,6 +349,44 @@ export class App {
 			makeReader: this.makeReader,
 			makeWriter: this.makeWriter,
 			lastRunTick,
+		};
+	}
+
+	private pluginOwnerFor(plugin: Plugin): object | undefined {
+		const mt = getmetatable(plugin) as object | undefined;
+		if (mt !== undefined) return mt;
+		return typeIs(plugin, "table") ? (plugin as object) : undefined;
+	}
+
+	private isActivePluginOwner(plugin: Ctor | undefined): boolean {
+		return plugin === undefined || this.activePluginOwners.has(plugin as unknown as object);
+	}
+
+	private filterRegistry(reg: import("../contract").RovyRegistry): import("../contract").RovyRegistry {
+		const keep = <T extends { plugin?: Ctor }>(entries: ReadonlyArray<T>): Array<T> =>
+			entries.filter((entry) => this.isActivePluginOwner(entry.plugin));
+		const components = keep(reg.components);
+		const componentSet = new Set<Ctor>();
+		for (const entry of components) componentSet.add(entry.ctor);
+		const traits = new Map<import("../contract").StableId, Array<Ctor>>();
+		for (const [traitId, impls] of reg.traits) {
+			const activeImpls = impls.filter((impl) => componentSet.has(impl));
+			if (activeImpls.size() > 0) traits.set(traitId, activeImpls);
+		}
+		return {
+			plugins: reg.plugins.filter((entry) => this.isActivePluginOwner(entry.ctor)),
+			components,
+			collectors: keep(reg.collectors),
+			resources: keep(reg.resources),
+			events: keep(reg.events),
+			systems: keep(reg.systems),
+			observers: keep(reg.observers),
+			monitors: keep(reg.monitors),
+			relations: keep(reg.relations),
+			schedules: keep(reg.schedules),
+			prefabs: keep(reg.prefabs),
+			traits,
+			queries: reg.queries,
 		};
 	}
 }

@@ -1,4 +1,4 @@
-import { Commands, EventReader, Res, ResMut, World, system } from "@rovy/core";
+import { Commands, Entity, EventReader, Res, ResMut, World, system } from "@rovy/core";
 import { WorldSnapshotPayload } from "shared/contracts";
 import { WorldSnapshotNet, fromWorldSnapshotNet } from "shared/network";
 import { ClientClock, HudState, NetworkEntityMap } from "../resources";
@@ -23,6 +23,10 @@ import {
 	PreviousPosition,
 } from "../components";
 
+function hasLiveEntity(world: World, entity: number | undefined, marker: typeof ClientZombie | typeof ClientProjectile): entity is number {
+	return entity !== undefined && world.has(entity as Entity, marker);
+}
+
 @system({ schedule: Render, set: SnapshotSet })
 export class ApplySnapshotIngress {
 	run(
@@ -42,12 +46,14 @@ export class ApplySnapshotIngress {
 			hud.playerHealth = snap.playerHealth;
 			hud.playerMaxHealth = snap.playerMaxHealth;
 			hud.gameOver = snap.phase === "defeat";
+			hud.paused = snap.paused;
 
 			const liveZombies = new Set<number>();
 			for (const z of snap.zombies) {
 				liveZombies.add(z.id);
 				const existing = nem.zombies.get(z.id);
-				if (existing === undefined) {
+				if (!hasLiveEntity(world, existing, ClientZombie)) {
+					if (existing !== undefined) nem.zombies.delete(z.id);
 					const entity = world.spawn(
 						new ClientZombie(),
 						new NetworkId(z.id),
@@ -77,7 +83,8 @@ export class ApplySnapshotIngress {
 			for (const p of snap.projectiles) {
 				liveProjectiles.add(p.id);
 				const existing = nem.projectiles.get(p.id);
-				if (existing === undefined) {
+				if (!hasLiveEntity(world, existing, ClientProjectile)) {
+					if (existing !== undefined) nem.projectiles.delete(p.id);
 					const entity = world.spawn(
 						new ClientProjectile(),
 						new NetworkId(p.id),

@@ -176,11 +176,13 @@ end
 -- names. Map those back to the on-disk node_modules layout.
 local function moduleDir(scope: string, moduleName: string): string
 	if scope == "@rovy" then
-		if moduleName == "rovy-core" then
+		if moduleName == "core" or moduleName == "rovy-core" then
 			return CORE
 		end
-		if moduleName == "rovy-networking" then
-			return ROOT
+		local packageName = moduleName:gsub("^rovy%-", "")
+		local packageDir = ROOT .. "/../" .. packageName
+		if isDir(packageDir) then
+			return packageDir
 		end
 		return ROOT .. "/node_modules/@rovy/" .. moduleName
 	end
@@ -197,8 +199,7 @@ end
 function TS.getModule(_context, scope: string, moduleName: string)
 	local dir = moduleDir(scope, moduleName)
 	local node = ensureRoot(dir)
-	-- A package root is requirable via its "main"; roblox-ts output is `out`.
-	if rawget(node, "__file") == nil and node.children["out"] ~= nil then
+	if moduleName:match("^rovy%-") and rawget(node, "__file") == nil and node.children["out"] ~= nil then
 		return node.children["out"]
 	end
 	return node
@@ -229,6 +230,14 @@ end
 
 function TS.loadPath(relPath: string)
 	local n = treeIndex(ROOT .. "/" .. relPath) or treeIndex(ROOT .. "/" .. relPath .. ".luau")
+	if not n then
+		local path = ROOT .. "/" .. relPath
+		if isFile(path .. ".luau") then
+			path = path .. ".luau"
+		end
+		n = scan(path)
+		indexTree(n)
+	end
 	assert(n, "rovy net test harness: no module at " .. relPath)
 	return loadModule(n)
 end

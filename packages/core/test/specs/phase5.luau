@@ -28,6 +28,10 @@ return function(TS, t)
 	local Shield = class(function(a) return { a = a } end)
 	local Unit = class(function() return {} end)
 	local Dead = class(function() return {} end)
+	local WithMethod = class(function(v) return { value = v } end)
+	WithMethod.double = function(self)
+		return self.value * 2
+	end
 	local Update = {}
 
 	t.describe("Phase 5 — query runtime", function()
@@ -102,6 +106,32 @@ return function(TS, t)
 			app:runSchedule(Update)
 			t.expect(sz).toBe(2)
 			t.expect(fx == 7 or fx == 8).toBeTruthy()
+		end)
+
+		t.it("component query returns rovy component instances with class methods intact", function()
+			rovy:__reset()
+			rovy:__component(WithMethod, "t/WithMethod")
+			rovy:__schedule(Update, { runOnStart = false })
+			rovy:__query({ id = "qMethod", terms = { { t = "component", ctor = WithMethod } }, filters = {} })
+
+			local seen = {}
+			local Sys = sysClass(function(_, q)
+				q:forEach(function(comp)
+					table.insert(seen, comp:double())
+				end)
+			end)
+			rovy:__system(Sys, { id = "t/MethodSys", schedule = Update, params = { { kind = "query", handle = "qMethod" } } })
+
+			local app = App.new()
+			app:start()
+			app.world:spawn(WithMethod.new(4))
+			app.world:spawn(WithMethod.new(9))
+			app:runSchedule(Update)
+
+			table.sort(seen)
+			t.expect(#seen).toBe(2)
+			t.expect(seen[1]).toBe(8)
+			t.expect(seen[2]).toBe(18)
 		end)
 
 		t.it("multiple query params resolve independently", function()

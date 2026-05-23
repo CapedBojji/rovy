@@ -4,10 +4,12 @@ import { FireWeaponRequestPayload } from "shared/contracts";
 import {
 	FireWeaponRequestNet,
 	RestartRequestNet,
+	TogglePauseRequestNet,
 	fromFireWeaponRequestNet,
+	fromTogglePauseRequestNet,
 } from "shared/network";
 import { Health, PlayerUnit, Position, Projectile, WeaponCooldown, Zombie } from "../components";
-import { PlayerRegistry, SmokeStats, WaveState, WireIdAllocator } from "../resources";
+import { DevPauseState, PlayerRegistry, SmokeStats, WaveState, WireIdAllocator } from "../resources";
 import { RemoteIngressSet, Update } from "../state";
 import { applyRestart, spawnProjectileFromRequest } from "./shared";
 
@@ -23,9 +25,11 @@ export class ApplyRemoteIngress {
 	run(
 		fireRequests: EventReader<FireWeaponRequestNet>,
 		restartRequests: EventReader<RestartRequestNet>,
+		pauseRequests: EventReader<TogglePauseRequestNet>,
 		context: NetEventContext,
 		commands: Commands,
 		registry: Res<PlayerRegistry>,
+		pause: ResMut<DevPauseState>,
 		ids: ResMut<WireIdAllocator>,
 		stats: ResMut<SmokeStats>,
 		wave: ResMut<WaveState>,
@@ -34,7 +38,15 @@ export class ApplyRemoteIngress {
 		zombies: Query<[Entity], With<Zombie>>,
 		projectiles: Query<[Entity], With<Projectile>>,
 	) {
+		pauseRequests.forEach((event) => {
+			const senderUserId = resolveSenderUserId(context, event, registry);
+			if (senderUserId !== undefined && registry.entitiesByUserId.has(senderUserId)) {
+				pause.paused = fromTogglePauseRequestNet(event).paused;
+			}
+		});
+
 		fireRequests.forEach((event) => {
+			if (pause.paused) return;
 			const request = fromFireWeaponRequestNet(event) as FireWeaponRequestPayload;
 			const senderUserId = resolveSenderUserId(context, event, registry);
 			if (senderUserId === undefined) return;

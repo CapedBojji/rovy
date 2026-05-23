@@ -1,5 +1,5 @@
 import { App, rovy } from "@rovy/core";
-import { GameClockPlugin } from "@rovy/example-gameclock";
+import { GameClockPlugin, GameClockUpdate } from "@rovy/example-gameclock";
 
 export interface IntegrationSmokeResult {
 	readonly started: boolean;
@@ -19,15 +19,15 @@ function loadGameModule() {
 }
 
 export function runIntegrationSmoke(): IntegrationSmokeResult {
-	rovy.__reset();
 	rovy.loadPaths("src/shared");
 
 	const gameModule = loadGameModule();
 	const app = new App();
-	app.addPlugin(new GameClockPlugin({ schedule: gameModule.Update }));
+	app.addPlugin(new GameClockPlugin());
 	app.start();
 
 	gameModule.seed(app);
+	app.runSchedule(GameClockUpdate);
 	app.runSchedule(gameModule.Update);
 
 	const result = app.world.resource(gameModule.SmokeResult);

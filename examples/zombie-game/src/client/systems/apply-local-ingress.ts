@@ -1,13 +1,14 @@
 import {
 	FireWeaponRequestPayload,
 	RestartRequestPayload,
+	TogglePauseRequestPayload,
 } from "shared/contracts";
 import { Res, ResMut, system } from "@rovy/core";
 import { NetClient } from "@rovy/networking";
 import { LocalClientCollect } from "../collectors";
 import { HudState, LocalPlayerState } from "../resources";
 import { InputSet, Render } from "../state";
-import { toFireWeaponRequestNet, toRestartRequestNet } from "shared/network";
+import { toFireWeaponRequestNet, toRestartRequestNet, toTogglePauseRequestNet } from "shared/network";
 
 @system({ schedule: Render, set: InputSet })
 export class ApplyLocalIngress {
@@ -38,6 +39,8 @@ export class ApplyLocalIngress {
 			} else if (event.kind === "restart") {
 				if (!hud.gameOver) continue;
 				network.send(toRestartRequestNet(new RestartRequestPayload(tick())));
+			} else if (event.kind === "togglePause") {
+				network.send(toTogglePauseRequestNet(new TogglePauseRequestPayload(event.paused)));
 			}
 		}
 	}

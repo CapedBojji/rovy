@@ -45,6 +45,7 @@ import {
 	schedule,
 	system,
 	trait,
+	plugin,
 } from "@rovy/core";
 import {
 	NetClient,
@@ -74,6 +75,199 @@ ${header}
 	assert.match(result.printed, /__event\(DamageTaken,/);
 	assert.match(result.printed, /__relation\(ChildOf,/);
 	assert.match(result.printed, /__schedule\(Update,/);
+});
+
+runCase("component editor metadata defaults runtime type checks off", () => {
+	const result = compileFixture(`
+${header}
+@component class ModelRef {
+	constructor(public rootPart: BasePart) {}
+}
+`);
+	assertNoDiagnostics(result, "component editor metadata default");
+	assert.match(result.printed, /editor: \{ fields: \[ \{ key: "rootPart", typeLabel: "BasePart", validator: \(\) => true \} \]/);
+	assert.match(result.printed, /constructorValidator: \(\) => true/);
+	assert.doesNotMatch(result.printed, /@rbxts\/t/);
+});
+
+runCase(".rovy.json editor.runtimeTypeChecks enables generated t validators", () => {
+	const result = compileFixture(
+		`
+${header}
+@component class ModelRef {
+	constructor(public rootPart: BasePart) {}
+}
+`,
+		{
+			rovyConfig: {
+				current: "dev",
+				environments: {
+					dev: {
+						editor: {
+							runtimeTypeChecks: true,
+						},
+					},
+				},
+			},
+		},
+	);
+	assertNoDiagnostics(result, "component editor metadata enabled");
+	assert.match(result.printed, /from "@rbxts\/t"/);
+	assert.match(result.printed, /validator: .*\.instanceIsA\("BasePart"\)/);
+	assert.match(result.printed, /constructorValidator: .*\.tuple\(.*\.instanceIsA\("BasePart"\)\)/);
+});
+
+runCase(".rovy.json debug enables runtime type checks when editor flag omitted", () => {
+	const result = compileFixture(
+		`
+${header}
+@component class Named {
+	constructor(public name: string) {}
+}
+`,
+		{
+			rovyConfig: {
+				current: "dev",
+				environments: {
+					dev: {
+						debug: true,
+					},
+				},
+			},
+		},
+	);
+	assertNoDiagnostics(result, "debug runtime type checks");
+	assert.match(result.printed, /from "@rbxts\/t"/);
+	assert.match(result.printed, /validator: .*\.string/);
+	assert.match(result.printed, /constructorValidator: .*\.tuple\(.*\.string\)/);
+});
+
+runCase("tsconfig transformer runtimeTypeChecks option overrides .rovy.json", () => {
+	const result = compileFixture(
+		`
+${header}
+@component class ModelRef {
+	constructor(public rootPart: BasePart) {}
+}
+`,
+		{
+			rovyConfig: {
+				current: "dev",
+				environments: {
+					dev: {
+						editor: {
+							runtimeTypeChecks: true,
+						},
+					},
+				},
+			},
+			config: {
+				runtimeTypeChecks: false,
+			},
+		},
+	);
+	assertNoDiagnostics(result, "runtime type checks override");
+	assert.match(result.printed, /validator: \(\) => true/);
+	assert.doesNotMatch(result.printed, /@rbxts\/t/);
+});
+
+runCase("@plugin emits plugin registration and owned metadata in same file", () => {
+	const result = compileFixture(`
+${header}
+@plugin export class CombatPlugin {
+	build() {}
+}
+@schedule class Update {}
+@resource class Clock { tick = 0; }
+@system({ schedule: Update })
+class TickClock {
+	run() {}
+}
+`);
+	assertNoDiagnostics(result, "plugin ownership");
+	assert.match(result.printed, /__plugin\(CombatPlugin, \{ id: "src\/main", root: "src\/main" \}\)/);
+	assert.match(result.printed, /__resource\(Clock, "src\/main@Clock"/);
+	assert.match(result.printed, /plugin: CombatPlugin/);
+	assert.match(result.printed, /__system\(TickClock, \{ id: "src\/main@TickClock", plugin: CombatPlugin, schedule: Update/);
+});
+
+runCase("index.ts plugins own child modules and nearest index root wins", () => {
+	const files = {
+		"plugins/outer/index.ts": `
+${header}
+@plugin export class OuterPlugin {
+	build() {}
+}
+`,
+		"plugins/outer/systems/outer.ts": `
+${header}
+import { Update } from "../update";
+@system({ schedule: Update })
+class OuterSystem { run() {} }
+`,
+		"plugins/outer/update.ts": `
+${header}
+@schedule export class Update {}
+`,
+		"plugins/outer/nested/index.ts": `
+${header}
+@plugin export class InnerPlugin {
+	build() {}
+}
+`,
+		"plugins/outer/nested/systems/inner.ts": `
+${header}
+import { Update } from "../../update";
+@system({ schedule: Update })
+class InnerSystem { run() {} }
+`,
+	};
+	const outer = compileFixture(files["plugins/outer/systems/outer.ts"], {
+		files,
+		fileName: "plugins/outer/systems/outer.ts",
+	});
+	assertNoDiagnostics(outer, "outer index plugin child");
+	assert.match(outer.printed, /from "\.\.\/index"/);
+	assert.match(outer.printed, /id: "systems\/outer@OuterSystem"/);
+	assert.match(outer.printed, /plugin: OuterPlugin/);
+
+	const inner = compileFixture(files["plugins/outer/nested/systems/inner.ts"], {
+		files,
+		fileName: "plugins/outer/nested/systems/inner.ts",
+	});
+	assertNoDiagnostics(inner, "inner index plugin child");
+	assert.match(inner.printed, /from "\.\.\/index"/);
+	assert.match(inner.printed, /id: "systems\/inner@InnerSystem"/);
+	assert.match(inner.printed, /plugin: InnerPlugin/);
+});
+
+runCase("non-index plugins do not own child modules", () => {
+	const files = {
+		"plugins/solo/plugin.ts": `
+${header}
+@plugin export class SoloPlugin {
+	build() {}
+}
+`,
+		"plugins/solo/update.ts": `
+${header}
+@schedule export class Update {}
+`,
+		"plugins/solo/systems/child.ts": `
+${header}
+import { Update } from "../update";
+@system({ schedule: Update })
+class ChildSystem { run() {} }
+`,
+	};
+	const child = compileFixture(files["plugins/solo/systems/child.ts"], {
+		files,
+		fileName: "plugins/solo/systems/child.ts",
+	});
+	assertNoDiagnostics(child, "non-index plugin child");
+	assert.doesNotMatch(child.printed, /plugin: SoloPlugin/);
+	assert.doesNotMatch(child.printed, /from "\.\.\/plugin"/);
+	assert.match(child.printed, /id: "src\/plugins\/solo\/systems\/child@ChildSystem"/);
 });
 
 runCase("netEvent injects core event and networking metadata", () => {
