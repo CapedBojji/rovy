@@ -7,6 +7,7 @@
 return function(TS, t)
 	local rovy = (TS.loadPath("out/rovy") :: any).rovy
 	local App = (TS.loadPath("out/runtime/app") :: any).App
+	local BuiltinChildOf = (TS.loadPath("out/init") :: any).ChildOf
 
 	local function class(ctor)
 		local C = {}
@@ -154,6 +155,89 @@ return function(TS, t)
 			r = 3
 			app:runSchedule(Update)
 			t.expect(got[3]).toBe(0) -- buffer drained at run boundary → once
+		end)
+
+		t.it("relation Changed/Added/Removed works for builtin ChildOf", function()
+			rovy:__reset()
+			rovy:__component(Health, "t/Health")
+			rovy:__schedule(Update, { runOnStart = false })
+			rovy:__query({
+				id = "qreladd",
+				terms = { { t = "entity" }, { t = "pair", relation = BuiltinChildOf } },
+				filters = { added = { BuiltinChildOf } },
+			})
+			rovy:__query({
+				id = "qrelchg",
+				terms = { { t = "entity" }, { t = "pair", relation = BuiltinChildOf } },
+				filters = { changed = { BuiltinChildOf } },
+			})
+			rovy:__query({
+				id = "qrelrem",
+				terms = { { t = "entity" } },
+				filters = { removed = { BuiltinChildOf } },
+			})
+			local r = 0
+			local holder = {}
+			local addN, chgN, remN = {}, {}, {}
+			local Mut = sysClass(function(_, commands)
+				if r == 3 then commands:relate(holder.child2, BuiltinChildOf, holder.parent) end
+				if r == 4 then commands:unrelate(holder.child, BuiltinChildOf, holder.parent) end
+			end)
+			local Watch = sysClass(function(_, qa, qc, qr)
+				local a, c, rem = 0, 0, 0
+				qa:forEach(function() a += 1 end)
+				qc:forEach(function() c += 1 end)
+				qr:forEach(function() rem += 1 end)
+				addN[r] = a
+				chgN[r] = c
+				remN[r] = rem
+			end)
+			rovy:__system(Mut, { id = "t/RelMut", schedule = Update, set = ProdSet, params = { { kind = "commands" } } })
+			rovy:__system(Watch, {
+				id = "t/RelWatch",
+				schedule = Update,
+				set = ConsSet,
+				params = {
+					{ kind = "query", handle = "qreladd" },
+					{ kind = "query", handle = "qrelchg" },
+					{ kind = "query", handle = "qrelrem" },
+				},
+			})
+			local app = App.new()
+			app:configureSets(Update, { ProdSet, ConsSet })
+			app:start()
+			holder.parent = app.world:spawn(Health.new(1))
+			holder.child = app.world:spawn(Health.new(2))
+			holder.child2 = app.world:spawn(Health.new(3))
+			app.world:relate(holder.child, BuiltinChildOf, holder.parent)
+
+			r = 1
+			app:runSchedule(Update)
+			t.expect(addN[1]).toBe(1)
+			t.expect(chgN[1]).toBe(1)
+			t.expect(remN[1]).toBe(0)
+
+			r = 2
+			app:runSchedule(Update)
+			t.expect(addN[2]).toBe(0)
+			t.expect(chgN[2]).toBe(0)
+			t.expect(remN[2]).toBe(0)
+
+			r = 3
+			app:runSchedule(Update)
+			t.expect(addN[3]).toBe(1)
+			t.expect(chgN[3]).toBe(1)
+			t.expect(remN[3]).toBe(0)
+
+			r = 4
+			app:runSchedule(Update)
+			t.expect(addN[4]).toBe(0)
+			t.expect(chgN[4]).toBe(0)
+			t.expect(remN[4]).toBe(1)
+
+			r = 5
+			app:runSchedule(Update)
+			t.expect(remN[5]).toBe(0)
 		end)
 	end)
 end

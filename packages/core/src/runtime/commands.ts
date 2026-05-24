@@ -7,12 +7,12 @@
  */
 
 import type { Ctor } from "../contract";
-import type { Commands, Entity } from "../types";
+import type { Commands, Entity, RefCleanupOptions } from "../types";
 import type { RovyWorld } from "./world";
 
 type Command =
 	| { kind: "spawn"; bundle: ReadonlyArray<object> }
-	| { kind: "despawn"; entity: Entity }
+	| { kind: "despawn"; entity: Entity; options?: RefCleanupOptions }
 	| { kind: "insert"; entity: Entity; item: object | Ctor }
 	| { kind: "set"; entity: Entity; component: Ctor; value: object }
 	| { kind: "remove"; entity: Entity; component: Ctor }
@@ -36,8 +36,8 @@ export class CommandsImpl implements Commands {
 	spawn(...bundle: ReadonlyArray<object>): void {
 		this.queue.push({ kind: "spawn", bundle });
 	}
-	despawn(entity: Entity): void {
-		this.queue.push({ kind: "despawn", entity });
+	despawn(entity: Entity, options?: RefCleanupOptions): void {
+		this.queue.push({ kind: "despawn", entity, options });
 	}
 	insert(entity: Entity, item: object | Ctor): void {
 		this.queue.push({ kind: "insert", entity, item });
@@ -85,7 +85,7 @@ export class CommandsImpl implements Commands {
 				this.world.spawn(...cmd.bundle);
 				break;
 			case "despawn":
-				this.world.despawn(cmd.entity);
+				this.world.despawn(cmd.entity, cmd.options);
 				break;
 			case "insert":
 				this.world.insert(cmd.entity, cmd.item);

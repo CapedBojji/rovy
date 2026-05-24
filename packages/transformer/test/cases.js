@@ -20,10 +20,12 @@ import {
 	Local,
 	OptRes,
 	Prefab,
+	Pair,
 	Query,
 	Res,
 	ResMut,
 	Trait,
+	HasPair,
 	With,
 	Without,
 	Added,
@@ -627,6 +629,25 @@ class TraitSystem {
 	assert.match(result.printed, /traitToken\("src\/main"\)/);
 	assert.match(result.printed, /t: "trait"/);
 	assert.match(result.printed, /t: "pair"/);
+});
+
+runCase("builtin relation class tokens lower in pair and tick descriptors", () => {
+	const result = compileFixture(`
+${header}
+import { ChildOf } from "@rovy/core";
+@schedule class Update {}
+@system({ schedule: Update })
+class BuiltinRelationSystem {
+	run(queryA: Query<[Entity, Pair<ChildOf>], HasPair<ChildOf>, Changed<ChildOf>, Added<ChildOf>, Removed<ChildOf>>) {}
+}
+`);
+	assertNoDiagnostics(result, "builtin relation descriptors");
+	assert.match(result.printed, /t: "pair"/);
+	assert.match(result.printed, /relation: ChildOf/);
+	assert.match(result.printed, /hasPair: \[ChildOf\]/);
+	assert.match(result.printed, /changed: \[ChildOf\]/);
+	assert.match(result.printed, /added: \[ChildOf\]/);
+	assert.match(result.printed, /removed: \[ChildOf\]/);
 });
 
 runCase("monitor match query and term params lower separately", () => {

@@ -216,6 +216,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@rbxts/better-janitor':
+        specifier: ^0.4.0
+        version: 0.4.0
       '@rbxts/jecs':
         specifier: ^0.11.0
         version: 0.11.0
@@ -793,6 +796,9 @@ packages:
 
   '@rbxts-js/timers@1.2.3-ts.1':
     resolution: {integrity: sha512-HKP4ymFX3QLWbR/2Gy4LXwvkhjC9OzbwZ5bNunxu+M8Ocbi1cjRduiZK/y5ogLr9cNIfSoxs6e1DQ3soc8/hwA==}
+
+  '@rbxts/better-janitor@0.4.0':
+    resolution: {integrity: sha512-J8Pav2BSQgeEjE32AKY+9fhdbs90QHOyomVVGzbo6/7nATWGEWHY3Hpc4xTzI6KlbixZInPizmR2Bel1W8fniA==}
 
   '@rbxts/compiler-types@3.0.0-types.0':
     resolution: {integrity: sha512-VGOHJPoL7+56NTatMGqQj3K7xWuzEV+aP4QD5vZiHu+bcff3kiTmtoadaF6NkJrmwfFAvbsd4Dg764ZjWNceag==}
@@ -2643,6 +2649,8 @@ snapshots:
   '@rbxts-js/timers@1.2.3-ts.1':
     dependencies:
       '@rbxts-js/collections': 1.2.3-ts.1
+
+  '@rbxts/better-janitor@0.4.0': {}
 
   '@rbxts/compiler-types@3.0.0-types.0': {}
 

@@ -9,7 +9,7 @@
 import type { Ctor, ParamDescriptor } from "../contract";
 import type { CommandsImpl } from "./commands";
 import type { EventReaderHandle, EventRegistry, EventWriterHandle } from "./events";
-import { FilteredQueryHandle, hasTickFilters, QueryHandle } from "./query";
+import { FilteredQueryHandle, hasTickFilters } from "./query";
 import type { QueryLike } from "./query";
 import type { RovyWorld } from "./world";
 
@@ -86,8 +86,8 @@ export function resolveParam(p: ParamDescriptor, ctx: ResolveCtx): unknown {
 			const d = h.getDescriptor();
 			if (hasTickFilters(d)) {
 				assert(
-					h instanceof QueryHandle,
-					"[rovy] tick filters (Changed/Added/Removed) on a trait query unsupported",
+					typeIs((h as { iterateRows?: unknown }).iterateRows, "function"),
+					"[rovy] tick filters (Changed/Added/Removed) on this query shape unsupported",
 				);
 				return new FilteredQueryHandle(h, ctx.world, d, ctx.lastRunTick);
 			}

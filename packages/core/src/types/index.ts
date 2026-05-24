@@ -109,9 +109,13 @@ export interface EventWriter<E extends object> {
 
 // ─── Commands / World runtime surfaces (implemented Phases 2–3) ──────────────
 
+export interface RefCleanupOptions {
+	readonly cleanupRefs?: boolean;
+}
+
 export interface Commands {
 	spawn(...bundle: ReadonlyArray<object>): void;
-	despawn(entity: Entity): void;
+	despawn(entity: Entity, options?: RefCleanupOptions): void;
 	insert(entity: Entity, componentOrTag: object | Ctor): void;
 	set<T extends object>(entity: Entity, component: Ctor<T>, value: T): void;
 	remove(entity: Entity, component: Ctor): void;
@@ -124,18 +128,25 @@ export interface Commands {
 
 export interface World {
 	spawn(...bundle: ReadonlyArray<object>): Entity;
-	despawn(entity: Entity): void;
+	despawn(entity: Entity, options?: RefCleanupOptions): void;
 	insert(entity: Entity, componentOrTag: object | Ctor): void;
 	set<T extends object>(entity: Entity, component: Ctor<T>, value: T): void;
 	remove(entity: Entity, component: Ctor): void;
 	has(entity: Entity, component: Ctor): boolean;
 	get<T extends object>(entity: Entity, component: Ctor<T>): T | undefined;
+	ref(key: unknown): Entity;
+	getRef(key: unknown): Entity | undefined;
+	hasRef(key: unknown): boolean;
+	deleteRef(key: unknown, options?: RefCleanupOptions): boolean;
 	resource<T extends object>(resource: Ctor<T>): T;
 	insertResource(instance: object): void;
 	relate(source: Entity, relation: Ctor, target: Entity, data?: object): void;
 	unrelate(source: Entity, relation: Ctor, target: Entity): void;
 	hasRelation(source: Entity, relation: Ctor, target: Entity): boolean;
 	getRelation<T extends object>(source: Entity, relation: Ctor<T>, target: Entity): T | undefined;
+	relationTarget(source: Entity, relation: Ctor, index?: number): Entity | undefined;
+	parent(entity: Entity): Entity | undefined;
+	children(parent: Entity): IterableFunction<Entity>;
 	trigger(event: object): void;
 	runSchedule(schedule: Ctor, dt?: number): void;
 	flush(): void;
@@ -189,6 +200,16 @@ export abstract class Prefab {
 		return t;
 	}
 }
+
+// ─── Built-in jecs relationship class tokens ────────────────────────────────
+
+export class ChildOf {}
+export class OnDelete {}
+export class OnDeleteTarget {}
+export class Delete {}
+export class Remove {}
+export class Exclusive {}
+export class Wildcard {}
 
 // ─── SystemSet (nominal marker base — a real runtime value) ──────────────────
 

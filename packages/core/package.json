@@ -19,6 +19,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@rbxts/better-janitor": "^0.4.0",
     "@rbxts/jecs": "^0.11.0",
     "typescript": "^5.9.3"
   },

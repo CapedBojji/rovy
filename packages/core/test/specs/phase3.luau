@@ -74,6 +74,23 @@ return function(TS, t)
 			t.expect(app.world.jecs:contains(e)).toBeFalsy()
 		end)
 
+		t.it("deferred despawn can opt into ref cleanup", function()
+			local app = freshApp()
+			local destroyed = 0
+			local key = {
+				destroy = function(self)
+					destroyed += 1
+				end,
+			}
+			local e = app.world:ref(key)
+			app.commands:despawn(e, { cleanupRefs = true })
+			t.expect(app.world:hasRef(key)).toBeTruthy()
+			app:flush()
+			t.expect(app.world.jecs:contains(e)).toBeFalsy()
+			t.expect(app.world:hasRef(key)).toBeFalsy()
+			t.expect(destroyed).toBe(1)
+		end)
+
 		t.it("queued send/trigger are harmless pre-events-phase", function()
 			local app = freshApp()
 			app.commands:send({})

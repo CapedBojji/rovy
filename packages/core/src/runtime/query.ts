@@ -16,7 +16,7 @@ import type { Entity } from "../types";
 import type { RovyWorld } from "./world";
 
 /** Lua-table row + length so Optional `undefined` holes survive `table.unpack`. */
-interface Row {
+export interface Row {
 	values: { [k: number]: unknown };
 	n: number;
 }
@@ -38,6 +38,7 @@ export interface QueryLike {
 	has(entity: Entity): boolean;
 	members(): Array<Entity>;
 	getDescriptor(): QueryDescriptor;
+	iterateRows(visit: (entity: Entity, row: Row) => boolean): void;
 }
 
 export class QueryHandle implements QueryLike {
@@ -52,16 +53,10 @@ export class QueryHandle implements QueryLike {
 	) {
 		for (const term of descriptor.terms) {
 			if (term.t === "component") {
-				assert(
-					world.componentMap.get(term.ctor) !== undefined,
-					`[rovy] query term on unregistered @component: ${tostring(term.ctor)}`,
-				);
+				world.componentId(term.ctor);
 				this.required.push(term.ctor);
 			} else if (term.t === "optional") {
-				assert(
-					world.componentMap.get(term.ctor) !== undefined,
-					`[rovy] Optional<> on unregistered @component: ${tostring(term.ctor)}`,
-				);
+				world.componentId(term.ctor);
 			} else if (term.t === "entity") {
 				// jecs-implicit
 			} else {
@@ -69,18 +64,15 @@ export class QueryHandle implements QueryLike {
 			}
 		}
 		const f = descriptor.filters;
-		const map = (c: Ctor) => {
-			const id = this.world.componentMap.get(c);
-			assert(id !== undefined, `[rovy] query filter on unregistered component: ${tostring(c)}`);
-			return id;
-		};
+		const map = (c: Ctor) => this.world.componentId(c);
+		const tickMap = (c: Ctor) => this.world.tickFilterId(c);
 		for (const c of f.with ?? []) this.withIds.push(map(c));
 		for (const c of f.without ?? []) this.withoutIds.push(map(c));
 		// Changed<C>/Added<C> imply the entity HAS C → structural With so the
 		// jecs query constrains correctly even when C isn't a bound term.
 		// (Removed<C> is the opposite — handled entirely by FilteredQueryHandle.)
-		for (const c of f.changed ?? []) this.withIds.push(map(c));
-		for (const c of f.added ?? []) this.withIds.push(map(c));
+		for (const c of f.changed ?? []) this.withIds.push(tickMap(c));
+		for (const c of f.added ?? []) this.withIds.push(tickMap(c));
 		if ((f.hasTrait ?? []).size() + (f.hasPair ?? []).size() > 0) {
 			error("[rovy] HasTrait/HasPair not implemented until phases 9/10");
 		}
@@ -112,6 +104,9 @@ export class QueryHandle implements QueryLike {
 	buildRow(entity: Entity, arch: AnyArchetype, row: number): Row {
 		return this.assemble(entity, this.requiredValues(arch, row));
 	}
+	iterateRows(visit: (entity: Entity, row: Row) => boolean): void {
+		this.each((entity, arch, rowIdx) => visit(entity, this.buildRow(entity, arch, rowIdx)));
+	}
 
 	private cached?: AnyCached;
 
@@ -120,9 +115,7 @@ export class QueryHandle implements QueryLike {
 		if (this.cached !== undefined) return this.cached;
 		const ids: Array<Entity> = [];
 		for (const c of this.required) {
-			const id = this.world.componentMap.get(c);
-			assert(id !== undefined, `[rovy] query on unregistered component: ${tostring(c)}`);
-			ids.push(id);
+			ids.push(this.world.componentId(c));
 		}
 		// jecs requires ≥1 positional component. If nothing is bound (e.g.
 		// Entity-only + Changed<C>), promote the first With id to a query arg
@@ -161,7 +154,7 @@ export class QueryHandle implements QueryLike {
 		const cols = arch.columns_map as unknown as { [id: number]: { [i: number]: unknown } };
 		const out: Array<defined> = [];
 		for (const c of this.required) {
-			const id = this.world.componentMap.get(c) as unknown as number;
+			const id = this.world.componentId(c) as unknown as number;
 			out.push(cols[id][row] as defined);
 		}
 		return out;
@@ -255,17 +248,13 @@ export class FilteredQueryHandle {
 	private removedId?: Entity;
 
 	constructor(
-		private base: QueryHandle,
+		private base: QueryLike,
 		private world: RovyWorld,
 		private descriptor: QueryDescriptor,
 		private lastRunTick: number,
 	) {
 		const f = descriptor.filters;
-		const idOf = (c: Ctor): Entity => {
-			const id = world.componentMap.get(c);
-			assert(id !== undefined, `[rovy] tick filter on unregistered component: ${tostring(c)}`);
-			return id;
-		};
+		const idOf = (c: Ctor): Entity => world.tickFilterId(c);
 		for (const c of f.changed ?? []) this.changedIds.push(idOf(c));
 		for (const c of f.added ?? []) this.addedIds.push(idOf(c));
 		const rem = f.removed ?? [];
@@ -311,10 +300,9 @@ export class FilteredQueryHandle {
 			}
 			return;
 		}
-		this.base.iterate((entity, arch, rowIdx) => {
+		this.base.iterateRows((entity, row) => {
 			if (this.tickPass(entity)) {
-				const r = this.base.buildRow(entity, arch, rowIdx);
-				cb(...table.unpack(r.values, 1, r.n));
+				cb(...table.unpack(row.values, 1, row.n));
 			}
 			return true;
 		});
@@ -338,9 +326,9 @@ export class FilteredQueryHandle {
 			return undefined;
 		}
 		let found: { values: { [k: number]: unknown }; n: number } | undefined;
-		this.base.iterate((entity, arch, rowIdx) => {
+		this.base.iterateRows((entity, row) => {
 			if (this.tickPass(entity)) {
-				found = this.base.buildRow(entity, arch, rowIdx);
+				found = row;
 				return false;
 			}
 			return true;
@@ -360,8 +348,8 @@ export class FilteredQueryHandle {
 				rows.push(this.removedRow(e));
 			}
 		} else {
-			this.base.iterate((entity, arch, rowIdx) => {
-				if (this.tickPass(entity)) rows.push(this.base.buildRow(entity, arch, rowIdx));
+			this.base.iterateRows((entity, row) => {
+				if (this.tickPass(entity)) rows.push(row);
 				return true;
 			});
 		}

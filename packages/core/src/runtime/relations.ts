@@ -46,9 +46,7 @@ export class RelationQueryHandle implements QueryLike {
 	}
 
 	private idOf(c: Ctor): Entity {
-		const id = this.world.componentMap.get(c);
-		assert(id !== undefined, `[rovy] unregistered component in relation query: ${tostring(c)}`);
-		return id;
+		return this.world.componentId(c);
 	}
 
 	private passesStructural(e: Entity): boolean {
@@ -105,6 +103,12 @@ export class RelationQueryHandle implements QueryLike {
 			}
 		}
 		return { values, n };
+	}
+
+	iterateRows(visit: (entity: Entity, row: { values: { [k: number]: unknown }; n: number }) => boolean): void {
+		for (const e of this.candidates()) {
+			if (!visit(e, this.row(e))) return;
+		}
 	}
 
 	forEach(cb: (...row: Array<unknown>) => void): void {

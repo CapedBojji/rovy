@@ -9,16 +9,27 @@ import {
 	world as createJecsWorld,
 	pair as jecsPair,
 	record as jecsRecord,
-	Wildcard,
-	OnDelete,
-	OnDeleteTarget,
-	Delete,
-	Remove,
-	Exclusive,
+	ChildOf as JecsChildOf,
+	Wildcard as JecsWildcard,
+	OnDelete as JecsOnDelete,
+	OnDeleteTarget as JecsOnDeleteTarget,
+	Delete as JecsDelete,
+	Remove as JecsRemove,
+	Exclusive as JecsExclusive,
 } from "@rbxts/jecs";
 import type { Entity as JecsEntity, World as JecsWorld } from "@rbxts/jecs";
 import type { CleanupPolicy, ComponentReg, Ctor } from "../contract";
-import type { ComponentInspection, Entity, World } from "../types";
+import {
+	ChildOf,
+	Delete,
+	Exclusive,
+	OnDelete,
+	OnDeleteTarget,
+	Remove,
+	Wildcard,
+} from "../types";
+import type { ComponentInspection, Entity, RefCleanupOptions, World } from "../types";
+import { EntityRefStore } from "./ref";
 
 /** Sentinel entity that holds every resource singleton as a jecs component. */
 export class RovyWorld implements World {
@@ -31,6 +42,7 @@ export class RovyWorld implements World {
 	private readonly trackedEntities = new Set<Entity>();
 	/** rovy resource class → jecs component id. */
 	readonly resourceMap = new Map<Ctor, JecsEntity>();
+	private readonly refs = new EntityRefStore();
 	/** Bumped once per schedule run (Phase 4); change detection reads it. */
 	changeTick = 0;
 	/** Prefab ctors known to the runtime (set by App.start). */
@@ -51,18 +63,37 @@ export class RovyWorld implements World {
 	constructor() {
 		this.jecs = createJecsWorld();
 		this.resourceEntity = this.jecs.entity();
+		this.initBuiltinRelations();
 	}
 
 	// ── change detection ────────────────────────────────────────────────────
 
+	private initChangeStore(jecsId: JecsEntity): {
+		changed: Map<Entity, number>;
+		added: Map<Entity, number>;
+		removed: Array<{ entity: Entity; value: unknown; tick: number }>;
+	} {
+		let changed = this.changeStore.get(jecsId);
+		let added = this.addedStore.get(jecsId);
+		let removed = this.removedBuf.get(jecsId);
+		if (changed === undefined) {
+			changed = new Map<Entity, number>();
+			this.changeStore.set(jecsId, changed);
+		}
+		if (added === undefined) {
+			added = new Map<Entity, number>();
+			this.addedStore.set(jecsId, added);
+		}
+		if (removed === undefined) {
+			removed = [];
+			this.removedBuf.set(jecsId, removed);
+		}
+		return { changed, added, removed };
+	}
+
 	/** Install jecs add/change/remove listeners for a component (App.start). */
 	registerChangeDetection(jecsId: JecsEntity): void {
-		const changed = new Map<Entity, number>();
-		const added = new Map<Entity, number>();
-		const removed: Array<{ entity: Entity; value: unknown; tick: number }> = [];
-		this.changeStore.set(jecsId, changed);
-		this.addedStore.set(jecsId, added);
-		this.removedBuf.set(jecsId, removed);
+		const { changed, added, removed } = this.initChangeStore(jecsId);
 
 		this.jecs.added(jecsId as never, (e: Entity) => {
 			changed.set(e, this.changeTick);
@@ -103,9 +134,14 @@ export class RovyWorld implements World {
 	// ── id resolution ───────────────────────────────────────────────────────
 
 	private idOf(component: Ctor): JecsEntity {
+		const builtin = this.builtinComponentMap.get(component);
+		if (builtin !== undefined) return builtin;
 		const id = this.componentMap.get(component);
 		assert(id !== undefined, `[rovy] component not registered: ${tostring(component)} — did rovy.loadPaths run before app.start?`);
 		return id;
+	}
+	componentId(component: Ctor): JecsEntity {
+		return this.idOf(component);
 	}
 
 	/** Register a component class (called by App.start finalize). */
@@ -169,7 +205,8 @@ export class RovyWorld implements World {
 		return entity;
 	}
 
-	despawn(entity: Entity): void {
+	despawn(entity: Entity, options?: RefCleanupOptions): void {
+		if (options?.cleanupRefs === true) this.refs.deleteEntity(entity, options);
 		this.trackedEntities.delete(entity);
 		this.jecs.delete(entity);
 	}
@@ -192,6 +229,26 @@ export class RovyWorld implements World {
 
 	get<T extends object>(entity: Entity, component: Ctor<T>): T | undefined {
 		return this.jecs.get(entity, this.idOf(component)) as T | undefined;
+	}
+
+	ref(key: unknown): Entity {
+		return this.refs.ensure(key, () => {
+			const entity = this.jecs.entity();
+			this.trackedEntities.add(entity);
+			return entity;
+		});
+	}
+
+	getRef(key: unknown): Entity | undefined {
+		return this.refs.get(key);
+	}
+
+	hasRef(key: unknown): boolean {
+		return this.refs.has(key);
+	}
+
+	deleteRef(key: unknown, options?: RefCleanupOptions): boolean {
+		return this.refs.delete(key, options);
 	}
 
 	// ── resources ───────────────────────────────────────────────────────────
@@ -231,6 +288,23 @@ export class RovyWorld implements World {
 
 	/** rovy relation class → jecs relation component id. */
 	readonly relationMap = new Map<Ctor, JecsEntity>();
+	private readonly builtinComponentMap = new Map<Ctor, JecsEntity>();
+	private readonly builtinRelationMap = new Map<Ctor, JecsEntity>();
+	private readonly relationChangeIds = new Set<JecsEntity>();
+
+	private initBuiltinRelations(): void {
+		this.builtinComponentMap.set(ChildOf, JecsChildOf);
+		this.builtinComponentMap.set(OnDelete, JecsOnDelete);
+		this.builtinComponentMap.set(OnDeleteTarget, JecsOnDeleteTarget);
+		this.builtinComponentMap.set(Delete, JecsDelete);
+		this.builtinComponentMap.set(Remove, JecsRemove);
+		this.builtinComponentMap.set(Exclusive, JecsExclusive);
+		this.builtinComponentMap.set(Wildcard, JecsWildcard);
+		this.builtinRelationMap.set(ChildOf, JecsChildOf);
+		this.builtinRelationMap.set(OnDelete, JecsOnDelete);
+		this.builtinRelationMap.set(OnDeleteTarget, JecsOnDeleteTarget);
+		for (const [, id] of this.builtinRelationMap) this.registerRelationChangeDetection(id);
+	}
 
 	registerRelation(
 		relation: Ctor,
@@ -241,37 +315,82 @@ export class RovyWorld implements World {
 			rid = this.jecs.component();
 			this.relationMap.set(relation, rid);
 		}
-		if (opts.exclusive) this.jecs.add(rid, Exclusive);
-		const policy = (p: CleanupPolicy) => (p === "cascade" ? Delete : p === "remove" ? Remove : undefined);
+		if (opts.exclusive) this.jecs.add(rid, JecsExclusive);
+		const policy = (p: CleanupPolicy) => (p === "cascade" ? JecsDelete : p === "remove" ? JecsRemove : undefined);
 		const ondel = policy(opts.onDelete);
-		if (ondel !== undefined) this.jecs.add(rid, jecsPair(OnDelete, ondel) as never);
+		if (ondel !== undefined) this.jecs.add(rid, jecsPair(JecsOnDelete, ondel) as never);
 		const ontgt = policy(opts.onTargetDelete);
-		if (ontgt !== undefined) this.jecs.add(rid, jecsPair(OnDeleteTarget, ontgt) as never);
+		if (ontgt !== undefined) this.jecs.add(rid, jecsPair(JecsOnDeleteTarget, ontgt) as never);
+		this.registerRelationChangeDetection(rid);
 		return rid;
 	}
 
-	private relId(relation: Ctor): JecsEntity {
+	relationId(relation: Ctor): JecsEntity {
+		const builtin = this.builtinRelationMap.get(relation);
+		if (builtin !== undefined) return builtin;
 		const rid = this.relationMap.get(relation);
 		assert(rid !== undefined, `[rovy] relation not registered: ${tostring(relation)}`);
 		return rid;
 	}
 
+	private registerRelationChangeDetection(relationId: JecsEntity): void {
+		const changeId = jecsPair(relationId, JecsWildcard) as unknown as JecsEntity;
+		if (this.relationChangeIds.has(changeId)) return;
+		this.relationChangeIds.add(changeId);
+		this.initChangeStore(changeId);
+	}
+
+	private markRelationChanged(changeId: JecsEntity, entity: Entity): void {
+		const { changed } = this.initChangeStore(changeId);
+		changed.set(entity, this.changeTick);
+	}
+
+	private markRelationAdded(changeId: JecsEntity, entity: Entity): void {
+		const { changed, added } = this.initChangeStore(changeId);
+		changed.set(entity, this.changeTick);
+		added.set(entity, this.changeTick);
+	}
+
+	private markRelationRemoved(changeId: JecsEntity, entity: Entity, value: unknown): void {
+		const { changed, added, removed } = this.initChangeStore(changeId);
+		removed.push({ entity, value, tick: this.changeTick });
+		changed.delete(entity);
+		added.delete(entity);
+	}
+
+	/** Component or relation id used by Changed/Added/Removed filters. */
+	tickFilterId(token: Ctor): JecsEntity {
+		if (this.builtinRelationMap.has(token) || this.relationMap.has(token)) return this.wildcardPairId(token);
+		const component = this.componentMap.get(token) ?? this.builtinComponentMap.get(token);
+		if (component !== undefined) return component;
+		return this.wildcardPairId(token);
+	}
+
 	/** jecs pair id for (relation, target). */
 	pairId(relation: Ctor, target: Entity): JecsEntity {
-		return jecsPair(this.relId(relation), target) as unknown as JecsEntity;
+		return jecsPair(this.relationId(relation), target) as unknown as JecsEntity;
 	}
 	/** jecs pair id for (relation, *) — wildcard. */
 	wildcardPairId(relation: Ctor): JecsEntity {
-		return jecsPair(this.relId(relation), Wildcard) as unknown as JecsEntity;
+		return jecsPair(this.relationId(relation), JecsWildcard) as unknown as JecsEntity;
 	}
 
 	relate(source: Entity, relation: Ctor, target: Entity, data?: object): void {
 		const pid = this.pairId(relation, target);
+		const changeId = this.wildcardPairId(relation);
+		const had = this.jecs.has(source, pid as never);
 		if (data !== undefined) this.jecs.set(source, pid as never, data as never);
 		else this.jecs.add(source, pid as never);
+		if (!had) this.markRelationAdded(changeId, source);
+		else if (data !== undefined) this.markRelationChanged(changeId, source);
 	}
 	unrelate(source: Entity, relation: Ctor, target: Entity): void {
-		this.jecs.remove(source, this.pairId(relation, target) as never);
+		const pid = this.pairId(relation, target);
+		if (this.jecs.has(source, pid as never)) {
+			const value = this.jecs.get(source, pid as never);
+			this.jecs.remove(source, pid as never);
+			this.markRelationRemoved(this.wildcardPairId(relation), source, value);
+		}
 	}
 	hasRelation(source: Entity, relation: Ctor, target: Entity): boolean {
 		return this.jecs.has(source, this.pairId(relation, target) as never);
@@ -280,8 +399,14 @@ export class RovyWorld implements World {
 		return this.jecs.get(source, this.pairId(relation as unknown as Ctor, target) as never) as T | undefined;
 	}
 	/** First target of a relation on an entity (or undefined). */
-	relationTarget(source: Entity, relation: Ctor): Entity | undefined {
-		return this.jecs.target(source, this.relId(relation), 0);
+	relationTarget(source: Entity, relation: Ctor, index = 0): Entity | undefined {
+		return this.jecs.target(source, this.relationId(relation), index);
+	}
+	parent(entity: Entity): Entity | undefined {
+		return this.jecs.parent(entity);
+	}
+	children(parent: Entity): IterableFunction<Entity> {
+		return this.jecs.children(parent);
 	}
 	/** Set by App to dispatch to observers immediately. */
 	triggerImpl?: (event: object) => void;

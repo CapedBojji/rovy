@@ -63,9 +63,7 @@ export class TraitQueryHandle implements QueryLike {
 	}
 
 	private idOf(c: Ctor): Entity {
-		const id = this.world.componentMap.get(c);
-		assert(id !== undefined, `[rovy] unregistered component in trait query: ${tostring(c)}`);
-		return id;
+		return this.world.componentId(c);
 	}
 
 	private impls(traitId: StableId): Array<{ ctor: Ctor; jecsId: Entity }> {
@@ -151,6 +149,14 @@ export class TraitQueryHandle implements QueryLike {
 	forEach(cb: (...row: Array<unknown>) => void): void {
 		for (const e of this.candidates()) {
 			for (const r of this.rows(e)) cb(...table.unpack(r.values, 1, r.n));
+		}
+	}
+
+	iterateRows(visit: (entity: Entity, row: { values: { [k: number]: unknown }; n: number }) => boolean): void {
+		for (const e of this.candidates()) {
+			for (const r of this.rows(e)) {
+				if (!visit(e, r)) return;
+			}
 		}
 	}
 
