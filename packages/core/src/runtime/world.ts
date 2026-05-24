@@ -9,6 +9,7 @@ import {
 	world as createJecsWorld,
 	pair as jecsPair,
 	record as jecsRecord,
+	bulk_insert as jecsBulkInsert,
 	ChildOf as JecsChildOf,
 	Wildcard as JecsWildcard,
 	OnDelete as JecsOnDelete,
@@ -16,8 +17,8 @@ import {
 	Delete as JecsDelete,
 	Remove as JecsRemove,
 	Exclusive as JecsExclusive,
-} from "@rbxts/jecs";
-import type { Entity as JecsEntity, World as JecsWorld } from "@rbxts/jecs";
+} from "@rovy/jecs";
+import type { Entity as JecsEntity, World as JecsWorld } from "@rovy/jecs";
 import type { CleanupPolicy, ComponentReg, Ctor } from "../contract";
 import {
 	ChildOf,
@@ -117,6 +118,12 @@ export class RovyWorld implements World {
 	addedTickOf(jecsId: JecsEntity, entity: Entity): number | undefined {
 		return this.addedStore.get(jecsId)?.get(entity);
 	}
+	changedSince(jecsId: JecsEntity, lastRunTick: number): Array<Entity> {
+		return ticksSince(this.changeStore.get(jecsId), lastRunTick);
+	}
+	addedSince(jecsId: JecsEntity, lastRunTick: number): Array<Entity> {
+		return ticksSince(this.addedStore.get(jecsId), lastRunTick);
+	}
 	removedSince(jecsId: JecsEntity, lastRunTick: number): Array<Entity> {
 		const buf = this.removedBuf.get(jecsId);
 		if (buf === undefined) return [];
@@ -184,6 +191,28 @@ export class RovyWorld implements World {
 	private applyBundle(entity: JecsEntity, bundle: ReadonlyArray<object>): void {
 		for (const item of bundle) {
 			if (this.prefabCtors !== undefined && this.prefabCtors.has(item as unknown as Ctor)) {
+				this.applyBundleSlow(entity, bundle);
+				return;
+			}
+		}
+		const ids = new Array<JecsEntity>();
+		const values = new Array<defined>();
+		for (const item of bundle) {
+			if (this.componentMap.has(item as unknown as Ctor)) {
+				ids.push(this.idOf(item as unknown as Ctor));
+				values.push(false);
+			} else {
+				const cls = getmetatable(item) as unknown as Ctor;
+				ids.push(this.idOf(cls));
+				values.push(item as defined);
+			}
+		}
+		if (ids.size() > 0) jecsBulkInsert(this.jecs, entity, ids as never, values as never);
+	}
+
+	private applyBundleSlow(entity: JecsEntity, bundle: ReadonlyArray<object>): void {
+		for (const item of bundle) {
+			if (this.prefabCtors !== undefined && this.prefabCtors.has(item as unknown as Ctor)) {
 				this.prefabInvoker!(item as unknown as Ctor, entity);
 			} else if (this.componentMap.has(item as unknown as Ctor)) {
 				// bare class → tag
@@ -212,7 +241,7 @@ export class RovyWorld implements World {
 	}
 
 	insert(entity: Entity, componentOrTag: object | Ctor): void {
-		this.applyBundle(entity, [componentOrTag as object]);
+		this.applyBundleSlow(entity, [componentOrTag as object]);
 	}
 
 	set<T extends object>(entity: Entity, component: Ctor<T>, value: T): void {
@@ -466,4 +495,13 @@ function shortComponentName(id: string): string {
 	const tail = pathParts[pathParts.size() - 1] ?? id;
 	const scopeParts = tail.split("@");
 	return scopeParts[scopeParts.size() - 1] ?? tail;
+}
+
+function ticksSince(store: Map<Entity, number> | undefined, lastRunTick: number): Array<Entity> {
+	if (store === undefined) return [];
+	const out = new Array<Entity>();
+	for (const [entity, tick] of store) {
+		if (tick > lastRunTick) out.push(entity);
+	}
+	return out;
 }

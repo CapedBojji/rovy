@@ -137,7 +137,16 @@ local function scan(path: string): any
 		node.__className = "ModuleScript"
 		return node
 	end
-	if not isDir(path) then
+	local packageJsonPath = path .. "/package.json"
+	local packageMainPath: string? = nil
+	if isFile(packageJsonPath) then
+		local packageJson = fs.readFile(packageJsonPath)
+		local main = packageJson:match('"main"%s*:%s*"([^"]+)"')
+		if main then
+			packageMainPath = path .. "/" .. main
+		end
+	end
+	if not isDir(path) and packageMainPath == nil then
 		return node
 	end
 	for _, entry in readDir(path) do
@@ -161,6 +170,9 @@ local function scan(path: string): any
 	local init = node.children["init"]
 	if init and init.__file then
 		node.__file = init.__file
+		node.__className = "ModuleScript"
+	elseif packageMainPath ~= nil and isFile(packageMainPath) then
+		node.__file = packageMainPath
 		node.__className = "ModuleScript"
 	end
 	return node
@@ -249,6 +261,10 @@ local nodeModules = newNode(ROOT .. "/$services/ReplicatedStorage/rbxts_include/
 rbxtsInclude.children.node_modules = nodeModules
 local rovyScope = newNode(ROOT .. "/$services/ReplicatedStorage/rbxts_include/node_modules/@rovy")
 nodeModules.children["@rovy"] = rovyScope
+
+local rovyJecs = treeIndex(REPO .. "/packages/jecs")
+assert(rovyJecs, "ui inventory harness: missing packages/jecs")
+rovyScope.children["jecs"] = rovyJecs
 
 local rovyCore = treeIndex(REPO .. "/packages/core/out")
 assert(rovyCore, "ui inventory harness: missing packages/core/out")
@@ -353,6 +369,9 @@ end
 function TS.getModule(_context, scope: string, moduleName: string)
 	if scope == "@rovy" and moduleName == "rovy-core" then
 		return rovyCore
+	end
+	if scope == "@rovy" and moduleName == "jecs" then
+		return rovyJecs
 	end
 	if scope == "@rovy" and (moduleName == "ui" or moduleName == "rovy-ui") then
 		return rovyUi

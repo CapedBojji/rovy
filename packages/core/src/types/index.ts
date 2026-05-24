@@ -6,7 +6,7 @@
  * (implemented by the runtime in later phases).
  */
 
-import type { Entity as JecsEntity } from "@rbxts/jecs";
+import type { Entity as JecsEntity } from "@rovy/jecs";
 import type { ComponentEditorReg, ComponentReg, Ctor, StableId } from "../contract";
 
 /** A jecs entity id. Add `Entity` to a query term tuple to bind it. */

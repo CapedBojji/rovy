@@ -42,9 +42,6 @@ importers:
 
   examples/roblox-ts-game:
     dependencies:
-      '@rbxts/jecs':
-        specifier: ^0.11.0
-        version: 0.11.0
       '@rovy/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -91,9 +88,6 @@ importers:
 
   examples/ui-inventory-game:
     dependencies:
-      '@rbxts/jecs':
-        specifier: ^0.11.0
-        version: 0.11.0
       '@rovy/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -146,9 +140,6 @@ importers:
       '@rbxts/iris':
         specifier: 2.3.1-ts.1
         version: 2.3.1-ts.1
-      '@rbxts/jecs':
-        specifier: ^0.11.0
-        version: 0.11.0
       '@rbxts/maid':
         specifier: ^1.1.0
         version: 1.1.0
@@ -219,9 +210,9 @@ importers:
       '@rbxts/better-janitor':
         specifier: ^0.4.0
         version: 0.4.0
-      '@rbxts/jecs':
-        specifier: ^0.11.0
-        version: 0.11.0
+      '@rovy/jecs':
+        specifier: workspace:*
+        version: link:../jecs
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -241,6 +232,8 @@ importers:
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0
+
+  packages/jecs: {}
 
   packages/networking:
     dependencies:
@@ -811,9 +804,6 @@ packages:
 
   '@rbxts/iris@2.3.1-ts.1':
     resolution: {integrity: sha512-L/lja+ugKNH3ywdz5c8omXUS34L9oGKlul3yVifzTfQVJS4ryePU/hS6IdMaSbIwNda+qEOehXbSxglF9qxa/A==}
-
-  '@rbxts/jecs@0.11.0':
-    resolution: {integrity: sha512-rJPZkqrL8PXVX5YP5a9gMcddm8U7TeXZDYEbBTAXs81r9IKhTWNVxGoFRPTbsDT4BhwM0LMvydvWDAqHvWzHpA==}
 
   '@rbxts/jest-globals@3.16.0-ts.1':
     resolution: {integrity: sha512-DXTgUbSgK7evchCI0sMKam1EzY2aTTlpaSQEMFs4ng5rNYIRCRS90w8t/b01WxGeXipZTMwfqB2PG4yPbmkzcg==}
@@ -2662,8 +2652,6 @@ snapshots:
 
   '@rbxts/iris@2.3.1-ts.1': {}
 
-  '@rbxts/jecs@0.11.0': {}
-
   '@rbxts/jest-globals@3.16.0-ts.1':
     dependencies:
       '@rbxts-js/jest-globals': 3.16.0-ts.1
@@ -2919,7 +2907,7 @@ snapshots:
   '@typescript-eslint/project-service@8.56.0(typescript@5.5.3)':
     dependencies:
       '@typescript-eslint/tsconfig-utils': 8.56.0(typescript@5.5.3)
-      '@typescript-eslint/types': 8.56.0
+      '@typescript-eslint/types': 8.59.3
       debug: 4.4.3
       typescript: 5.5.3
     transitivePeerDependencies:

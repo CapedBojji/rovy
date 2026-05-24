@@ -24,7 +24,6 @@
   },
   "type": "module",
   "dependencies": {
-    "@rbxts/jecs": "^0.11.0",
     "@rovy/core": "workspace:*",
     "@rovy/example-gameclock": "workspace:*"
   },

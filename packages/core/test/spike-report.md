@@ -1,6 +1,6 @@
 # jecs API Spike Report
 
-**Package:** `@rbxts/jecs@0.11.0` (installed). Source: `node_modules/@rbxts/jecs/src/jecs.{luau,d.ts}` (4094-line luau, 385-line d.ts).
+**Package:** `@rovy/jecs@0.11.0` (installed). Source: `node_modules/@rovy/jecs/src/jecs.{luau,d.ts}` (4094-line luau, 385-line d.ts).
 **Date:** 2026-05-15. **Gates:** Phases 7–9.
 
 Legend: ✅ public-typed · 🟦 public-untyped (runtime-present, not in `.d.ts` → vendored augmentation) · 🟥 internal-only (unexported local) · ❌ missing

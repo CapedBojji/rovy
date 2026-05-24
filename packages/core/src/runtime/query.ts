@@ -10,7 +10,8 @@
  * when absent.
  */
 
-import type { Archetype, CachedQuery, Id } from "@rbxts/jecs";
+import { record as jecsRecord } from "@rovy/jecs";
+import type { Archetype, CachedQuery, Id } from "@rovy/jecs";
 import type { Ctor, QueryDescriptor } from "../contract";
 import type { Entity } from "../types";
 import type { RovyWorld } from "./world";
@@ -39,6 +40,7 @@ export interface QueryLike {
 	members(): Array<Entity>;
 	getDescriptor(): QueryDescriptor;
 	iterateRows(visit: (entity: Entity, row: Row) => boolean): void;
+	rowFor?(entity: Entity): Row | undefined;
 }
 
 export class QueryHandle implements QueryLike {
@@ -106,6 +108,12 @@ export class QueryHandle implements QueryLike {
 	}
 	iterateRows(visit: (entity: Entity, row: Row) => boolean): void {
 		this.each((entity, arch, rowIdx) => visit(entity, this.buildRow(entity, arch, rowIdx)));
+	}
+	rowFor(entity: Entity): Row | undefined {
+		if (!this.has(entity)) return undefined;
+		const rec = jecsRecord(this.world.jecs, entity) as unknown as { archetype: AnyArchetype; row: number } | undefined;
+		if (rec === undefined) return undefined;
+		return this.buildRow(entity, rec.archetype, rec.row);
 	}
 
 	private cached?: AnyCached;
@@ -276,6 +284,20 @@ export class FilteredQueryHandle {
 		return true;
 	}
 
+	private dirtyCandidates(): Array<Entity> | undefined {
+		if (this.removedId !== undefined) return undefined;
+		let best: Array<Entity> | undefined;
+		for (const id of this.changedIds) {
+			const list = this.world.changedSince(id, this.lastRunTick);
+			if (best === undefined || list.size() < best.size()) best = list;
+		}
+		for (const id of this.addedIds) {
+			const list = this.world.addedSince(id, this.lastRunTick);
+			if (best === undefined || list.size() < best.size()) best = list;
+		}
+		return best;
+	}
+
 	/** Removed row = Entity only, in declared term order. */
 	private removedRow(entity: Entity): { values: { [k: number]: unknown }; n: number } {
 		const values: { [k: number]: unknown } = {};
@@ -297,6 +319,15 @@ export class FilteredQueryHandle {
 			for (const e of this.world.removedSince(this.removedId, this.lastRunTick)) {
 				const r = this.removedRow(e);
 				cb(...table.unpack(r.values, 1, r.n));
+			}
+			return;
+		}
+		const candidates = this.dirtyCandidates();
+		if (candidates !== undefined && this.base.rowFor !== undefined) {
+			for (const entity of candidates) {
+				if (!this.tickPass(entity)) continue;
+				const row = this.base.rowFor(entity);
+				if (row !== undefined) cb(...table.unpack(row.values, 1, row.n));
 			}
 			return;
 		}
@@ -325,6 +356,15 @@ export class FilteredQueryHandle {
 			}
 			return undefined;
 		}
+		const candidates = this.dirtyCandidates();
+		if (candidates !== undefined && this.base.rowFor !== undefined) {
+			for (const entity of candidates) {
+				if (!this.tickPass(entity)) continue;
+				const row = this.base.rowFor(entity);
+				if (row !== undefined) return table.unpack(row.values, 1, row.n);
+			}
+			return undefined;
+		}
 		let found: { values: { [k: number]: unknown }; n: number } | undefined;
 		this.base.iterateRows((entity, row) => {
 			if (this.tickPass(entity)) {
@@ -346,6 +386,15 @@ export class FilteredQueryHandle {
 		if (this.removedId !== undefined) {
 			for (const e of this.world.removedSince(this.removedId, this.lastRunTick)) {
 				rows.push(this.removedRow(e));
+			}
+		} else if (this.base.rowFor !== undefined) {
+			const candidates = this.dirtyCandidates();
+			if (candidates !== undefined) {
+				for (const entity of candidates) {
+					if (!this.tickPass(entity)) continue;
+					const row = this.base.rowFor(entity);
+					if (row !== undefined) rows.push(row);
+				}
 			}
 		} else {
 			this.base.iterateRows((entity, row) => {

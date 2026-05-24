@@ -1,5 +1,5 @@
 /**
- * Vendored typing augmentation for `@rbxts/jecs@0.11.0`.
+ * Vendored typing augmentation for `@rovy/jecs@0.11.0`.
  *
  * The published `.d.ts` under-types two runtime realities the rovy runtime
  * depends on (see `test/spike-report.md`). roblox-ts cannot merge new
@@ -9,10 +9,10 @@
  * place where we rely on jecs internals.
  *
  * Scope is deliberately minimal: only what the spike proved real and needed.
- * Re-audit on every `@rbxts/jecs` bump.
+ * Re-audit on every `@rovy/jecs` bump.
  */
 
-import type { Archetype, Entity, Id, World } from "@rbxts/jecs";
+import type { Archetype, Entity, Id, World } from "@rovy/jecs";
 
 /**
  * Runtime arity of `world.added` / `world.changed` listeners.

@@ -1,7 +1,7 @@
 --!nocheck
 -- roblox-ts RuntimeLib emulation for @rovy/networking specs under Zune.
 -- Same approach as packages/core/test/harness/runtime.luau, extended so
--- networking can load the compiled @rovy/core package (and its @rbxts/jecs
+-- networking can load the compiled @rovy/core package (and its @rovy/jecs
 -- dependency) the way roblox-ts emits cross-package getModule(...) calls.
 
 local fs = zune.fs
@@ -51,7 +51,16 @@ local function scan(path: string): any
 		node.__file = path
 		return node
 	end
-	if not isDir(path) then
+	local packageJsonPath = path .. "/package.json"
+	local packageMainPath: string? = nil
+	if isFile(packageJsonPath) then
+		local packageJson = fs.readFile(packageJsonPath)
+		local main = packageJson:match('"main"%s*:%s*"([^"]+)"')
+		if main then
+			packageMainPath = path .. "/" .. main
+		end
+	end
+	if not isDir(path) and packageMainPath == nil then
 		return node
 	end
 	for _, entry in readDir(path) do
@@ -73,6 +82,8 @@ local function scan(path: string): any
 	local init = node.children["init"]
 	if init and init.__file then
 		node.__file = init.__file
+	elseif packageMainPath ~= nil and isFile(packageMainPath) then
+		node.__file = packageMainPath
 	end
 	return node
 end

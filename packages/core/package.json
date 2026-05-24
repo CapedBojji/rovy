@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "@rbxts/better-janitor": "^0.4.0",
-    "@rbxts/jecs": "^0.11.0",
+    "@rovy/jecs": "workspace:*",
     "typescript": "^5.9.3"
   },
   "devDependencies": {

@@ -1,0 +1,27 @@
+{
+	"name": "@rovy/jecs",
+	"version": "0.11.0-rovy.0",
+	"description": "Rovy-vendored jecs runtime",
+	"main": "src/jecs.luau",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Ukendio/jecs"
+	},
+	"keywords": [],
+	"author": "Ukendio",
+	"contributors": [
+		"Ukendio",
+		"EncodedVenom"
+	],
+	"homepage": "https://github.com/ukendio/jecs",
+	"license": "MIT",
+	"types": "src/jecs.d.ts",
+	"files": [
+		"src",
+		"LICENSE",
+		"README.md"
+	],
+	"publishConfig": {
+		"access": "public"
+	}
+}

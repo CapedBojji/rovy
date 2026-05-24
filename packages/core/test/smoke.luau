@@ -4,7 +4,7 @@
 -- load-bearing claim: world.added forwards a 4th `oldarchetype` arg at
 -- runtime (the published .d.ts only types 3). Run: `zune run test/smoke`.
 
-local jecs = require("../node_modules/@rbxts/jecs/src/jecs")
+local jecs = require("../node_modules/@rovy/jecs/src/jecs")
 local testing = zune.testing
 local expect = testing.expect
 
