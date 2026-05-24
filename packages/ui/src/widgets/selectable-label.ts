@@ -30,7 +30,7 @@ export const selectableLabel = widget((text: string, options: SelectableLabelOpt
 			Size: udim2(0, 0, 0, style.itemHeight),
 			AutomaticSize: Enum.AutomaticSize.X,
 			AutoButtonColor: false,
-			0: create("UICorner", { CornerRadius: udim(0, 2) }),
+			0: create("UICorner", { CornerRadius: udim(0, style.cornerRadius) }),
 			1: create("UIPadding", {
 				PaddingLeft: udim(0, 6),
 				PaddingRight: udim(0, 6),
@@ -59,13 +59,13 @@ export const selectableLabel = widget((text: string, options: SelectableLabelOpt
 		refs.btn.BackgroundTransparency = 1;
 		refs.btn.TextColor3 = style.textDisabledColor;
 	} else if (isSelected) {
-		refs.btn.BackgroundColor3 = style.selectableColor;
-		refs.btn.BackgroundTransparency = style.selectableTransparency;
-		refs.btn.TextColor3 = style.textColor;
+		refs.btn.BackgroundColor3 = style.selectionBgColor;
+		refs.btn.BackgroundTransparency = 0;
+		refs.btn.TextColor3 = style.strongTextColor;
 	} else if (hovered) {
-		refs.btn.BackgroundColor3 = style.selectableColor;
-		refs.btn.BackgroundTransparency = 0.85;
-		refs.btn.TextColor3 = style.textColor;
+		refs.btn.BackgroundColor3 = style.widgetHoveredBgColor;
+		refs.btn.BackgroundTransparency = 0;
+		refs.btn.TextColor3 = style.strongTextColor;
 	} else {
 		refs.btn.BackgroundTransparency = 1;
 		refs.btn.TextColor3 = style.textColor;

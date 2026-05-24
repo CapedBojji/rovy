@@ -15,8 +15,8 @@ export const heading = widget((text: string, options: HeadingOptions = {}): void
 		return create("TextLabel", {
 			[ref as never]: "heading",
 			BackgroundTransparency: 1,
-			Font: Enum.Font.GothamBold,
-			TextColor3: style.textColor,
+			Font: Enum.Font.Code,
+			TextColor3: style.strongTextColor,
 			TextSize: (style.textSize ?? 13) + 2,
 			TextXAlignment: Enum.TextXAlignment.Left,
 			TextYAlignment: Enum.TextYAlignment.Center,
@@ -29,5 +29,6 @@ export const heading = widget((text: string, options: HeadingOptions = {}): void
 	const lbl = refs.heading;
 	lbl.Text = text;
 	lbl.TextSize = options.textSize ?? style.textSize + 2;
-	lbl.Font = (options.font ?? Enum.Font.GothamBold) as Enum.Font;
+	lbl.Font = (options.font ?? Enum.Font.Code) as Enum.Font;
+	lbl.TextColor3 = style.strongTextColor;
 }, "@rovy/ui/heading");

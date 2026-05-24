@@ -1,7 +1,8 @@
 import { widget, __scope, __useInstance, __useState, __useEffect, useRootInstance } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
-import { c, udim, udim2, v2 } from "../primitives";
+import { udim, udim2, v2 } from "../primitives";
+import { makeCorner, makeShadow, makeStroke } from "./shared";
 
 export interface ModalOptions {
 	title?: string;
@@ -66,19 +67,14 @@ export const modal = widget((options: string | ModalOptions, fn: () => void): Mo
 		dialog.ZIndex = 301;
 		dialog.Parent = overlay;
 
-		const corner = new Instance("UICorner");
-		corner.CornerRadius = udim(0, 0);
-		corner.Parent = dialog;
-
-		const stroke = new Instance("UIStroke");
-		stroke.Color = style.borderColor;
-		stroke.Transparency = style.borderTransparency;
-		stroke.Thickness = 1;
-		stroke.Parent = dialog;
+		makeCorner(style.windowCornerRadius).Parent = dialog;
+		makeStroke(style).Parent = dialog;
+		const shadow = makeShadow(style);
+		if (shadow !== undefined) shadow.Parent = dialog;
 
 		const titleBar = new Instance("Frame");
 		titleBar.Name = "TitleBar";
-		titleBar.BackgroundColor3 = style.titleBgActiveColor;
+		titleBar.BackgroundColor3 = style.titleBgColor;
 		titleBar.BackgroundTransparency = 0;
 		titleBar.BorderSizePixel = 0;
 		titleBar.Size = udim2(1, 0, 0, titleBarHeight);
@@ -88,8 +84,8 @@ export const modal = widget((options: string | ModalOptions, fn: () => void): Mo
 		const titleLabel = new Instance("TextLabel");
 		titleLabel.Name = "Title";
 		titleLabel.BackgroundTransparency = 1;
-		titleLabel.Font = Enum.Font.GothamBold;
-		titleLabel.TextColor3 = style.textColor;
+		titleLabel.Font = Enum.Font.Code;
+		titleLabel.TextColor3 = style.strongTextColor;
 		titleLabel.TextSize = style.textSize;
 		titleLabel.TextXAlignment = Enum.TextXAlignment.Left;
 		titleLabel.Size = udim2(1, -30, 1, 0);
@@ -101,8 +97,8 @@ export const modal = widget((options: string | ModalOptions, fn: () => void): Mo
 		const closeBtn = new Instance("TextButton");
 		closeBtn.Name = "CloseButton";
 		closeBtn.BackgroundTransparency = 1;
-		closeBtn.Font = Enum.Font.GothamBold;
-		closeBtn.TextColor3 = c(200, 200, 200);
+		closeBtn.Font = Enum.Font.Code;
+		closeBtn.TextColor3 = style.weakTextColor;
 		closeBtn.TextSize = style.textSize + 2;
 		closeBtn.Size = udim2(0, 16, 0, 16);
 		closeBtn.AnchorPoint = v2(1, 0.5);

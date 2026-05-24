@@ -3,6 +3,7 @@ import { useStyle } from "../style";
 import { create } from "../create";
 import { udim, udim2, v2 } from "../primitives";
 import { WINDOW_ATTRIBUTE } from "../windowConstants";
+import { makeCorner, makeShadow, makeStroke } from "./shared";
 
 export interface ComboBoxOptions {
 	items: string[];
@@ -86,8 +87,8 @@ export const comboBox = widget((options: ComboBoxOptions): ComboBoxHandle => {
 		const style = useStyle();
 		return create("TextButton", {
 			[rawRef as never]: "comboBtn",
-			BackgroundColor3: style.frameBgColor,
-			BackgroundTransparency: style.frameBgTransparency,
+			BackgroundColor3: style.widgetInactiveBgColor,
+			BackgroundTransparency: 0,
 			BorderSizePixel: 0,
 			Font: Enum.Font.Code,
 			TextColor3: style.textColor,
@@ -95,13 +96,12 @@ export const comboBox = widget((options: ComboBoxOptions): ComboBoxHandle => {
 			TextXAlignment: Enum.TextXAlignment.Left,
 			Size: udim2(1, 0, 0, style.itemHeight),
 			AutoButtonColor: false,
-			0: create("UICorner", { CornerRadius: udim(0, 2) }),
-			1: create("UIStroke", {
-				[rawRef as never]: "stroke",
-				Color: style.borderColor,
-				Transparency: style.borderTransparency,
-				Thickness: 1,
-			}),
+			0: makeCorner(style.cornerRadius),
+			1: (() => {
+				const stroke = makeStroke(style);
+				(rawRef as unknown as Record<string, unknown>).stroke = stroke;
+				return stroke;
+			})(),
 			2: create("UIPadding", {
 				PaddingLeft: udim(0, 6),
 				PaddingRight: udim(0, 6),
@@ -110,7 +110,7 @@ export const comboBox = widget((options: ComboBoxOptions): ComboBoxHandle => {
 				[rawRef as never]: "arrow",
 				BackgroundTransparency: 1,
 				Font: Enum.Font.Code,
-				TextColor3: style.textColor,
+				TextColor3: style.weakTextColor,
 				TextSize: style.textSize,
 				TextXAlignment: Enum.TextXAlignment.Right,
 				AnchorPoint: v2(1, 0.5),
@@ -152,15 +152,10 @@ export const comboBox = widget((options: ComboBoxOptions): ComboBoxHandle => {
 		dropdown.Visible = false;
 		dropdown.Parent = rootGui;
 
-		const corner = new Instance("UICorner");
-		corner.CornerRadius = udim(0, 2);
-		corner.Parent = dropdown;
-
-		const stroke = new Instance("UIStroke");
-		stroke.Color = style.borderColor;
-		stroke.Transparency = style.borderTransparency;
-		stroke.Thickness = 1;
-		stroke.Parent = dropdown;
+		makeCorner(style.menuCornerRadius).Parent = dropdown;
+		makeStroke(style).Parent = dropdown;
+		const shadow = makeShadow(style);
+		if (shadow !== undefined) shadow.Parent = dropdown;
 
 		const list = new Instance("UIListLayout");
 		list.SortOrder = Enum.SortOrder.LayoutOrder;
@@ -190,6 +185,33 @@ export const comboBox = widget((options: ComboBoxOptions): ComboBoxHandle => {
 
 			const conn = UserInputService.InputBegan.Connect((...args: ReadonlyArray<unknown>) => {
 				const input = args[0] as InputObject;
+
+				if (
+					input.UserInputType === Enum.UserInputType.MouseButton1 ||
+					input.UserInputType === Enum.UserInputType.MouseButton2 ||
+					input.UserInputType === Enum.UserInputType.Touch
+				) {
+					const pos = input.Position;
+					const insideBtn = (() => {
+						const btn = refs.comboBtn;
+						if (btn === undefined) return false;
+						const a = btn.AbsolutePosition;
+						const s = btn.AbsoluteSize;
+						return pos.X >= a.X && pos.X <= a.X + s.X && pos.Y >= a.Y && pos.Y <= a.Y + s.Y;
+					})();
+					const insideDropdown = (() => {
+						const dd = refs.dropdown;
+						if (dd === undefined || !dd.Visible) return false;
+						const a = dd.AbsolutePosition;
+						const s = dd.AbsoluteSize;
+						return pos.X >= a.X && pos.X <= a.X + s.X && pos.Y >= a.Y && pos.Y <= a.Y + s.Y;
+					})();
+					if (!insideBtn && !insideDropdown) {
+						setIsOpen(false);
+					}
+					return;
+				}
+
 				if (input.UserInputType !== Enum.UserInputType.Keyboard) return;
 
 				const current = refs.keyFocusIndex ?? selectedIndex ?? 1;
@@ -249,14 +271,20 @@ export const comboBox = widget((options: ComboBoxOptions): ComboBoxHandle => {
 	refs.comboBtn.TextColor3 = style.textColor;
 
 	if (isOpen) {
-		refs.comboBtn.BackgroundColor3 = style.frameBgHoveredColor;
-		refs.comboBtn.BackgroundTransparency = style.frameBgHoveredTransparency;
+		refs.comboBtn.BackgroundColor3 = style.widgetActiveBgColor;
+		refs.comboBtn.BackgroundTransparency = 0;
+		refs.stroke.Color = style.strokeActiveColor;
+		refs.stroke.Transparency = style.strokeActiveTransparency;
 	} else if (hovered) {
-		refs.comboBtn.BackgroundColor3 = style.frameBgHoveredColor;
-		refs.comboBtn.BackgroundTransparency = style.frameBgHoveredTransparency * 1.5;
+		refs.comboBtn.BackgroundColor3 = style.widgetHoveredBgColor;
+		refs.comboBtn.BackgroundTransparency = 0;
+		refs.stroke.Color = style.strokeHoveredColor;
+		refs.stroke.Transparency = style.strokeHoveredTransparency;
 	} else {
-		refs.comboBtn.BackgroundColor3 = style.frameBgColor;
-		refs.comboBtn.BackgroundTransparency = style.frameBgTransparency;
+		refs.comboBtn.BackgroundColor3 = style.widgetInactiveBgColor;
+		refs.comboBtn.BackgroundTransparency = 0;
+		refs.stroke.Color = style.strokeInactiveColor;
+		refs.stroke.Transparency = style.strokeInactiveTransparency;
 	}
 
 	if (!isOpen) refs.hoveredItem = undefined;
@@ -342,13 +370,13 @@ export const comboBox = widget((options: ComboBoxOptions): ComboBoxHandle => {
 					const isHoveredItem = refs.hoveredItem === childIndex;
 					const isKeyFocused = refs.keyFocusIndex !== undefined && childIndex === refs.keyFocusIndex;
 					if (isSelected) {
-						child.BackgroundColor3 = style.frameBgHoveredColor;
-						child.BackgroundTransparency = 0.5;
+						child.BackgroundColor3 = style.selectionBgColor;
+						child.BackgroundTransparency = 0;
 					} else if (isHoveredItem || isKeyFocused) {
-						child.BackgroundColor3 = style.frameBgHoveredColor;
-						child.BackgroundTransparency = 0.7;
+						child.BackgroundColor3 = style.widgetHoveredBgColor;
+						child.BackgroundTransparency = 0;
 					} else {
-						child.BackgroundColor3 = style.buttonColor;
+						child.BackgroundColor3 = style.popupBgColor;
 						child.BackgroundTransparency = 1;
 					}
 				}

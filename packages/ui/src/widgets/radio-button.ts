@@ -2,6 +2,7 @@ import { widget, __useInstance, __useState } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim, udim2, v2 } from "../primitives";
+import { applyStrokeState, type InteractState } from "./shared";
 
 export interface RadioButtonOptions {
 	selected?: boolean;
@@ -26,8 +27,8 @@ export const radioButton = widget((text: string, options: RadioButtonOptions = {
 			Size: udim2(1, 0, 0, style.itemHeight),
 			0: create("TextButton", {
 				[ref as never]: "circle",
-				BackgroundColor3: style.frameBgColor,
-				BackgroundTransparency: style.frameBgTransparency,
+				BackgroundColor3: style.widgetInactiveBgColor,
+				BackgroundTransparency: 0,
 				BorderSizePixel: 0,
 				Size: udim2(0, circleSize, 0, circleSize),
 				AnchorPoint: v2(0, 0.5),
@@ -37,13 +38,13 @@ export const radioButton = widget((text: string, options: RadioButtonOptions = {
 				0: create("UICorner", { CornerRadius: udim(1, 0) }),
 				1: create("UIStroke", {
 					[ref as never]: "stroke",
-					Color: style.borderColor,
-					Transparency: style.borderTransparency,
-					Thickness: 1,
+					Color: style.strokeInactiveColor,
+					Transparency: style.strokeInactiveTransparency,
+					Thickness: style.strokeThickness, ApplyStrokeMode: Enum.ApplyStrokeMode.Border,
 				}),
 				2: create("Frame", {
 					[ref as never]: "dot",
-					BackgroundColor3: style.checkMarkColor,
+					BackgroundColor3: style.accentColor,
 					BackgroundTransparency: 1,
 					BorderSizePixel: 0,
 					Size: udim2(0.5, 0, 0.5, 0),
@@ -81,20 +82,26 @@ export const radioButton = widget((text: string, options: RadioButtonOptions = {
 	const isSelected = options.selected ?? false;
 
 	refs.dot.BackgroundTransparency = isSelected ? 0 : 1;
-	refs.dot.BackgroundColor3 = style.checkMarkColor;
+	refs.dot.BackgroundColor3 = style.accentColor;
 
-	if (options.disabled === true) {
-		refs.circle.BackgroundTransparency = 0.7;
+	let state: InteractState = "inactive";
+	if (options.disabled === true) state = "disabled";
+	else if (hovered) state = "hovered";
+
+	if (state === "disabled") {
+		refs.circle.BackgroundColor3 = style.widgetInactiveBgColor;
+		refs.circle.BackgroundTransparency = 0.5;
 		refs.label.TextColor3 = style.textDisabledColor;
-	} else if (hovered) {
-		refs.circle.BackgroundColor3 = style.frameBgHoveredColor;
-		refs.circle.BackgroundTransparency = style.frameBgHoveredTransparency;
+	} else if (state === "hovered") {
+		refs.circle.BackgroundColor3 = style.widgetHoveredBgColor;
+		refs.circle.BackgroundTransparency = 0;
 		refs.label.TextColor3 = style.textColor;
 	} else {
-		refs.circle.BackgroundColor3 = style.frameBgColor;
-		refs.circle.BackgroundTransparency = style.frameBgTransparency;
+		refs.circle.BackgroundColor3 = style.widgetInactiveBgColor;
+		refs.circle.BackgroundTransparency = 0;
 		refs.label.TextColor3 = style.textColor;
 	}
+	if (refs.stroke !== undefined) applyStrokeState(refs.stroke, state, style);
 
 	refs.label.Text = text;
 

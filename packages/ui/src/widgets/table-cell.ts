@@ -1,6 +1,6 @@
 import { widget, __callWidget, __scope, __useInstance, useContext, provideContext } from "../runtime";
 import { create } from "../create";
-import { udim, udim2 } from "../primitives";
+import { udim, udim2, v2 } from "../primitives";
 import * as contexts from "../contexts";
 import type { TableState } from "./table";
 import type { RowState } from "./table-row";
@@ -40,7 +40,11 @@ const tableCellWidget = widget((options: TableCellOptions, fn: () => void): void
 	const columnIndex = math.max(options.column ?? rowState.nextColumn, rowState.nextColumn);
 	rowState.nextColumn = columnIndex + 1;
 
-	const cellWidth = tableState.columnWidths[columnIndex - 1] ?? 0;
+	const rawCellWidth = tableState.columnWidths[columnIndex - 1] ?? 0;
+	const columnSpec = tableState.columns[columnIndex - 1];
+	const isAuto = columnSpec !== undefined && columnSpec.auto === true;
+	const cellMinWidth = columnSpec?.minWidth ?? 0;
+	const cellWidth = math.max(rawCellWidth, cellMinWidth);
 	const [cellColor, cellTransparency] = getCellBackground(tableState, rowState, columnIndex);
 
 	const refs = __useInstance("tableCell:instance", (ref) => {
@@ -48,8 +52,13 @@ const tableCellWidget = widget((options: TableCellOptions, fn: () => void): void
 			[ref as never]: "frame",
 			BackgroundTransparency: 1,
 			BorderSizePixel: 0,
-			ClipsDescendants: true,
-			Size: udim2(0, cellWidth, 1, 0),
+			ClipsDescendants: !isAuto,
+			Size: udim2(0, cellWidth, 0, 0),
+			AutomaticSize: Enum.AutomaticSize.Y,
+			3: create("UISizeConstraint", {
+				[ref as never]: "minSize",
+				MinSize: v2(cellMinWidth, tableState.rowHeight),
+			}),
 			0: create("Frame", {
 				[ref as never]: "background",
 				BackgroundTransparency: 1,
@@ -68,7 +77,8 @@ const tableCellWidget = widget((options: TableCellOptions, fn: () => void): void
 				[ref as never]: "content",
 				BackgroundTransparency: 1,
 				BorderSizePixel: 0,
-				Size: udim2(1, 0, 1, 0),
+				Size: udim2(isAuto ? 0 : 1, 0, 0, 0),
+				AutomaticSize: isAuto ? Enum.AutomaticSize.XY : Enum.AutomaticSize.Y,
 				0: create("UIListLayout", {
 					[ref as never]: "layout",
 					SortOrder: Enum.SortOrder.LayoutOrder,
@@ -80,9 +90,14 @@ const tableCellWidget = widget((options: TableCellOptions, fn: () => void): void
 			}),
 		});
 		return [cellFrame, ref.content] as [Instance, Instance];
-	}) as { frame: Frame; background: Frame; leftDivider: Frame; content: Frame; layout: UIListLayout; padding: UIPadding };
+	}) as { frame: Frame; background: Frame; leftDivider: Frame; content: Frame; layout: UIListLayout; padding: UIPadding; minSize: UISizeConstraint };
 
-	refs.frame.Size = udim2(0, cellWidth, 1, 0);
+	refs.frame.Size = udim2(0, cellWidth, 0, 0);
+	refs.frame.AutomaticSize = Enum.AutomaticSize.Y;
+	refs.frame.ClipsDescendants = !isAuto;
+	refs.content.Size = udim2(isAuto ? 0 : 1, 0, 0, 0);
+	refs.content.AutomaticSize = isAuto ? Enum.AutomaticSize.XY : Enum.AutomaticSize.Y;
+	if (refs.minSize !== undefined) refs.minSize.MinSize = v2(cellMinWidth, tableState.rowHeight);
 	refs.background.BackgroundColor3 = cellColor;
 	refs.background.BackgroundTransparency = cellTransparency;
 
@@ -97,6 +112,11 @@ const tableCellWidget = widget((options: TableCellOptions, fn: () => void): void
 
 	provideContext(contexts.tableCellState, { centered: true });
 	__scope("tableCell:children", fn);
+
+	if (isAuto) {
+		const measuredWidth = math.max(refs.content.AbsoluteSize.X, cellMinWidth);
+		if (measuredWidth > 0) tableState.setAutoColumnWidth(columnIndex, measuredWidth);
+	}
 }, "@rovy/ui/tableCellWidget");
 
 /** @widget */

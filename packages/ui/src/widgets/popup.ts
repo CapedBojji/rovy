@@ -2,6 +2,7 @@ import { widget, __scope, __useInstance, __useEffect, useRootInstance } from "..
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim, udim2 } from "../primitives";
+import { makeCorner, makeShadow, makeStroke } from "./shared";
 
 export interface PopupOptions {
 	open?: boolean;
@@ -48,15 +49,10 @@ export const popup = widget((options: PopupOptions, fn: () => void): void => {
 		panel.Visible = false;
 		panel.Parent = rootGui;
 
-		const corner = new Instance("UICorner");
-		corner.CornerRadius = udim(0, 2);
-		corner.Parent = panel;
-
-		const stroke = new Instance("UIStroke");
-		stroke.Color = style.borderColor;
-		stroke.Transparency = style.borderTransparency;
-		stroke.Thickness = 1;
-		stroke.Parent = panel;
+		makeCorner(style.menuCornerRadius).Parent = panel;
+		makeStroke(style).Parent = panel;
+		const shadow = makeShadow(style);
+		if (shadow !== undefined) shadow.Parent = panel;
 
 		const content = new Instance("Frame");
 		content.Name = "PopupContent";

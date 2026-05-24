@@ -17,19 +17,19 @@ export const progressBar = widget((options: ProgressBarOptions): void => {
 		const trackHeight = style.itemHeight;
 		return create("Frame", {
 			[ref as never]: "frame",
-			BackgroundColor3: style.frameBgColor,
-			BackgroundTransparency: style.frameBgTransparency,
+			BackgroundColor3: style.widgetInactiveBgColor,
+			BackgroundTransparency: 0,
 			BorderSizePixel: 0,
 			Size: udim2(1, 0, 0, trackHeight),
-			0: create("UICorner", { CornerRadius: udim(0, 2) }),
+			0: create("UICorner", { CornerRadius: udim(0, style.cornerRadius) }),
 			1: create("Frame", {
 				[ref as never]: "fill",
-				BackgroundColor3: style.sliderGrabColor,
+				BackgroundColor3: style.accentColor,
 				BackgroundTransparency: 0,
 				BorderSizePixel: 0,
 				Size: udim2(0, 0, 1, 0),
 				ZIndex: 2,
-				0: create("UICorner", { CornerRadius: udim(0, 2) }),
+				0: create("UICorner", { CornerRadius: udim(0, style.cornerRadius) }),
 			}),
 			2: create("TextLabel", {
 				[ref as never]: "label",
@@ -46,7 +46,7 @@ export const progressBar = widget((options: ProgressBarOptions): void => {
 
 	const style = useStyle();
 	refs.fill.Size = udim2(value, 0, 1, 0);
-	refs.fill.BackgroundColor3 = style.sliderGrabColor;
+	refs.fill.BackgroundColor3 = style.accentColor;
 
 	if (options.label !== undefined) {
 		refs.label.Text = options.label;
