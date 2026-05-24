@@ -60,17 +60,17 @@ export const input = widget((options: InputOptions = {}): InputHandle => {
 		create("Frame", {
 			[rawRef as never]: "inputBg",
 			Parent: frame,
-			BackgroundColor3: style.frameBgColor,
-			BackgroundTransparency: style.frameBgTransparency,
+			BackgroundColor3: style.extremeBgColor,
+			BackgroundTransparency: 0,
 			BorderSizePixel: 0,
 			Size: udim2(1, -labelWidth, 1, 0),
 			Position: udim2(0, labelWidth, 0, 0),
-			0: create("UICorner", { CornerRadius: udim(0, 0) }),
+			0: create("UICorner", { CornerRadius: udim(0, style.cornerRadius) }),
 			1: create("UIStroke", {
 				[rawRef as never]: "inputStroke",
-				Color: style.borderColor,
-				Transparency: style.borderTransparency,
-				Thickness: 1,
+				Color: style.strokeInactiveColor,
+				Transparency: style.strokeInactiveTransparency,
+				Thickness: style.strokeThickness, ApplyStrokeMode: Enum.ApplyStrokeMode.Border,
 			}),
 			2: create("TextBox", {
 				[rawRef as never]: "textBox",
@@ -128,11 +128,11 @@ export const input = widget((options: InputOptions = {}): InputHandle => {
 	box.PlaceholderText = options.placeholder ?? "";
 
 	if (focused) {
-		refs.inputStroke.Color = style.sliderGrabColor;
+		refs.inputStroke.Color = style.accentColor;
 		refs.inputStroke.Transparency = 0;
 	} else {
-		refs.inputStroke.Color = style.borderColor;
-		refs.inputStroke.Transparency = style.borderTransparency;
+		refs.inputStroke.Color = style.strokeInactiveColor;
+		refs.inputStroke.Transparency = style.strokeInactiveTransparency;
 	}
 
 	if (refs.label !== undefined) {

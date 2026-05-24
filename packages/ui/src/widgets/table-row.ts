@@ -1,7 +1,7 @@
 import { widget, __callWidget, __scope, __useInstance, useContext, provideContext } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
-import { udim, udim2 } from "../primitives";
+import { udim, udim2, v2 } from "../primitives";
 import * as contexts from "../contexts";
 import type { TableState } from "./table";
 
@@ -33,7 +33,12 @@ const tableRowWidget = widget((options: TableRowOptions, fn: () => void): void =
 			[ref as never]: "frame",
 			BackgroundTransparency: 1,
 			BorderSizePixel: 0,
-			Size: udim2(1, 0, 0, tableState.rowHeight),
+			Size: udim2(1, 0, 0, 0),
+			AutomaticSize: Enum.AutomaticSize.Y,
+			2: create("UISizeConstraint", {
+				[ref as never]: "minSize",
+				MinSize: v2(0, tableState.rowHeight),
+			}),
 			0: create("Frame", {
 				[ref as never]: "topDivider",
 				BackgroundColor3: style.tableBorderColor,
@@ -47,7 +52,8 @@ const tableRowWidget = widget((options: TableRowOptions, fn: () => void): void =
 				[ref as never]: "content",
 				BackgroundTransparency: 1,
 				BorderSizePixel: 0,
-				Size: udim2(1, 0, 1, 0),
+				Size: udim2(1, 0, 0, 0),
+				AutomaticSize: Enum.AutomaticSize.Y,
 				0: create("UIListLayout", {
 					SortOrder: Enum.SortOrder.LayoutOrder,
 					FillDirection: Enum.FillDirection.Horizontal,
@@ -55,9 +61,9 @@ const tableRowWidget = widget((options: TableRowOptions, fn: () => void): void =
 				}),
 			}),
 		});
-	}) as { frame: Frame; topDivider: Frame; content: Frame };
+	}) as { frame: Frame; topDivider: Frame; content: Frame; minSize: UISizeConstraint };
 
-	refs.frame.Size = udim2(1, 0, 0, tableState.rowHeight);
+	if (refs.minSize !== undefined) refs.minSize.MinSize = v2(0, tableState.rowHeight);
 	refs.topDivider.Visible = tableState.borders && rowIndex > 1;
 	refs.topDivider.BackgroundColor3 = tableState.borderColor;
 	refs.topDivider.BackgroundTransparency = tableState.borderTransparency;

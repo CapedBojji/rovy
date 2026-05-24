@@ -1,7 +1,8 @@
 import { widget, __useInstance, __useState } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
-import { udim, udim2 } from "../primitives";
+import { udim2 } from "../primitives";
+import { applyStrokeState, makeCorner, type InteractState } from "./shared";
 
 export interface ButtonOptions {
 	width?: number | UDim;
@@ -26,14 +27,15 @@ export const button = widget((text: string, options: ButtonOptions = {}): Button
 			TextColor3: style.textColor,
 			TextSize: style.textSize,
 			Size: udim2(1, 0, 0, style.itemHeight),
-			BackgroundColor3: style.buttonColor,
-			BackgroundTransparency: style.buttonTransparency,
+			BackgroundColor3: style.widgetInactiveBgColor,
+			BackgroundTransparency: 0,
 			AutoButtonColor: false,
-			0: create("UICorner", { CornerRadius: udim(0, 0) }),
+			0: makeCorner(style.cornerRadius),
 			1: create("UIStroke", {
-				Color: style.borderColor,
-				Transparency: style.borderTransparency,
-				Thickness: 1,
+				[ref as never]: "stroke",
+				Color: style.strokeInactiveColor,
+				Transparency: style.strokeInactiveTransparency,
+				Thickness: style.strokeThickness, ApplyStrokeMode: Enum.ApplyStrokeMode.Border,
 			}),
 			MouseEnter: () => {
 				setHovered(true);
@@ -54,30 +56,37 @@ export const button = widget((text: string, options: ButtonOptions = {}): Button
 				if (options.disabled !== true) setClicked(true);
 			},
 		});
-	}) as { button: TextButton };
+	}) as { button: TextButton; stroke: UIStroke };
 
 	const btn = refs.button;
 	btn.Text = text;
 	btn.AutoButtonColor = false;
 
 	const style = useStyle();
-	if (options.disabled === true) {
-		btn.BackgroundColor3 = style.buttonColor;
-		btn.BackgroundTransparency = 0.8;
+	let state: InteractState = "inactive";
+	if (options.disabled === true) state = "disabled";
+	else if (pressing) state = "active";
+	else if (hovered) state = "hovered";
+
+	if (state === "disabled") {
+		btn.BackgroundColor3 = style.widgetInactiveBgColor;
+		btn.BackgroundTransparency = 0.5;
 		btn.TextColor3 = style.textDisabledColor;
-	} else if (pressing) {
-		btn.BackgroundColor3 = style.buttonActiveColor;
-		btn.BackgroundTransparency = style.buttonActiveTransparency;
-		btn.TextColor3 = style.textColor;
-	} else if (hovered) {
-		btn.BackgroundColor3 = style.buttonHoveredColor;
-		btn.BackgroundTransparency = style.buttonHoveredTransparency;
-		btn.TextColor3 = style.textColor;
+	} else if (state === "active") {
+		btn.BackgroundColor3 = style.widgetActiveBgColor;
+		btn.BackgroundTransparency = 0;
+		btn.TextColor3 = style.strongTextColor;
+	} else if (state === "hovered") {
+		btn.BackgroundColor3 = style.widgetHoveredBgColor;
+		btn.BackgroundTransparency = 0;
+		btn.TextColor3 = style.strongTextColor;
 	} else {
-		btn.BackgroundColor3 = style.buttonColor;
-		btn.BackgroundTransparency = style.buttonTransparency;
+		btn.BackgroundColor3 = style.widgetInactiveBgColor;
+		btn.BackgroundTransparency = 0;
 		btn.TextColor3 = style.textColor;
 	}
+
+	if (refs.stroke !== undefined) applyStrokeState(refs.stroke, state, style);
 
 	if (options.width !== undefined) {
 		const w = options.width;

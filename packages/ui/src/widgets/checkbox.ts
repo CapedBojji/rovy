@@ -1,8 +1,9 @@
 import { widget, __useInstance, __useState, useContext } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
-import { udim, udim2, v2 } from "../primitives";
+import { udim2, v2 } from "../primitives";
 import * as contexts from "../contexts";
+import { applyStrokeState, makeCorner, type InteractState } from "./shared";
 
 export interface CheckboxOptions {
 	checked?: boolean;
@@ -37,10 +38,10 @@ export const checkbox = widget((text: string, options: CheckboxOptions = {}): Ch
 			Size: udim2(1, 0, 0, style.itemHeight),
 			0: create("TextButton", {
 				[ref as never]: "box",
-				BackgroundColor3: style.frameBgColor,
-				BackgroundTransparency: style.frameBgTransparency,
+				BackgroundColor3: style.widgetInactiveBgColor,
+				BackgroundTransparency: 0,
 				BorderSizePixel: 0,
-				Font: Enum.Font.GothamBold,
+				Font: Enum.Font.Code,
 				TextColor3: style.checkMarkColor,
 				TextSize: style.textSize + 2,
 				Size: udim2(0, boxSize, 0, boxSize),
@@ -48,12 +49,12 @@ export const checkbox = widget((text: string, options: CheckboxOptions = {}): Ch
 				Position: udim2(0, 0, 0.5, 0),
 				Text: "",
 				AutoButtonColor: false,
-				0: create("UICorner", { CornerRadius: udim(0, 0) }),
+				0: makeCorner(style.cornerRadius),
 				1: create("UIStroke", {
 					[ref as never]: "boxStroke",
-					Color: style.borderColor,
-					Transparency: style.borderTransparency,
-					Thickness: 1,
+					Color: style.strokeInactiveColor,
+					Transparency: style.strokeInactiveTransparency,
+					Thickness: style.strokeThickness, ApplyStrokeMode: Enum.ApplyStrokeMode.Border,
 				}),
 				MouseEnter: () => {
 					setHovered(true);
@@ -89,18 +90,24 @@ export const checkbox = widget((text: string, options: CheckboxOptions = {}): Ch
 	const box = refs.box;
 	box.Text = isChecked ? "✓" : "";
 
-	if (options.disabled === true) {
-		box.BackgroundColor3 = style.frameBgColor;
-		box.BackgroundTransparency = 0.7;
+	let state: InteractState = "inactive";
+	if (options.disabled === true) state = "disabled";
+	else if (hovered) state = "hovered";
+
+	if (state === "disabled") {
+		box.BackgroundColor3 = style.widgetInactiveBgColor;
+		box.BackgroundTransparency = 0.5;
 		box.TextColor3 = style.textDisabledColor;
-	} else if (hovered) {
-		box.BackgroundColor3 = style.frameBgHoveredColor;
-		box.BackgroundTransparency = style.frameBgHoveredTransparency;
+	} else if (state === "hovered") {
+		box.BackgroundColor3 = style.widgetHoveredBgColor;
+		box.BackgroundTransparency = 0;
+		box.TextColor3 = style.checkMarkColor;
 	} else {
-		box.BackgroundColor3 = style.frameBgColor;
-		box.BackgroundTransparency = style.frameBgTransparency;
+		box.BackgroundColor3 = style.widgetInactiveBgColor;
+		box.BackgroundTransparency = 0;
 		box.TextColor3 = style.checkMarkColor;
 	}
+	if (refs.boxStroke !== undefined) applyStrokeState(refs.boxStroke, state, style);
 
 	refs.label.Text = text;
 	refs.label.TextColor3 = options.disabled === true ? style.textDisabledColor : style.textColor;

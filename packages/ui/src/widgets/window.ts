@@ -5,6 +5,7 @@ import { createConnect } from "../createConnect";
 import { c, udim, udim2, v2 } from "../primitives";
 import * as contexts from "../contexts";
 import { WINDOW_ATTRIBUTE } from "../windowConstants";
+import { makeCornerPerSide, makeShadow } from "./shared";
 
 export interface WindowOptions {
 	title?: string;
@@ -104,16 +105,22 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 			),
 			Size: udim2(0, initialSize.X, 0, initialSize.Y),
 			ClipsDescendants: false,
-			0: create("UICorner", { CornerRadius: udim(0, 0) }),
+			0: makeCornerPerSide({
+				tl: style.windowCornerRadius,
+				tr: style.windowCornerRadius,
+				bl: style.windowCornerRadius,
+				br: style.windowCornerRadius,
+			}),
 			1: create("UIStroke", {
 				[rawRef as never]: "border",
 				Color: style.borderColor,
 				Transparency: style.borderTransparency,
-				Thickness: 1,
+				Thickness: style.strokeThickness, ApplyStrokeMode: Enum.ApplyStrokeMode.Border,
 			}),
+			5: makeShadow(style) ?? create("Folder", {}),
 			2: create("TextButton", {
 				[rawRef as never]: "titleBar",
-				BackgroundColor3: style.titleBgActiveColor,
+				BackgroundColor3: style.titleBgColor,
 				BackgroundTransparency: 0,
 				BorderSizePixel: 0,
 				Size: udim2(1, 0, 0, titleBarHeight),
@@ -130,11 +137,17 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 					PaddingLeft: udim(0, padX),
 					PaddingRight: udim(0, 4),
 				}),
+				6: makeCornerPerSide({
+					tl: style.windowCornerRadius,
+					tr: style.windowCornerRadius,
+					bl: 0,
+					br: 0,
+				}),
 				2: create("TextLabel", {
 					[rawRef as never]: "title",
 					BackgroundTransparency: 1,
-					Font: Enum.Font.GothamBold,
-					TextColor3: style.textColor,
+					Font: Enum.Font.Code,
+					TextColor3: style.strongTextColor,
 					TextSize: style.textSize,
 					TextXAlignment: Enum.TextXAlignment.Left,
 					TextYAlignment: Enum.TextYAlignment.Center,
@@ -145,18 +158,18 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 				3: create("TextButton", {
 					[rawRef as never]: "minimize",
 					BackgroundTransparency: 1,
-					Font: Enum.Font.GothamBold,
-					TextColor3: c(200, 200, 200),
+					Font: Enum.Font.Code,
+					TextColor3: style.weakTextColor,
 					TextSize: style.textSize + 2,
 					Size: udim2(0, 16, 0, 16),
 					Text: "−",
 					LayoutOrder: 2,
 					Visible: false,
 					MouseEnter: () => {
-						ref.minimize.TextColor3 = c(255, 255, 255);
+						ref.minimize.TextColor3 = style.strongTextColor;
 					},
 					MouseLeave: () => {
-						ref.minimize.TextColor3 = c(200, 200, 200);
+						ref.minimize.TextColor3 = style.weakTextColor;
 					},
 					Activated: () => {
 						setMinimized((prev) => !prev);
@@ -165,18 +178,18 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 				4: create("TextButton", {
 					[rawRef as never]: "close",
 					BackgroundTransparency: 1,
-					Font: Enum.Font.GothamBold,
-					TextColor3: c(200, 200, 200),
+					Font: Enum.Font.Code,
+					TextColor3: style.weakTextColor,
 					TextSize: style.textSize + 2,
 					Size: udim2(0, 16, 0, 16),
 					Text: "×",
 					LayoutOrder: 3,
 					Visible: opts.closable ?? false,
 					MouseEnter: () => {
-						ref.close.TextColor3 = c(255, 255, 255);
+						ref.close.TextColor3 = style.strongTextColor;
 					},
 					MouseLeave: () => {
-						ref.close.TextColor3 = c(200, 200, 200);
+						ref.close.TextColor3 = style.weakTextColor;
 					},
 					Activated: () => {
 						setClosed(true);
@@ -294,9 +307,9 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 				[rawRef as never]: "resizeGrip",
 				BackgroundTransparency: 1,
 				Text: "⊿",
-				Font: Enum.Font.Gotham,
+				Font: Enum.Font.Code,
 				TextSize: 14,
-				TextColor3: style.borderColor,
+				TextColor3: style.weakTextColor,
 				AnchorPoint: v2(1, 1),
 				Position: udim2(1, 0, 1, 0),
 				Size: udim2(0, 16, 0, 16),

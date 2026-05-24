@@ -25,8 +25,8 @@ export const collapsingHeader = widget((text: string, fn: () => void): Collapsin
 			}),
 			1: create("TextButton", {
 				[ref as never]: "header",
-				BackgroundColor3: style.headerColor,
-				BackgroundTransparency: style.headerTransparency,
+				BackgroundColor3: style.widgetInactiveBgColor,
+				BackgroundTransparency: 1,
 				BorderSizePixel: 0,
 				ClipsDescendants: true,
 				Text: "",
@@ -37,11 +37,12 @@ export const collapsingHeader = widget((text: string, fn: () => void): Collapsin
 					PaddingLeft: udim(0, 6),
 					PaddingRight: udim(0, 6),
 				}),
+				3: create("UICorner", { CornerRadius: udim(0, style.cornerRadius) }),
 				1: create("TextLabel", {
 					[ref as never]: "arrow",
 					BackgroundTransparency: 1,
 					Font: Enum.Font.Code,
-					TextColor3: style.textColor,
+					TextColor3: style.weakTextColor,
 					TextSize: style.textSize,
 					TextXAlignment: Enum.TextXAlignment.Left,
 					Size: udim2(0, 14, 1, 0),
@@ -52,8 +53,8 @@ export const collapsingHeader = widget((text: string, fn: () => void): Collapsin
 				2: create("TextLabel", {
 					[ref as never]: "title",
 					BackgroundTransparency: 1,
-					Font: Enum.Font.GothamBold,
-					TextColor3: style.textColor,
+					Font: Enum.Font.Code,
+					TextColor3: style.strongTextColor,
 					TextSize: style.textSize,
 					TextXAlignment: Enum.TextXAlignment.Left,
 					TextTruncate: Enum.TextTruncate.AtEnd,
@@ -98,9 +99,10 @@ export const collapsingHeader = widget((text: string, fn: () => void): Collapsin
 	refs.content.Visible = isOpen;
 
 	if (hovered) {
-		refs.header.BackgroundTransparency = style.headerTransparency * 0.5;
+		refs.header.BackgroundColor3 = style.widgetHoveredBgColor;
+		refs.header.BackgroundTransparency = 0;
 	} else {
-		refs.header.BackgroundTransparency = style.headerTransparency;
+		refs.header.BackgroundTransparency = 1;
 	}
 
 	if (isOpen && fn !== undefined) {

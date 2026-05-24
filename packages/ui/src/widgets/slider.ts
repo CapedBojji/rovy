@@ -10,6 +10,10 @@ export interface SliderOptions {
 	initial?: number;
 	label?: string;
 	width?: number;
+	minWidth?: number;
+	showValueBox?: boolean;
+	valueBoxWidth?: number;
+	suffix?: string;
 }
 
 interface SliderRefs {
@@ -17,8 +21,17 @@ interface SliderRefs {
 	track: TextButton;
 	fill: Frame;
 	grab: TextButton;
-	valueLabel: TextLabel;
+	valueBox: TextBox;
+	valueBoxStroke: UIStroke;
 	connection?: RBXScriptConnection;
+	dragConnection?: RBXScriptConnection;
+	dragStartX?: number;
+	dragStartValue?: number;
+	currentPercent?: number;
+	rangeMin?: number;
+	rangeMax?: number;
+	didDrag?: boolean;
+	skipCommit?: boolean;
 }
 
 function tryGetService(name: string): Instance | undefined {
@@ -35,18 +48,34 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 	const initial = opts.initial ?? min;
 	const initPercent = (initial - min) / (max - min);
 	const [percentageValue, setPercentageValue] = __useState("slider:value", initPercent);
+	const [editing, setEditing] = __useState("slider:editing", false);
+	const [focused, setFocused] = __useState("slider:focused", false);
+
+	const showValueBox = opts.showValueBox !== false;
+	const valueBoxWidth = opts.valueBoxWidth ?? 56;
+	const gap = 6;
+	const suffix = opts.suffix ?? "";
+
+	const formatValue = (raw: number): string => {
+		const rounded = math.round(raw * 100) / 100;
+		const intRounded = math.round(rounded);
+		const txt = math.abs(rounded - intRounded) < 0.0001 ? tostring(intRounded) : tostring(rounded);
+		return `${txt}${suffix}`;
+	};
 
 	const refs = __useInstance("slider:instance", (rawRef) => {
 		const ref = rawRef as unknown as SliderRefs;
 		const connectEvent = createConnect();
 		const UserInputService = tryGetService("UserInputService");
 		const style = useStyle();
-		const grabSize = 10;
-		const trackHeight = 4;
+		const grabWidth = 12;
+		const grabHeight = 16;
+		const trackHeight = 10;
 
 		ref.connection = undefined;
+		ref.dragConnection = undefined;
 
-		const startDrag = (): void => {
+		const startTrackDrag = (): void => {
 			if (UserInputService === undefined) return;
 			if (ref.connection !== undefined) ref.connection.Disconnect();
 			ref.connection = connectEvent(UserInputService, "InputChanged", (...args: ReadonlyArray<unknown>) => {
@@ -59,28 +88,90 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 			});
 		};
 
+		const startValueDrag = (startInput: InputObject): void => {
+			if (UserInputService === undefined) return;
+			if (ref.dragConnection !== undefined) ref.dragConnection.Disconnect();
+			const curPct = ref.currentPercent ?? 0;
+			const curMin = ref.rangeMin ?? 0;
+			const curMax = ref.rangeMax ?? 1;
+			ref.dragStartX = startInput.Position.X;
+			ref.dragStartValue = curPct * (curMax - curMin) + curMin;
+			ref.didDrag = false;
+			ref.dragConnection = connectEvent(UserInputService, "InputChanged", (...args: ReadonlyArray<unknown>) => {
+				const moveInput = args[0] as InputObject;
+				if (moveInput.UserInputType !== Enum.UserInputType.MouseMovement) return;
+				const dx = moveInput.Position.X - (ref.dragStartX ?? 0);
+				if (!ref.didDrag && math.abs(dx) < 4) return;
+				ref.didDrag = true;
+				const rMin = ref.rangeMin ?? 0;
+				const rMax = ref.rangeMax ?? 1;
+				const range = rMax - rMin;
+				const speed = range > 0 ? math.max(range / 200, 0.01) : 1;
+				const newVal = math.clamp((ref.dragStartValue ?? rMin) + dx * speed, rMin, rMax);
+				setPercentageValue(range > 0 ? (newVal - rMin) / range : 0);
+			});
+		};
+
+		const boxOffset = showValueBox ? valueBoxWidth + gap : 0;
+
+		const minWidth = opts.minWidth ?? 120;
+		const explicitWidth = opts.width;
 		return create("Frame", {
 			[rawRef as never]: "frame",
 			BackgroundTransparency: 1,
-			Size: udim2(1, 0, 0, style.itemHeight),
+			Size: explicitWidth !== undefined ? udim2(0, explicitWidth, 0, style.itemHeight) : udim2(1, 0, 0, style.itemHeight),
+			3: create("UISizeConstraint", {
+				MinSize: v2(minWidth, 0),
+			}),
 			0: create("TextButton", {
 				[rawRef as never]: "track",
-				BackgroundColor3: style.frameBgColor,
-				BackgroundTransparency: style.frameBgTransparency,
+				BackgroundColor3: style.widgetInactiveBgColor,
+				BackgroundTransparency: 0,
 				BorderSizePixel: 0,
 				Text: "",
 				AutoButtonColor: false,
 				AnchorPoint: v2(0, 0.5),
-				Position: udim2(0, grabSize / 2, 0.5, 0),
-				Size: udim2(1, -grabSize, 0, trackHeight),
-				0: create("UICorner", { CornerRadius: udim(0, 2) }),
+				Position: udim2(0, grabWidth / 2, 0.5, 0),
+				Size: udim2(1, -grabWidth - boxOffset, 0, trackHeight),
+				ClipsDescendants: false,
+				0: create("UICorner", { CornerRadius: udim(0, 3) }),
 				1: create("Frame", {
 					[rawRef as never]: "fill",
-					BackgroundColor3: style.sliderGrabColor,
-					BackgroundTransparency: 0,
+					BackgroundTransparency: 1,
 					BorderSizePixel: 0,
 					Size: udim2(0, 0, 1, 0),
-					0: create("UICorner", { CornerRadius: udim(0, 2) }),
+					0: create("UICorner", { CornerRadius: udim(0, 3) }),
+				}),
+				2: create("TextButton", {
+					[rawRef as never]: "grab",
+					BackgroundColor3: style.sliderGrabColor,
+					BorderSizePixel: 0,
+					Text: "",
+					Size: udim2(0, grabWidth, 0, grabHeight),
+					AnchorPoint: v2(0.5, 0.5),
+					Position: udim2(0, 0, 0.5, 0),
+					AutoButtonColor: false,
+					ZIndex: 3,
+					0: create("UICorner", { CornerRadius: udim(0, 3) }),
+					2: create("UIStroke", {
+						Color: style.strokeInactiveColor,
+						Transparency: style.strokeInactiveTransparency,
+						Thickness: style.strokeThickness,
+						ApplyStrokeMode: Enum.ApplyStrokeMode.Border,
+					}),
+					InputBegan: (...args: ReadonlyArray<unknown>) => {
+						const inputObj = args[0] as InputObject;
+						if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
+						startTrackDrag();
+					},
+					InputEnded: (...args: ReadonlyArray<unknown>) => {
+						const inputObj = args[0] as InputObject;
+						if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
+						if (ref.connection !== undefined) {
+							ref.connection.Disconnect();
+							ref.connection = undefined;
+						}
+					},
 				}),
 				InputBegan: (...args: ReadonlyArray<unknown>) => {
 					const inputObj = args[0] as InputObject;
@@ -89,7 +180,7 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 					const trackWidth = trackFrame.AbsoluteSize.X;
 					const x = math.clamp(inputObj.Position.X - trackFrame.AbsolutePosition.X, 0, trackWidth);
 					setPercentageValue(x / trackWidth);
-					startDrag();
+					startTrackDrag();
 				},
 				InputEnded: (...args: ReadonlyArray<unknown>) => {
 					const inputObj = args[0] as InputObject;
@@ -100,39 +191,80 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 					}
 				},
 			}),
-			1: create("TextButton", {
-				[rawRef as never]: "grab",
-				BackgroundColor3: style.sliderGrabColor,
+			2: create("TextBox", {
+				[rawRef as never]: "valueBox",
+				BackgroundColor3: style.widgetInactiveBgColor,
+				BackgroundTransparency: 0,
 				BorderSizePixel: 0,
-				Text: "",
-				Size: udim2(0, grabSize, 0, grabSize),
-				AnchorPoint: v2(0.5, 0.5),
-				Position: udim2(0, 0, 0.5, 0),
-				AutoButtonColor: false,
-				0: create("UICorner", { CornerRadius: udim(1, 0) }),
-				InputBegan: (...args: ReadonlyArray<unknown>) => {
-					const inputObj = args[0] as InputObject;
-					if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
-					startDrag();
-				},
-				InputEnded: (...args: ReadonlyArray<unknown>) => {
-					const inputObj = args[0] as InputObject;
-					if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
-					if (ref.connection !== undefined) {
-						ref.connection.Disconnect();
-						ref.connection = undefined;
-					}
-				},
-			}),
-			2: create("TextLabel", {
-				[rawRef as never]: "valueLabel",
-				BackgroundTransparency: 1,
 				Font: Enum.Font.Code,
 				TextColor3: style.textColor,
 				TextSize: style.textSize,
 				TextXAlignment: Enum.TextXAlignment.Center,
-				Size: udim2(1, 0, 1, 0),
-				ZIndex: 2,
+				TextYAlignment: Enum.TextYAlignment.Center,
+				ClearTextOnFocus: false,
+				TextEditable: false,
+				Size: udim2(0, valueBoxWidth, 1, 0),
+				AnchorPoint: v2(1, 0.5),
+				Position: udim2(1, 0, 0.5, 0),
+				Visible: showValueBox,
+				0: create("UICorner", { CornerRadius: udim(0, style.cornerRadius) }),
+				1: create("UIStroke", {
+					[rawRef as never]: "valueBoxStroke",
+					Color: style.strokeInactiveColor,
+					Transparency: style.strokeInactiveTransparency,
+					Thickness: style.strokeThickness,
+					ApplyStrokeMode: Enum.ApplyStrokeMode.Border,
+				}),
+				2: create("UIPadding", {
+					PaddingLeft: udim(0, 4),
+					PaddingRight: udim(0, 4),
+				}),
+				InputBegan: (...args: ReadonlyArray<unknown>) => {
+					const inputObj = args[0] as InputObject;
+					if (inputObj.UserInputType === Enum.UserInputType.MouseButton1) {
+						if (!ref.valueBox.TextEditable) startValueDrag(inputObj);
+					} else if (inputObj.KeyCode === Enum.KeyCode.Escape) {
+						ref.skipCommit = true;
+						setEditing(false);
+						ref.valueBox.ReleaseFocus(false);
+					}
+				},
+				InputEnded: (...args: ReadonlyArray<unknown>) => {
+					const inputObj = args[0] as InputObject;
+					if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
+					if (ref.dragConnection !== undefined) {
+						ref.dragConnection.Disconnect();
+						ref.dragConnection = undefined;
+					}
+					if (ref.didDrag !== true) {
+						ref.valueBox.TextEditable = true;
+						setEditing(true);
+						ref.valueBox.CaptureFocus();
+						ref.valueBox.CursorPosition = ref.valueBox.Text.size() + 1;
+					}
+				},
+				Focused: () => {
+					setFocused(true);
+				},
+				FocusLost: (...focusArgs: ReadonlyArray<unknown>) => {
+					setFocused(false);
+					const enterPressed = focusArgs[0] as boolean;
+					ref.valueBox.TextEditable = false;
+					if (ref.skipCommit === true) {
+						ref.skipCommit = false;
+						setEditing(false);
+						return;
+					}
+					if (enterPressed || editing) {
+						const cleaned = ref.valueBox.Text.gsub(`[^%-%.%d]`, "")[0] as string;
+						const parsed = tonumber(cleaned);
+						if (parsed !== undefined) {
+							const clamped = math.clamp(parsed, min, max);
+							setPercentageValue((clamped - min) / (max - min));
+						}
+					}
+					setEditing(false);
+				},
 			}),
 		});
 	}) as unknown as SliderRefs;
@@ -143,19 +275,35 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 				refs.connection.Disconnect();
 				refs.connection = undefined;
 			}
+			if (refs.dragConnection !== undefined) {
+				refs.dragConnection.Disconnect();
+				refs.dragConnection = undefined;
+			}
 		};
 	});
 
-	refs.grab.Position = udim2(percentageValue, 10 * (0.5 - percentageValue), 0.5, 0);
+	refs.currentPercent = percentageValue;
+	refs.rangeMin = min;
+	refs.rangeMax = max;
+
+	refs.grab.Position = udim2(percentageValue, 0, 0.5, 0);
 	refs.fill.Size = udim2(percentageValue, 0, 1, 0);
 
 	const value = percentageValue * (max - min) + min;
-	const displayValue = math.round(value * 100) / 100;
 
-	if (opts.label !== undefined) {
-		refs.valueLabel.Text = `${opts.label}: ${displayValue}`;
-	} else {
-		refs.valueLabel.Text = tostring(displayValue);
+	const style = useStyle();
+	refs.valueBox.Visible = showValueBox;
+	if (showValueBox && !editing) {
+		refs.valueBox.Text = formatValue(value);
+	}
+	if (refs.valueBoxStroke !== undefined) {
+		if (focused) {
+			refs.valueBoxStroke.Color = style.accentColor;
+			refs.valueBoxStroke.Transparency = 0;
+		} else {
+			refs.valueBoxStroke.Color = style.strokeInactiveColor;
+			refs.valueBoxStroke.Transparency = style.strokeInactiveTransparency;
+		}
 	}
 
 	return value;

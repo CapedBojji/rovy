@@ -1,4 +1,4 @@
-import { widget, __callWidget, __scope, __useInstance, provideContext } from "../runtime";
+import { widget, __callWidget, __scope, __useInstance, __useState, provideContext } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim, udim2 } from "../primitives";
@@ -7,6 +7,8 @@ import * as contexts from "../contexts";
 export interface TableColumn {
 	width?: number;
 	fill?: boolean;
+	auto?: boolean;
+	minWidth?: number;
 }
 export interface TableOptions {
 	columns?: TableColumn[];
@@ -25,6 +27,9 @@ export interface TableOptions {
 export interface TableState {
 	columns: TableColumn[];
 	columnWidths: number[];
+	autoColumnWidths: number[];
+	measuredAutoColumnWidths: number[];
+	setAutoColumnWidth: (columnIndex: number, width: number) => void;
 	rowHeight: number;
 	cellPadding: Vector2;
 	borders: boolean;
@@ -47,13 +52,36 @@ function normalizeColumns(columns?: TableColumn[]): TableColumn[] {
 	return [{ fill: true }];
 }
 
-function computeColumnWidths(totalWidth: number, columns: TableColumn[]): number[] {
+function normalizeAutoColumnWidths(columns: TableColumn[], previous?: number[]): number[] {
+	const widths = new Array<number>(columns.size());
+	for (let index = 0; index < columns.size(); index++) {
+		const minWidth = columns[index].minWidth ?? 0;
+		widths[index] = math.max(previous?.[index] ?? 0, minWidth);
+	}
+	return widths;
+}
+
+function copyWidths(widths: number[]): number[] {
+	const copy = new Array<number>(widths.size());
+	for (let index = 0; index < widths.size(); index++) {
+		copy[index] = widths[index];
+	}
+	return copy;
+}
+
+function computeColumnWidths(totalWidth: number, columns: TableColumn[], autoColumnWidths: number[]): number[] {
 	const widths = new Array<number>(columns.size());
 	let fixedWidth = 0;
 	let fillCount = 0;
 
 	for (let index = 0; index < columns.size(); index++) {
 		const column = columns[index];
+		if (column.auto === true) {
+			const reservedWidth = math.max(autoColumnWidths[index] ?? 0, column.minWidth ?? 0);
+			widths[index] = reservedWidth;
+			fixedWidth += reservedWidth;
+			continue;
+		}
 		const width = column.width ?? 0;
 		widths[index] = width;
 		fixedWidth += width;
@@ -65,6 +93,7 @@ function computeColumnWidths(totalWidth: number, columns: TableColumn[]): number
 
 	for (let index = 0; index < columns.size(); index++) {
 		const column = columns[index];
+		if (column.auto === true) continue;
 		if (column.fill === true || (column.width ?? 0) <= 0) widths[index] = fillWidth;
 	}
 
@@ -97,6 +126,10 @@ const tableWidget = widget((options: TableOptions, fn: () => void): void => {
 
 	const style = useStyle();
 	const columns = normalizeColumns(options.columns);
+	const [storedAutoColumnWidths, setStoredAutoColumnWidths] = __useState("table:autoColumnWidths", () =>
+		normalizeAutoColumnWidths(columns),
+	);
+	const autoColumnWidths = normalizeAutoColumnWidths(columns, storedAutoColumnWidths);
 	let absoluteWidth = refs.frame.AbsoluteSize.X;
 
 	const parent = refs.frame.Parent;
@@ -107,7 +140,14 @@ const tableWidget = widget((options: TableOptions, fn: () => void): void => {
 
 	const tableState: TableState = {
 		columns,
-		columnWidths: computeColumnWidths(absoluteWidth, columns),
+		columnWidths: computeColumnWidths(absoluteWidth, columns, autoColumnWidths),
+		autoColumnWidths,
+		measuredAutoColumnWidths: copyWidths(autoColumnWidths),
+		setAutoColumnWidth: (columnIndex: number, width: number): void => {
+			const arrayIndex = columnIndex - 1;
+			const currentWidth = tableState.measuredAutoColumnWidths[arrayIndex] ?? 0;
+			if (width > currentWidth) tableState.measuredAutoColumnWidths[arrayIndex] = width;
+		},
 		rowHeight: options.rowHeight ?? style.tableRowHeight ?? style.itemHeight,
 		cellPadding: options.cellPadding ?? style.tableCellPadding ?? style.framePadding,
 		borders: options.borders ?? false,
@@ -137,6 +177,17 @@ const tableWidget = widget((options: TableOptions, fn: () => void): void => {
 
 	provideContext(contexts.tableState, tableState);
 	__scope("table:children", fn);
+
+	let autoWidthsChanged = autoColumnWidths.size() !== tableState.measuredAutoColumnWidths.size();
+	if (!autoWidthsChanged) {
+		for (let index = 0; index < autoColumnWidths.size(); index++) {
+			if ((autoColumnWidths[index] ?? 0) !== (tableState.measuredAutoColumnWidths[index] ?? 0)) {
+				autoWidthsChanged = true;
+				break;
+			}
+		}
+	}
+	if (autoWidthsChanged) setStoredAutoColumnWidths(tableState.measuredAutoColumnWidths);
 }, "@rovy/ui/tableWidget");
 
 /** @widget */

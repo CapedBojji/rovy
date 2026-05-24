@@ -36,7 +36,7 @@ export const clickableLabel = widget((text: string, options: ClickableLabelOptio
 			BackgroundTransparency: 1,
 			BorderSizePixel: 0,
 			Font: Enum.Font.Code,
-			TextColor3: options.color ?? style.buttonColor,
+			TextColor3: options.color ?? style.accentColor,
 			TextSize: options.textSize ?? style.textSize,
 			TextXAlignment: Enum.TextXAlignment.Left,
 			Size: udim2(1, 0, 0, style.itemHeight),
@@ -55,7 +55,7 @@ export const clickableLabel = widget((text: string, options: ClickableLabelOptio
 	}) as { btn: TextButton };
 
 	const style = useStyle();
-	const baseColor = options.color ?? style.buttonColor;
+	const baseColor = options.color ?? style.accentColor;
 	let displayText = text;
 
 	if (hovered) {

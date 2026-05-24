@@ -1,8 +1,9 @@
 import { widget, __scope, __useInstance, __useState, provideContext } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
-import { c, udim, udim2, v2 } from "../primitives";
+import { udim, udim2 } from "../primitives";
 import * as contexts from "../contexts";
+import { makeCornerPerSide } from "./shared";
 
 export interface ChildWindowOptions {
 	title?: string;
@@ -62,7 +63,7 @@ export const childWindow = widget((options: string | ChildWindowOptions, fn: () 
 			}),
 			1: create("TextButton", {
 				[rawRef as never]: "headerBar",
-				BackgroundColor3: style.titleBgActiveColor,
+				BackgroundColor3: style.titleBgColor,
 				BackgroundTransparency: 0,
 				BorderSizePixel: 0,
 				Size: udim2(1, 0, 0, titleBarHeight),
@@ -70,7 +71,12 @@ export const childWindow = widget((options: string | ChildWindowOptions, fn: () 
 				Active: true,
 				AutoButtonColor: false,
 				LayoutOrder: 1,
-				0: create("UICorner", { CornerRadius: udim(0, 0) }),
+				0: makeCornerPerSide({
+					tl: style.cornerRadius,
+					tr: style.cornerRadius,
+					bl: 0,
+					br: 0,
+				}),
 				1: create("UIListLayout", {
 					FillDirection: Enum.FillDirection.Horizontal,
 					VerticalAlignment: Enum.VerticalAlignment.Center,
@@ -84,8 +90,8 @@ export const childWindow = widget((options: string | ChildWindowOptions, fn: () 
 				3: create("TextLabel", {
 					[rawRef as never]: "title",
 					BackgroundTransparency: 1,
-					Font: Enum.Font.GothamBold,
-					TextColor3: style.textColor,
+					Font: Enum.Font.Code,
+					TextColor3: style.strongTextColor,
 					TextSize: style.textSize,
 					TextXAlignment: Enum.TextXAlignment.Left,
 					TextYAlignment: Enum.TextYAlignment.Center,
@@ -96,18 +102,18 @@ export const childWindow = widget((options: string | ChildWindowOptions, fn: () 
 				4: create("TextButton", {
 					[rawRef as never]: "minimize",
 					BackgroundTransparency: 1,
-					Font: Enum.Font.GothamBold,
-					TextColor3: c(200, 200, 200),
+					Font: Enum.Font.Code,
+					TextColor3: style.weakTextColor,
 					TextSize: style.textSize + 2,
 					Size: udim2(0, 16, 0, 16),
 					Text: "−",
 					LayoutOrder: 2,
 					Visible: false,
 					MouseEnter: () => {
-						ref.minimize.TextColor3 = c(255, 255, 255);
+						ref.minimize.TextColor3 = style.strongTextColor;
 					},
 					MouseLeave: () => {
-						ref.minimize.TextColor3 = c(200, 200, 200);
+						ref.minimize.TextColor3 = style.weakTextColor;
 					},
 					Activated: () => {
 						setMinimized((prev) => !prev);
@@ -122,8 +128,8 @@ export const childWindow = widget((options: string | ChildWindowOptions, fn: () 
 			}),
 			2: create("ScrollingFrame", {
 				[rawRef as never]: "container",
-				BackgroundColor3: style.windowBgColor,
-				BackgroundTransparency: style.windowBgTransparency,
+				BackgroundColor3: style.panelBgColor,
+				BackgroundTransparency: 0,
 				BorderSizePixel: 0,
 				ScrollBarThickness: style.scrollbarSize,
 				ScrollBarImageColor3: style.scrollbarGrabColor,
@@ -142,6 +148,12 @@ export const childWindow = widget((options: string | ChildWindowOptions, fn: () 
 					PaddingRight: udim(0, padX),
 					PaddingTop: udim(0, padY),
 					PaddingBottom: udim(0, padY),
+				}),
+				2: makeCornerPerSide({
+					tl: 0,
+					tr: 0,
+					bl: style.cornerRadius,
+					br: style.cornerRadius,
 				}),
 			}),
 		});

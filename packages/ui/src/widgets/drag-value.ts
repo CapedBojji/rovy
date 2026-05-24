@@ -97,20 +97,20 @@ export const dragValue = widget((options: DragValueOptions = {}): number => {
 			Size: udim2(1, 0, 0, style.itemHeight),
 			0: create("TextButton", {
 				[rawRef as never]: "btn",
-				BackgroundColor3: style.frameBgColor,
-				BackgroundTransparency: style.frameBgTransparency,
+				BackgroundColor3: style.widgetInactiveBgColor,
+				BackgroundTransparency: 0,
 				BorderSizePixel: 0,
 				Font: Enum.Font.Code,
 				TextColor3: style.textColor,
 				TextSize: style.textSize,
 				Size: udim2(1, 0, 1, 0),
 				AutoButtonColor: false,
-				0: create("UICorner", { CornerRadius: udim(0, 2) }),
+				0: create("UICorner", { CornerRadius: udim(0, style.cornerRadius) }),
 				1: create("UIStroke", {
 					[rawRef as never]: "stroke",
-					Color: style.borderColor,
-					Transparency: style.borderTransparency,
-					Thickness: 1,
+					Color: style.strokeInactiveColor,
+					Transparency: style.strokeInactiveTransparency,
+					Thickness: style.strokeThickness, ApplyStrokeMode: Enum.ApplyStrokeMode.Border,
 				}),
 				MouseEnter: () => {
 					setHovered(true);
@@ -165,23 +165,23 @@ export const dragValue = widget((options: DragValueOptions = {}): number => {
 			}),
 			1: create("TextBox", {
 				[rawRef as never]: "textBox",
-				BackgroundColor3: style.frameBgColor,
-				BackgroundTransparency: style.frameBgTransparency,
+				BackgroundColor3: style.extremeBgColor,
+				BackgroundTransparency: 0,
 				BorderSizePixel: 0,
 				ClearTextOnFocus: false,
 				Font: Enum.Font.Code,
-				TextColor3: style.textColor,
+				TextColor3: style.strongTextColor,
 				TextSize: style.textSize,
 				TextXAlignment: Enum.TextXAlignment.Left,
 				TextYAlignment: Enum.TextYAlignment.Center,
 				Size: udim2(1, 0, 1, 0),
 				Visible: false,
-				0: create("UICorner", { CornerRadius: udim(0, 2) }),
+				0: create("UICorner", { CornerRadius: udim(0, style.cornerRadius) }),
 				1: create("UIStroke", {
 					[rawRef as never]: "textStroke",
-					Color: style.sliderGrabColor,
+					Color: style.accentColor,
 					Transparency: 0,
-					Thickness: 1,
+					Thickness: style.strokeThickness, ApplyStrokeMode: Enum.ApplyStrokeMode.Border,
 				}),
 				2: create("UIPadding", {
 					PaddingLeft: udim(0, 4),
@@ -223,21 +223,27 @@ export const dragValue = widget((options: DragValueOptions = {}): number => {
 	refs.isEditing = editing;
 
 	if (dragging) {
-		refs.btn.BackgroundColor3 = style.frameBgHoveredColor;
-		refs.btn.BackgroundTransparency = style.frameBgHoveredTransparency;
+		refs.btn.BackgroundColor3 = style.widgetActiveBgColor;
+		refs.btn.BackgroundTransparency = 0;
+		refs.stroke.Color = style.strokeActiveColor;
+		refs.stroke.Transparency = style.strokeActiveTransparency;
 	} else if (hovered) {
-		refs.btn.BackgroundColor3 = style.frameBgHoveredColor;
-		refs.btn.BackgroundTransparency = style.frameBgHoveredTransparency * 1.5;
+		refs.btn.BackgroundColor3 = style.widgetHoveredBgColor;
+		refs.btn.BackgroundTransparency = 0;
+		refs.stroke.Color = style.strokeHoveredColor;
+		refs.stroke.Transparency = style.strokeHoveredTransparency;
 	} else {
-		refs.btn.BackgroundColor3 = style.frameBgColor;
-		refs.btn.BackgroundTransparency = style.frameBgTransparency;
+		refs.btn.BackgroundColor3 = style.widgetInactiveBgColor;
+		refs.btn.BackgroundTransparency = 0;
+		refs.stroke.Color = style.strokeInactiveColor;
+		refs.stroke.Transparency = style.strokeInactiveTransparency;
 	}
 
-	refs.textBox.BackgroundColor3 = style.frameBgColor;
-	refs.textBox.BackgroundTransparency = style.frameBgTransparency;
-	refs.textBox.TextColor3 = style.textColor;
+	refs.textBox.BackgroundColor3 = style.extremeBgColor;
+	refs.textBox.BackgroundTransparency = 0;
+	refs.textBox.TextColor3 = style.strongTextColor;
 	refs.textBox.TextSize = style.textSize;
-	refs.textStroke.Color = style.sliderGrabColor;
+	refs.textStroke.Color = style.accentColor;
 	refs.textStroke.Transparency = 0;
 
 	if (options.label !== undefined) {

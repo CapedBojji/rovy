@@ -1,5 +1,6 @@
 import { widget, __useState } from "../runtime";
 import { c, v2 } from "../primitives";
+import { darkStyle, lightStyle, setStyle } from "../style";
 import { window } from "./window";
 import { button } from "./button";
 import { checkbox } from "./checkbox";
@@ -32,6 +33,7 @@ interface DemoEntryOptions {
 /** @widget */
 export const demoWindow = widget((): void => {
 	const [activeTab, setActiveTab] = __useState("demo:activeTab", "Gallery");
+	const [themeMode, setThemeMode] = __useState<"dark" | "light">("demo:themeMode", "dark");
 
 	const [clickCount, setClickCount] = __useState("demo:clickCount", 0);
 	const [cb1, setCb1] = __useState("demo:cb1", false);
@@ -115,6 +117,8 @@ export const demoWindow = widget((): void => {
 		);
 	};
 
+	setStyle(themeMode === "dark" ? darkStyle : lightStyle);
+
 	window(
 		{
 			title: "Widget Gallery",
@@ -134,6 +138,13 @@ export const demoWindow = widget((): void => {
 					const captured = tabName;
 					if (selectableLabel(tabName, { selected: activeTab === tabName }).clicked()) {
 						setActiveTab(captured);
+					}
+				}
+				label("  Theme:");
+				for (const mode of ["dark", "light"] as const) {
+					const captured = mode;
+					if (selectableLabel(mode, { selected: themeMode === mode }).clicked()) {
+						setThemeMode(captured);
 					}
 				}
 			});
@@ -733,10 +744,9 @@ export const demoWindow = widget((): void => {
 						borders: tableBorders,
 						stripeRows: tableStripeRows,
 						stripeColumns: tableStripeColumns,
-						rowHeight: 40,
 						columns: tableUseWideName
-							? [{ width: 150 }, { fill: true }, { width: 100 }]
-							: [{ width: 110 }, { fill: true }, { width: 100 }],
+							? [{ width: 150 }, { fill: true }, { auto: true }]
+							: [{ width: 110 }, { fill: true }, { auto: true }],
 					},
 					() => {
 						tableRow(() => {
