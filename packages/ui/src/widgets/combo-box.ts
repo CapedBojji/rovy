@@ -3,6 +3,7 @@ import { useStyle } from "../style";
 import { create } from "../create";
 import { udim, udim2, v2 } from "../primitives";
 import { WINDOW_ATTRIBUTE } from "../windowConstants";
+import { makeCorner, makeShadow, makeStroke } from "./shared";
 
 export interface ComboBoxOptions {
 	items: string[];
@@ -95,13 +96,12 @@ export const comboBox = widget((options: ComboBoxOptions): ComboBoxHandle => {
 			TextXAlignment: Enum.TextXAlignment.Left,
 			Size: udim2(1, 0, 0, style.itemHeight),
 			AutoButtonColor: false,
-			0: create("UICorner", { CornerRadius: udim(0, style.cornerRadius) }),
-			1: create("UIStroke", {
-				[rawRef as never]: "stroke",
-				Color: style.strokeInactiveColor,
-				Transparency: style.strokeInactiveTransparency,
-				Thickness: style.strokeThickness, ApplyStrokeMode: Enum.ApplyStrokeMode.Border,
-			}),
+			0: makeCorner(style.cornerRadius),
+			1: (() => {
+				const stroke = makeStroke(style);
+				(rawRef as unknown as Record<string, unknown>).stroke = stroke;
+				return stroke;
+			})(),
 			2: create("UIPadding", {
 				PaddingLeft: udim(0, 6),
 				PaddingRight: udim(0, 6),
@@ -152,28 +152,10 @@ export const comboBox = widget((options: ComboBoxOptions): ComboBoxHandle => {
 		dropdown.Visible = false;
 		dropdown.Parent = rootGui;
 
-		const corner = new Instance("UICorner");
-		corner.CornerRadius = udim(0, style.menuCornerRadius);
-		corner.Parent = dropdown;
-
-		const stroke = new Instance("UIStroke");
-		stroke.Color = style.borderColor;
-		stroke.Transparency = style.borderTransparency;
-		stroke.Thickness = style.strokeThickness;
-		stroke.Parent = dropdown;
-
-		if (style.shadowEnabled) {
-			const [ok, shadow] = pcall(() => new Instance("UIShadow" as keyof CreatableInstances) as UIShadow);
-			if (ok) {
-				shadow.Color = style.shadowColor;
-				shadow.BlurRadius = udim(0, math.max(6, math.floor(style.shadowBlurRadius / 2)));
-				shadow.Offset = udim2(0, style.shadowOffset.X, 0, style.shadowOffset.Y);
-				shadow.Transparency = style.shadowTransparency;
-				shadow.Spread = udim2(0, 0, 0, 0);
-				shadow.ZIndex = -1;
-				shadow.Parent = dropdown;
-			}
-		}
+		makeCorner(style.menuCornerRadius).Parent = dropdown;
+		makeStroke(style).Parent = dropdown;
+		const shadow = makeShadow(style);
+		if (shadow !== undefined) shadow.Parent = dropdown;
 
 		const list = new Instance("UIListLayout");
 		list.SortOrder = Enum.SortOrder.LayoutOrder;

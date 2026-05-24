@@ -2,6 +2,7 @@ import { widget, __scope, __useInstance, __useState, __useEffect, useRootInstanc
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim, udim2, v2 } from "../primitives";
+import { makeCorner, makeShadow, makeStroke } from "./shared";
 
 export interface ModalOptions {
 	title?: string;
@@ -66,33 +67,10 @@ export const modal = widget((options: string | ModalOptions, fn: () => void): Mo
 		dialog.ZIndex = 301;
 		dialog.Parent = overlay;
 
-		const corner = new Instance("UICorner");
-		corner.CornerRadius = udim(0, style.windowCornerRadius);
-		const cornerProps = corner as unknown as Record<string, UDim>;
-		cornerProps.TopLeftRadius = udim(0, style.windowCornerRadius);
-		cornerProps.TopRightRadius = udim(0, style.windowCornerRadius);
-		cornerProps.BottomLeftRadius = udim(0, style.windowCornerRadius);
-		cornerProps.BottomRightRadius = udim(0, style.windowCornerRadius);
-		corner.Parent = dialog;
-
-		const stroke = new Instance("UIStroke");
-		stroke.Color = style.borderColor;
-		stroke.Transparency = style.borderTransparency;
-		stroke.Thickness = style.strokeThickness;
-		stroke.Parent = dialog;
-
-		if (style.shadowEnabled) {
-			const [ok, shadow] = pcall(() => new Instance("UIShadow" as keyof CreatableInstances) as UIShadow);
-			if (ok) {
-				shadow.Color = style.shadowColor;
-				shadow.BlurRadius = udim(0, math.max(style.shadowBlurRadius, 24));
-				shadow.Offset = udim2(0, style.shadowOffset.X, 0, style.shadowOffset.Y + 4);
-				shadow.Transparency = style.shadowTransparency;
-				shadow.Spread = udim2(0, 0, 0, 0);
-				shadow.ZIndex = -1;
-				shadow.Parent = dialog;
-			}
-		}
+		makeCorner(style.windowCornerRadius).Parent = dialog;
+		makeStroke(style).Parent = dialog;
+		const shadow = makeShadow(style);
+		if (shadow !== undefined) shadow.Parent = dialog;
 
 		const titleBar = new Instance("Frame");
 		titleBar.Name = "TitleBar";

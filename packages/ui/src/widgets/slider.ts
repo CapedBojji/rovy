@@ -30,6 +30,7 @@ interface SliderRefs {
 	currentPercent?: number;
 	rangeMin?: number;
 	rangeMax?: number;
+	isEditing?: boolean;
 	didDrag?: boolean;
 	skipCommit?: boolean;
 }
@@ -255,12 +256,15 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 						setEditing(false);
 						return;
 					}
-					if (enterPressed || editing) {
+					if (enterPressed || ref.isEditing === true) {
 						const cleaned = ref.valueBox.Text.gsub(`[^%-%.%d]`, "")[0] as string;
 						const parsed = tonumber(cleaned);
 						if (parsed !== undefined) {
-							const clamped = math.clamp(parsed, min, max);
-							setPercentageValue((clamped - min) / (max - min));
+							const rangeMin = ref.rangeMin ?? 0;
+							const rangeMax = ref.rangeMax ?? 1;
+							const range = rangeMax - rangeMin;
+							const clamped = math.clamp(parsed, rangeMin, rangeMax);
+							setPercentageValue(range > 0 ? (clamped - rangeMin) / range : 0);
 						}
 					}
 					setEditing(false);
@@ -285,6 +289,7 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 	refs.currentPercent = percentageValue;
 	refs.rangeMin = min;
 	refs.rangeMax = max;
+	refs.isEditing = editing;
 
 	refs.grab.Position = udim2(percentageValue, 0, 0.5, 0);
 	refs.fill.Size = udim2(percentageValue, 0, 1, 0);

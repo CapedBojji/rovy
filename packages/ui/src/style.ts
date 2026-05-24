@@ -152,7 +152,7 @@ export const darkStyle: Style = {
 
 	strokeThickness: 1,
 	strokeInactiveColor: c(60, 60, 60),
-	strokeInactiveTransparency: 1,
+	strokeInactiveTransparency: 0,
 	strokeHoveredColor: c(150, 150, 150),
 	strokeHoveredTransparency: 0,
 	strokeActiveColor: c(255, 255, 255),
@@ -244,7 +244,7 @@ export const lightStyle: Style = {
 
 	strokeThickness: 1,
 	strokeInactiveColor: c(190, 190, 190),
-	strokeInactiveTransparency: 1,
+	strokeInactiveTransparency: 0,
 	strokeHoveredColor: c(105, 105, 105),
 	strokeHoveredTransparency: 0,
 	strokeActiveColor: c(0, 0, 0),

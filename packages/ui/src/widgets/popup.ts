@@ -2,6 +2,7 @@ import { widget, __scope, __useInstance, __useEffect, useRootInstance } from "..
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim, udim2 } from "../primitives";
+import { makeCorner, makeShadow, makeStroke } from "./shared";
 
 export interface PopupOptions {
 	open?: boolean;
@@ -48,28 +49,10 @@ export const popup = widget((options: PopupOptions, fn: () => void): void => {
 		panel.Visible = false;
 		panel.Parent = rootGui;
 
-		const corner = new Instance("UICorner");
-		corner.CornerRadius = udim(0, style.menuCornerRadius);
-		corner.Parent = panel;
-
-		const stroke = new Instance("UIStroke");
-		stroke.Color = style.borderColor;
-		stroke.Transparency = style.borderTransparency;
-		stroke.Thickness = style.strokeThickness;
-		stroke.Parent = panel;
-
-		if (style.shadowEnabled) {
-			const [ok, shadow] = pcall(() => new Instance("UIShadow" as keyof CreatableInstances) as UIShadow);
-			if (ok) {
-				shadow.Color = style.shadowColor;
-				shadow.BlurRadius = udim(0, math.max(6, math.floor(style.shadowBlurRadius / 2)));
-				shadow.Offset = udim2(0, style.shadowOffset.X, 0, style.shadowOffset.Y);
-				shadow.Transparency = style.shadowTransparency;
-				shadow.Spread = udim2(0, 0, 0, 0);
-				shadow.ZIndex = -1;
-				shadow.Parent = panel;
-			}
-		}
+		makeCorner(style.menuCornerRadius).Parent = panel;
+		makeStroke(style).Parent = panel;
+		const shadow = makeShadow(style);
+		if (shadow !== undefined) shadow.Parent = panel;
 
 		const content = new Instance("Frame");
 		content.Name = "PopupContent";
