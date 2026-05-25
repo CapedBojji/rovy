@@ -45,16 +45,17 @@ export class TransformState {
 
 	private readonly coreImportCache = new Map<string, CoreImports>();
 	private readonly networkingImportCache = new Map<string, CoreImports>();
+	private readonly datastoreImportCache = new Map<string, CoreImports>();
 	private readonly uiImportCache = new Map<string, CoreImports>();
 	private readonly pendingRovyImports = new Map<string, ts.Identifier>();
 	private readonly pendingRovyNetImports = new Map<string, ts.Identifier>();
+	private readonly pendingRovyDataImports = new Map<string, ts.Identifier>();
 	private readonly pendingRovyUiImports = new Map<string, ts.Identifier>();
 	private readonly pendingTImports = new Map<string, ts.Identifier>();
 	private readonly pendingPluginImports = new Map<string, Map<string, ts.Identifier>>();
 	private readonly widgetCallsiteCounters = new Map<string, number>();
 	private uiWidgetExportNames?: Set<string>;
 	private readonly rojoResolver?: RojoResolver;
-	private netArtifactsGenerated = false;
 
 	constructor(
 		readonly program: Partial<ts.Program>,
@@ -80,6 +81,10 @@ export class TransformState {
 
 	getNetworkingImports(file: ts.SourceFile): CoreImports {
 		return this.getImportsForModule(file, "@rovy/networking", this.networkingImportCache);
+	}
+
+	getDatastoreImports(file: ts.SourceFile): CoreImports {
+		return this.getImportsForModule(file, "@rovy/datastore", this.datastoreImportCache);
 	}
 
 	getUiImports(file: ts.SourceFile): CoreImports {
@@ -127,6 +132,15 @@ export class TransformState {
 
 	resolveNetworkingName(file: ts.SourceFile, expression: ts.Expression): string | undefined {
 		const imports = this.getNetworkingImports(file);
+		if (ts.isIdentifier(expression)) return imports.named.get(expression.text);
+		if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression)) {
+			if (imports.namespaces.has(expression.expression.text)) return expression.name.text;
+		}
+		return undefined;
+	}
+
+	resolveDatastoreName(file: ts.SourceFile, expression: ts.Expression): string | undefined {
+		const imports = this.getDatastoreImports(file);
 		if (ts.isIdentifier(expression)) return imports.named.get(expression.text);
 		if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression)) {
 			if (imports.namespaces.has(expression.expression.text)) return expression.name.text;
@@ -229,6 +243,19 @@ export class TransformState {
 		return identifier;
 	}
 
+	addRovyDataImport(file: ts.SourceFile): ts.Identifier {
+		for (const [local, exported] of this.getDatastoreImports(file).named) {
+			if (exported === "rovyData") return ts.factory.createIdentifier(local);
+		}
+
+		let identifier = this.pendingRovyDataImports.get(file.fileName);
+		if (!identifier) {
+			identifier = ts.factory.createUniqueName("__rovyData", ts.GeneratedIdentifierFlags.Optimistic);
+			this.pendingRovyDataImports.set(file.fileName, identifier);
+		}
+		return identifier;
+	}
+
 	addRovyUiImport(file: ts.SourceFile): ts.Identifier {
 		const existingDefault = this.getUiImports(file).defaultName;
 		if (existingDefault !== undefined) return ts.factory.createIdentifier(existingDefault);
@@ -267,11 +294,13 @@ export class TransformState {
 	withPendingImports(file: ts.SourceFile, statements: ReadonlyArray<ts.Statement>): ts.Statement[] {
 		const rovyImport = this.pendingRovyImports.get(file.fileName);
 		const rovyNetImport = this.pendingRovyNetImports.get(file.fileName);
+		const rovyDataImport = this.pendingRovyDataImports.get(file.fileName);
 		const rovyUiImport = this.pendingRovyUiImports.get(file.fileName);
 		const tImport = this.pendingTImports.get(file.fileName);
 		const imports: ts.Statement[] = [];
 		if (rovyImport) imports.push(importNamed("@rovy/core", "rovy", rovyImport.text));
 		if (rovyNetImport) imports.push(importNamed("@rovy/networking", "rovyNet", rovyNetImport.text));
+		if (rovyDataImport) imports.push(importNamed("@rovy/datastore", "rovyData", rovyDataImport.text));
 		if (rovyUiImport) imports.push(importDefault("@rovy/ui", rovyUiImport.text));
 		if (tImport) imports.push(importDefault("@rbxts/t", tImport.text));
 		const pluginImports = this.pendingPluginImports.get(file.fileName);
@@ -392,14 +421,6 @@ export class TransformState {
 
 	shouldGenerateNetArtifacts(): boolean {
 		return this.classInfoHasDecorator("netEvent");
-	}
-
-	hasGeneratedNetArtifacts(): boolean {
-		return this.netArtifactsGenerated;
-	}
-
-	markNetArtifactsGenerated(): void {
-		this.netArtifactsGenerated = true;
 	}
 
 	classInfoHasDecorator(decorator: string): boolean {
@@ -645,7 +666,7 @@ export class TransformState {
 export function decoratorName(state: TransformState, file: ts.SourceFile, decorator: ts.Decorator): string | undefined {
 	const expression = decorator.expression;
 	const target = ts.isCallExpression(expression) ? expression.expression : expression;
-	return state.resolveCoreName(file, target) ?? state.resolveNetworkingName(file, target) ?? state.resolveUiName(file, target);
+	return state.resolveCoreName(file, target) ?? state.resolveNetworkingName(file, target) ?? state.resolveDatastoreName(file, target) ?? state.resolveUiName(file, target);
 }
 
 export function normalizePath(value: string): string {

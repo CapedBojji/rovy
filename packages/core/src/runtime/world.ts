@@ -29,7 +29,7 @@ import {
 	Remove,
 	Wildcard,
 } from "../types";
-import type { ComponentInspection, Entity, RefCleanupOptions, World } from "../types";
+import type { ComponentInspection, Entity, RefCleanupOptions, RefOptions, World } from "../types";
 import { EntityRefStore } from "./ref";
 
 /** Sentinel entity that holds every resource singleton as a jecs component. */
@@ -260,12 +260,12 @@ export class RovyWorld implements World {
 		return this.jecs.get(entity, this.idOf(component)) as T | undefined;
 	}
 
-	ref(key: unknown): Entity {
+	ref(key: unknown, options?: RefOptions): Entity {
 		return this.refs.ensure(key, () => {
 			const entity = this.jecs.entity();
 			this.trackedEntities.add(entity);
 			return entity;
-		});
+		}, options);
 	}
 
 	getRef(key: unknown): Entity | undefined {

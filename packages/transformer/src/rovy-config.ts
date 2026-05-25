@@ -49,6 +49,34 @@ export interface RovyConfigFile {
 	readonly environments?: Record<string, RovyEnvironmentConfig>;
 }
 
+export interface RovyBuildScriptNames {
+	readonly compile?: string;
+	readonly generate?: string;
+	readonly build?: string;
+	readonly open?: string;
+	readonly watch?: string;
+	readonly start?: string;
+	readonly stop?: string;
+}
+
+export interface RovyBuildConfigFile extends RovyConfigFile {
+	readonly placeFile?: string;
+	readonly rbxtscArgs?: ReadonlyArray<string>;
+	readonly rojoBuildArgs?: ReadonlyArray<string>;
+	readonly watchOnOpen?: boolean;
+	readonly generateBlink?: boolean;
+	readonly names?: RovyBuildScriptNames;
+}
+
+export interface ResolvedRovyBuildConfig {
+	readonly path?: string;
+	readonly source: "package" | "rovy" | "legacy";
+	readonly rootDirectory: string;
+	readonly environmentName?: string;
+	readonly environment: RovyEnvironmentConfig;
+	readonly build: RovyBuildConfigFile;
+}
+
 export interface ResolvedRovyConfig {
 	readonly path?: string;
 	readonly rootDirectory: string;
@@ -64,7 +92,33 @@ export function loadRovyConfig(
 		readonly exists?: (path: string) => boolean;
 	} = { absolute: (value) => value },
 ): ResolvedRovyConfig | undefined {
+	const resolved = loadRovyBuildConfig(currentDirectory, config, helpers);
+	if (resolved === undefined) return undefined;
+	return {
+		path: resolved.path,
+		rootDirectory: resolved.rootDirectory,
+		environmentName: resolved.environmentName,
+		environment: resolved.environment,
+	};
+}
+
+export function loadRovyBuildConfig(
+	currentDirectory: string,
+	config: TransformerConfigInput,
+	helpers: {
+		readonly absolute: (value: string) => string;
+		readonly exists?: (path: string) => boolean;
+	} = { absolute: (value) => value },
+): ResolvedRovyBuildConfig | undefined {
 	const exists = helpers.exists ?? ((path: string) => fs.existsSync(path));
+	const packagePath = helpers.absolute("package.json");
+	if (exists(packagePath)) {
+		const packageConfig = readPackageRovyBuildConfig(packagePath);
+		if (packageConfig !== undefined) {
+			return resolveBuildConfig(currentDirectory, packagePath, "package", packageConfig);
+		}
+	}
+
 	const configPathValue =
 		typeof config.config === "string"
 			? config.config
@@ -75,18 +129,7 @@ export function loadRovyConfig(
 	if (configPathValue) {
 		const path = helpers.absolute(configPathValue);
 		const raw = JSON.parse(fs.readFileSync(path, "utf8")) as RovyConfigFile;
-		const environments = raw.environments ?? {};
-		const envName =
-			(typeof process !== "undefined" ? process.env.ROVY_ENV : undefined) ??
-			raw.current ??
-			Object.keys(environments)[0];
-		const environment = (envName ? environments[envName] : undefined) ?? {};
-		return {
-			path,
-			rootDirectory: currentDirectory,
-			environmentName: envName,
-			environment,
-		};
+		return resolveBuildConfig(currentDirectory, path, "rovy", raw);
 	}
 
 	const legacyEnvironment: MutableRovyEnvironmentConfig = {};
@@ -145,9 +188,37 @@ export function loadRovyConfig(
 				: undefined,
 		};
 	}
+	return resolveBuildConfig(currentDirectory, undefined, "legacy", {
+		environments: {
+			default: legacyEnvironment,
+		},
+	});
+}
+
+function readPackageRovyBuildConfig(packagePath: string): RovyBuildConfigFile | undefined {
+	const raw = JSON.parse(fs.readFileSync(packagePath, "utf8")) as { readonly ["rovy-build"]?: unknown };
+	return isRecord(raw["rovy-build"]) ? (raw["rovy-build"] as unknown as RovyBuildConfigFile) : undefined;
+}
+
+function resolveBuildConfig(
+	currentDirectory: string,
+	path: string | undefined,
+	source: "package" | "rovy" | "legacy",
+	build: RovyBuildConfigFile,
+): ResolvedRovyBuildConfig {
+	const environments = build.environments ?? {};
+	const envName =
+		(typeof process !== "undefined" ? process.env.ROVY_ENV : undefined) ??
+		build.current ??
+		Object.keys(environments)[0];
+	const environment = (envName ? environments[envName] : undefined) ?? {};
 	return {
+		path,
+		source,
 		rootDirectory: currentDirectory,
-		environment: legacyEnvironment,
+		environmentName: envName,
+		environment,
+		build,
 	};
 }
 

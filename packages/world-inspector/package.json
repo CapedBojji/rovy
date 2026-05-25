@@ -17,15 +17,18 @@
   "publishConfig": {
     "access": "public"
   },
-  "dependencies": {
-    "@rovy/core": "workspace:*",
-    "@rovy/networking": "workspace:*",
-    "@rovy/ui": "workspace:*",
-    "typescript": "^5.9.3"
+  "peerDependencies": {
+    "@rovy/core": "0.0.0",
+    "@rovy/networking": "0.0.0",
+    "@rovy/ui": "0.0.0"
   },
   "devDependencies": {
     "@rbxts/compiler-types": "3.0.0-types.0",
     "@rbxts/types": "^1.0.920",
+    "@rovy/core": "workspace:*",
+    "@rovy/networking": "workspace:*",
+    "@rovy/ui": "workspace:*",
+    "typescript": "^5.9.3",
     "roblox-ts": "^3.0.0"
   }
 }

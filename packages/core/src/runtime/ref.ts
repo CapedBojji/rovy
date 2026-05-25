@@ -1,5 +1,5 @@
 import { Janitor } from "@rbxts/better-janitor";
-import type { Entity, RefCleanupOptions } from "../types";
+import type { Entity, RefCleanupOptions, RefOptions } from "../types";
 
 type JanitorInstance = InstanceType<typeof Janitor>;
 
@@ -9,7 +9,7 @@ interface RefEntry {
 	readonly janitor: JanitorInstance;
 }
 
-function bindKeyCleanup(janitor: JanitorInstance, key: unknown): void {
+function bindKeyCleanup(janitor: JanitorInstance, key: unknown, options?: RefOptions): void {
 	if (typeIs(key, "Instance")) {
 		janitor.addInstance(key);
 		return;
@@ -17,12 +17,20 @@ function bindKeyCleanup(janitor: JanitorInstance, key: unknown): void {
 	if (!typeIs(key, "table")) return;
 
 	const maybe = key as {
+		[key: string]: Callback | undefined;
 		destroy?: Callback;
 		Destroy?: Callback;
 		disconnect?: Callback;
 		Disconnect?: Callback;
 		cancel?: Callback;
 	};
+	const destroyMethod = options?.destroyMethod;
+	if (destroyMethod !== undefined) {
+		if (typeIs(maybe[destroyMethod], "function")) {
+			janitor.add(maybe, destroyMethod);
+		}
+		return;
+	}
 	if (typeIs(maybe.destroy, "function")) {
 		janitor.addSelf(maybe as { destroy: (self: unknown, ...args: Array<unknown>) => unknown });
 	} else if (typeIs(maybe.Destroy, "function")) {
@@ -40,13 +48,13 @@ export class EntityRefStore {
 	private readonly entryByKey = new Map<unknown, RefEntry>();
 	private readonly entryByEntity = new Map<Entity, RefEntry>();
 
-	ensure(key: unknown, create: () => Entity): Entity {
+	ensure(key: unknown, create: () => Entity, options?: RefOptions): Entity {
 		const existing = this.entryByKey.get(key);
 		if (existing !== undefined) return existing.entity;
 
 		const entity = create();
 		const janitor = new Janitor();
-		bindKeyCleanup(janitor, key);
+		bindKeyCleanup(janitor, key, options);
 		const entry: RefEntry = { key, entity, janitor };
 		this.entryByKey.set(key, entry);
 		this.entryByEntity.set(entity, entry);

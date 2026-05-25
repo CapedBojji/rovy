@@ -102,6 +102,12 @@ function compileFixture(source, options = {}) {
 	if (options.rovyConfig) {
 		fs.writeFileSync(path.join(temp, ".rovy.json"), JSON.stringify(options.rovyConfig, null, 2));
 	}
+	if (options.packageRovyBuild) {
+		fs.writeFileSync(
+			path.join(temp, "package.json"),
+			JSON.stringify({ name: "fixture", "rovy-build": options.packageRovyBuild }, null, 2),
+		);
+	}
 
 	const program = createProgram(rootNames, src, temp);
 	const transformer = factory(

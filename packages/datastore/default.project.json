@@ -1,0 +1,9 @@
+{
+  "name": "datastore",
+  "tree": {
+    "$className": "Folder",
+    "out": {
+      "$path": "out"
+    }
+  }
+}

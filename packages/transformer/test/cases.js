@@ -49,16 +49,25 @@ import {
 	trait,
 	plugin,
 } from "@rovy/core";
-import {
-	NetClient,
-	NetEventContext,
-	NetId,
+	import {
+		NetClient,
+		NetEventContext,
+		NetId,
 	NetServer,
 	netEvent,
-	rovyNet,
-} from "@rovy/networking";
-import RovyUi, { Style, StyleScope, button, scope, useEffect, useInstance, useState } from "@rovy/ui";
-`;
+		rovyNet,
+	} from "@rovy/networking";
+	import {
+		DocumentChanged,
+		DocumentOpened,
+		DocumentOpener,
+		DocumentReader,
+		DocumentWriter,
+		playerDocument,
+		rovyData,
+	} from "@rovy/datastore";
+	import RovyUi, { Style, StyleScope, button, scope, useEffect, useInstance, useState } from "@rovy/ui";
+	`;
 
 runCase("bare decorators inject registry calls", () => {
 	const result = compileFixture(`
@@ -142,6 +151,38 @@ ${header}
 	assert.match(result.printed, /from "@rbxts\/t"/);
 	assert.match(result.printed, /validator: .*\.string/);
 	assert.match(result.printed, /constructorValidator: .*\.tuple\(.*\.string\)/);
+});
+
+runCase("package rovy-build config takes precedence over .rovy.json", () => {
+	const result = compileFixture(
+		`
+${header}
+@component class Named {
+	constructor(public name: string) {}
+}
+`,
+		{
+			rovyConfig: {
+				current: "dev",
+				environments: {
+					dev: {
+						debug: false,
+					},
+				},
+			},
+			packageRovyBuild: {
+				current: "dev",
+				environments: {
+					dev: {
+						debug: true,
+					},
+				},
+			},
+		},
+	);
+	assertNoDiagnostics(result, "package rovy-build config");
+	assert.match(result.printed, /from "@rbxts\/t"/);
+	assert.match(result.printed, /validator: .*\.string/);
 });
 
 runCase("tsconfig transformer runtimeTypeChecks option overrides .rovy.json", () => {
@@ -607,6 +648,76 @@ class TickSystem {
 	assert.match(result.printed, /changed: \[Health\]/);
 	assert.match(result.printed, /added: \[Health\]/);
 	assert.match(result.printed, /removed: \[Dead\]/);
+});
+
+runCase("datastore playerDocument lowers to rovyData document with generated validator", () => {
+	const result = compileFixture(`
+${header}
+type ProfileData = {
+	coins: number;
+	selectedPet?: string;
+	pets: Record<string, { level: number; xp: number }>;
+};
+export const PlayerProfile = playerDocument<ProfileData>()({
+	name: "PlayerProfile",
+	store: "PlayerData",
+	default: () => ({
+		coins: 0,
+		pets: {},
+	}),
+});
+`);
+	assertNoDiagnostics(result, "datastore document lowering");
+	assert.match(result.printed, /rovyData\.__document\(\{ id: "src\/main\/PlayerProfile", kind: "player"/);
+	assert.match(result.printed, /check: .*\.interface\(\{/);
+	assert.match(result.printed, /selectedPet: .*\.optional\(.*\.string\)/);
+	assert.match(result.printed, /pets: .*\.map\(.*\.string, .*\.interface/);
+});
+
+runCase("datastore unsupported field type fails transformer", () => {
+	const result = compileFixture(`
+${header}
+type ProfileData = {
+	createdAt: DateTime;
+};
+export const PlayerProfile = playerDocument<ProfileData>()({
+	name: "PlayerProfile",
+	store: "PlayerData",
+	default: () => ({
+		createdAt: DateTime.now(),
+	}),
+});
+`);
+	assert.match(result.diagnostics.join("\n"), /Cannot generate validator for ProfileData\.createdAt: unsupported type 'DateTime'/);
+});
+
+runCase("datastore params and event wrappers lower to external ids and generated event ctor", () => {
+	const result = compileFixture(`
+${header}
+type ProfileData = { coins: number };
+export const PlayerProfile = playerDocument<ProfileData>()({
+	name: "PlayerProfile",
+	store: "PlayerData",
+	default: () => ({ coins: 0 }),
+});
+@schedule class Update {}
+@system({ schedule: Update })
+class ProfileSystem {
+	run(
+		reader: DocumentReader<typeof PlayerProfile>,
+		writer: DocumentWriter<typeof PlayerProfile>,
+		opener: DocumentOpener<typeof PlayerProfile>,
+		opened: EventReader<DocumentOpened<typeof PlayerProfile>>,
+		changed: EventReader<DocumentChanged<typeof PlayerProfile>>,
+	) {}
+}
+`);
+	assertNoDiagnostics(result, "datastore params");
+	assert.match(result.printed, /id: "@rovy\/datastore\/reader:src\/main\/PlayerProfile"/);
+	assert.match(result.printed, /id: "@rovy\/datastore\/writer:src\/main\/PlayerProfile"/);
+	assert.match(result.printed, /id: "@rovy\/datastore\/opener:src\/main\/PlayerProfile"/);
+	assert.match(result.printed, /eventCtor\("opened", "src\/main\/PlayerProfile"\)/);
+	assert.match(result.printed, /eventCtor\("changed", "src\/main\/PlayerProfile"\)/);
 });
 
 runCase("traits and pairs lower in query descriptors and trait macro rewrites", () => {

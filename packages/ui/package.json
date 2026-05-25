@@ -17,13 +17,14 @@
   "publishConfig": {
     "access": "public"
   },
-  "dependencies": {
-    "@rovy/core": "workspace:*",
-    "typescript": "^5.9.3"
+  "peerDependencies": {
+    "@rovy/core": "0.0.0"
   },
   "devDependencies": {
     "@rbxts/compiler-types": "3.0.0-types.0",
     "@rbxts/types": "^1.0.920",
+    "@rovy/core": "workspace:*",
+    "typescript": "^5.9.3",
     "roblox-ts": "^3.0.0"
   }
 }

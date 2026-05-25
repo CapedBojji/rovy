@@ -1,0 +1,144 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://rovy.dev/schema/rovy-build.schema.json",
+	"title": "Rovy build configuration",
+	"description": "Build orchestration and environment configuration for rovy-build.",
+	"type": "object",
+	"additionalProperties": false,
+	"properties": {
+		"$schema": {
+			"type": "string",
+			"description": "Path or URL to this schema."
+		},
+		"current": {
+			"type": "string",
+			"description": "Default environment name when ROVY_ENV is not set."
+		},
+		"placeFile": {
+			"type": "string",
+			"description": "Place file output used by build/open/start."
+		},
+		"rbxtscArgs": {
+			"$ref": "#/$defs/stringArray"
+		},
+		"rojoBuildArgs": {
+			"$ref": "#/$defs/stringArray"
+		},
+		"watchOnOpen": {
+			"type": "boolean",
+			"description": "Run watch after opening the place file."
+		},
+		"generateBlink": {
+			"type": "boolean",
+			"description": "Run explicit Blink artifact generation after compile and during watch."
+		},
+		"names": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"compile": { "type": "string" },
+				"generate": { "type": "string" },
+				"build": { "type": "string" },
+				"open": { "type": "string" },
+				"watch": { "type": "string" },
+				"start": { "type": "string" },
+				"stop": { "type": "string" }
+			}
+		},
+		"environments": {
+			"type": "object",
+			"description": "Named Rovy environment configurations.",
+			"additionalProperties": {
+				"$ref": "#/$defs/environment"
+			}
+		}
+	},
+	"$defs": {
+		"environment": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"debug": {
+					"type": "boolean",
+					"description": "Enable transformer debug output."
+				},
+				"rojo": {
+					"type": "string",
+					"description": "Path to the Rojo project file."
+				},
+				"sourcemap": {
+					"type": "string",
+					"description": "Path to the generated sourcemap."
+				},
+				"boundaries": {
+					"type": "object",
+					"description": "Source path boundaries used for server/client/shared checks.",
+					"additionalProperties": false,
+					"properties": {
+						"server": {
+							"$ref": "#/$defs/stringArray"
+						},
+						"client": {
+							"$ref": "#/$defs/stringArray"
+						},
+						"shared": {
+							"$ref": "#/$defs/stringArray"
+						}
+					}
+				},
+				"editor": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"runtimeTypeChecks": {
+							"type": "boolean",
+							"description": "Emit editor/runtime type-check metadata."
+						}
+					}
+				},
+				"net": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"strictBoundaryChecks": {
+							"type": "boolean",
+							"description": "Fail on invalid networking boundary usage."
+						},
+						"transport": {
+							"enum": ["blink", "remote"],
+							"description": "Networking transport backend."
+						},
+						"blink": {
+							"type": "object",
+							"additionalProperties": false,
+							"properties": {
+								"enabled": {
+									"type": "boolean",
+									"description": "Generate Blink transport artifacts."
+								},
+								"remoteScope": {
+									"type": "string",
+									"description": "Remote scope name for generated Blink events."
+								},
+								"manualReplication": {
+									"type": "boolean",
+									"description": "Use explicit Blink replication behavior."
+								},
+								"usePolling": {
+									"type": "boolean",
+									"description": "Use polling for Blink-generated networking."
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"stringArray": {
+			"type": "array",
+			"items": {
+				"type": "string"
+			}
+		}
+	}
+}

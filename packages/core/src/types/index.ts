@@ -113,6 +113,10 @@ export interface RefCleanupOptions {
 	readonly cleanupRefs?: boolean;
 }
 
+export interface RefOptions {
+	readonly destroyMethod?: string;
+}
+
 export interface Commands {
 	spawn(...bundle: ReadonlyArray<object>): void;
 	despawn(entity: Entity, options?: RefCleanupOptions): void;
@@ -134,7 +138,7 @@ export interface World {
 	remove(entity: Entity, component: Ctor): void;
 	has(entity: Entity, component: Ctor): boolean;
 	get<T extends object>(entity: Entity, component: Ctor<T>): T | undefined;
-	ref(key: unknown): Entity;
+	ref(key: unknown, options?: RefOptions): Entity;
 	getRef(key: unknown): Entity | undefined;
 	hasRef(key: unknown): boolean;
 	deleteRef(key: unknown, options?: RefCleanupOptions): boolean;

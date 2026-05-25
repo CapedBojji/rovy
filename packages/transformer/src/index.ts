@@ -1,5 +1,3 @@
-import cp from "node:child_process";
-import fs from "node:fs";
 import ts from "typescript";
 import {
 	arr,
@@ -89,7 +87,6 @@ export default function rovyTransformer(
 }
 
 function transformSourceFile(state: TransformState, sourceFile: ts.SourceFile): ts.SourceFile {
-	maybeGenerateNetArtifacts(state, sourceFile);
 	const widgetCallers = collectWidgetCallers(state, sourceFile);
 	const visitor = createVisitor(state, sourceFile, widgetCallers);
 	const statements: ts.Statement[] = [];
@@ -100,6 +97,9 @@ function transformSourceFile(state: TransformState, sourceFile: ts.SourceFile): 
 		if (ts.isClassDeclaration(statement)) {
 			const transformed = transformClass(state, sourceFile, statement, visitor);
 			statements.push(...transformed);
+		} else if (ts.isVariableStatement(statement)) {
+			const transformed = transformVariableStatement(state, sourceFile, statement, visitor);
+			statements.push(transformed);
 		} else if (ts.isFunctionDeclaration(statement)) {
 			const widget = statement.name ? widgetCallers.get(statement.name.text) : undefined;
 			if (widget && widget.implementation === statement && statement.name) {
@@ -128,68 +128,166 @@ function transformSourceFile(state: TransformState, sourceFile: ts.SourceFile): 
 	return ts.factory.updateSourceFile(sourceFile, state.withPendingImports(sourceFile, statements));
 }
 
-function maybeGenerateNetArtifacts(state: TransformState, sourceFile: ts.SourceFile): void {
-	if (state.hasGeneratedNetArtifacts()) return;
-	state.markNetArtifactsGenerated();
-	if (!state.shouldGenerateNetArtifacts()) return;
-	if (!state.shouldGenerateBlinkArtifacts()) return;
-
-	const schemas = collectBlinkSchemas(state);
-	if (schemas.length === 0) return;
-
-	const blink = state.blinkConfig();
-	const sourcePath = state.blinkGeneratedSourcePath();
-	const clientPath = state.blinkGeneratedClientPath();
-	const serverPath = state.blinkGeneratedServerPath();
-	const typesPath = state.blinkGeneratedTypesPath();
-
-	fs.mkdirSync(dirname(sourcePath), { recursive: true });
-	fs.writeFileSync(
-		sourcePath,
-		[
-			"option Casing = Pascal",
-			"option Typescript = true",
-			`option RemoteScope = "${blink.remoteScope ?? "ROVY"}"`,
-			`option ManualReplication = ${(blink.manualReplication ?? true) ? "true" : "false"}`,
-			`option UsePolling = ${(blink.usePolling ?? true) ? "true" : "false"}`,
-			`option ClientOutput = "${clientPath}"`,
-			`option ServerOutput = "${serverPath}"`,
-			`option TypesOutput = "${typesPath}"`,
-			"",
-			...schemas,
-			"",
-		].join("\n"),
-	);
-
-	const attempt = (command: string, args: ReadonlyArray<string>) =>
-		cp.spawnSync(command, [...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-	let result = attempt("blink", [sourcePath, "--yes", "--quiet"]);
-	if (result.error && (result.error as NodeJS.ErrnoException).code === "ENOENT") {
-		result = attempt("mise", ["exec", "--", "blink", sourcePath, "--yes", "--quiet"]);
-	}
-	if (result.status !== 0) {
-		state.diagnostic(
-			sourceFile,
-			`Blink generation failed.\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+function transformVariableStatement(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	statement: ts.VariableStatement,
+	visitor: ts.Visitor,
+): ts.VariableStatement {
+	const declarations = statement.declarationList.declarations.map((declaration) => {
+		if (!ts.isIdentifier(declaration.name) || declaration.initializer === undefined) {
+			return ts.visitEachChild(declaration, visitor, state.context);
+		}
+		const document = buildDocumentDeclaration(state, sourceFile, declaration.name, declaration.initializer);
+		if (document === undefined) return ts.visitEachChild(declaration, visitor, state.context);
+		return ts.factory.updateVariableDeclaration(
+			declaration,
+			declaration.name,
+			declaration.exclamationToken,
+			declaration.type,
+			document,
 		);
-	}
+	});
+	return ts.factory.updateVariableStatement(
+		statement,
+		statement.modifiers,
+		ts.factory.updateVariableDeclarationList(statement.declarationList, declarations),
+	);
 }
 
-function collectBlinkSchemas(state: TransformState): string[] {
-	const schemas: string[] = [];
-	for (const file of state.program.getSourceFiles?.() ?? []) {
-		if (file.isDeclarationFile) continue;
-		for (const statement of file.statements) {
-			if (!ts.isClassDeclaration(statement)) continue;
-			const decorators = getRovyDecorators(state, file, statement);
-			for (const decorator of decorators) {
-				if (decorator.name === "netEvent") {
-					schemas.push(buildBlinkEvent(state, statement, decorator));
-				}
-			}
-		}
+type DocumentDeclarationKind = "player" | "keyed" | "shared";
+
+function buildDocumentDeclaration(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	name: ts.Identifier,
+	initializer: ts.Expression,
+): ts.Expression | undefined {
+	if (!ts.isCallExpression(initializer) || !ts.isCallExpression(initializer.expression)) return undefined;
+	const builder = initializer.expression;
+	const exported = state.resolveDatastoreName(sourceFile, builder.expression);
+	const kind =
+		exported === "playerDocument"
+			? "player"
+			: exported === "document"
+				? "keyed"
+				: exported === "sharedDocument"
+					? "shared"
+					: undefined;
+	if (kind === undefined) return undefined;
+	const options = initializer.arguments[0];
+	if (!options || !ts.isObjectLiteralExpression(options)) {
+		state.diagnostic(initializer, `[rovy/datastore] ${exported} requires an options object`);
+		return initializer;
 	}
-	return schemas;
+	const dataType = builder.typeArguments?.[0];
+	if (dataType === undefined) {
+		state.diagnostic(builder, `[rovy/datastore] ${exported} requires an explicit data type: ${exported}<Data>()({...})`);
+	}
+	if (exported === "document" && builder.typeArguments?.[1] === undefined) {
+		state.diagnostic(builder, "[rovy/datastore] document<T, Owner>() requires an explicit owner type");
+	}
+
+	const docId = documentIdForDeclaration(state, name);
+	const check = dataType !== undefined ? datastoreValidatorForType(state, sourceFile, dataType, dataType.getText(sourceFile)) : alwaysTrueValidator();
+	return call(field(state.addRovyDataImport(sourceFile), "__document"), [
+		obj(
+			[
+				prop("id", str(docId)),
+				prop("kind", str(kind)),
+				requiredOption(state, options, "name", initializer),
+				requiredOption(state, options, "store", initializer),
+				prop("key", documentKeyExpression(kind, options)),
+				prop("default", requiredOptionExpression(state, options, "default", initializer)),
+				prop("check", check),
+				prop("migrations", propertyValue(options, "migrations") ?? arr([])),
+				prop("session", documentSessionOptions(kind, options)),
+				prop("lifecycle", documentLifecycleOptions(kind, options)),
+				prop("debug", documentDebugOptions(options)),
+			],
+			true,
+		),
+	]);
+}
+
+function requiredOption(
+	state: TransformState,
+	options: ts.ObjectLiteralExpression,
+	key: string,
+	node: ts.Node,
+): ts.PropertyAssignment {
+	return prop(key, requiredOptionExpression(state, options, key, node));
+}
+
+function requiredOptionExpression(
+	state: TransformState,
+	options: ts.ObjectLiteralExpression,
+	key: string,
+	node: ts.Node,
+): ts.Expression {
+	const value = propertyValue(options, key);
+	if (value !== undefined) return value;
+	state.diagnostic(node, `[rovy/datastore] document option '${key}' is required`);
+	return id("undefined");
+}
+
+function documentKeyExpression(kind: DocumentDeclarationKind, options: ts.ObjectLiteralExpression): ts.Expression {
+	const key = propertyValue(options, "key");
+	if (key !== undefined) return key;
+	if (kind === "player") {
+		const player = id("player");
+		return ts.factory.createArrowFunction(
+			undefined,
+			undefined,
+			[ts.factory.createParameterDeclaration(undefined, undefined, player)],
+			undefined,
+			ts.factory.createToken(ts.SyntaxKind.EqualsGreaterThanToken),
+			call(id("tostring"), [field(player, "UserId")]),
+		);
+	}
+	if (kind === "shared") return arrow(str("global"));
+	return id("undefined");
+}
+
+function nestedOption(options: ts.ObjectLiteralExpression, parent: string, key: string): ts.Expression | undefined {
+	const parentValue = propertyValue(options, parent);
+	return parentValue && ts.isObjectLiteralExpression(parentValue) ? propertyValue(parentValue, key) : undefined;
+}
+
+function documentSessionOptions(kind: DocumentDeclarationKind, options: ts.ObjectLiteralExpression): ts.ObjectLiteralExpression {
+	return obj(
+		[
+			prop("lock", nestedOption(options, "session", "lock") ?? bool(kind !== "shared")),
+			prop("stealOnSessionLocked", nestedOption(options, "session", "stealOnSessionLocked") ?? bool(kind === "player")),
+		],
+		true,
+	);
+}
+
+function documentLifecycleOptions(kind: DocumentDeclarationKind, options: ts.ObjectLiteralExpression): ts.ObjectLiteralExpression {
+	return obj(
+		[
+			prop("autoOpen", nestedOption(options, "lifecycle", "autoOpen") ?? bool(kind === "player")),
+			prop("autoClose", nestedOption(options, "lifecycle", "autoClose") ?? bool(kind === "player")),
+			prop("kickOnOpenFailure", nestedOption(options, "lifecycle", "kickOnOpenFailure") ?? bool(kind === "player")),
+		],
+		true,
+	);
+}
+
+function documentDebugOptions(options: ts.ObjectLiteralExpression): ts.ObjectLiteralExpression {
+	return obj(
+		[
+			prop("printLifecycle", nestedOption(options, "debug", "printLifecycle") ?? bool(false)),
+			prop("printWrites", nestedOption(options, "debug", "printWrites") ?? bool(false)),
+		],
+		true,
+	);
+}
+
+function documentIdForDeclaration(state: TransformState, node: ts.Node): string {
+	const name = ts.isIdentifier(node) ? node.text : node.getText();
+	return `${state.stableIdForNode(node)}/${name}`;
 }
 
 function dirname(value: string): string {
@@ -843,6 +941,197 @@ function validatorForRequiredType(
 	return alwaysTrueValidator();
 }
 
+const DATASTORE_UNSUPPORTED_TYPES = new Set([
+	"Instance",
+	"Vector3",
+	"Vector2",
+	"CFrame",
+	"Color3",
+	"UDim",
+	"UDim2",
+	"DateTime",
+	"Map",
+	"Set",
+]);
+
+function datastoreValidatorForType(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	type: ts.TypeNode,
+	path: string,
+	seen = new Set<string>(),
+): ts.Expression {
+	const t = state.addTImport(sourceFile);
+	switch (type.kind) {
+		case ts.SyntaxKind.StringKeyword:
+			return field(t, "string");
+		case ts.SyntaxKind.NumberKeyword:
+			return field(t, "number");
+		case ts.SyntaxKind.BooleanKeyword:
+			return field(t, "boolean");
+		case ts.SyntaxKind.UndefinedKeyword:
+			return call(field(t, "literal"), [id("undefined")]);
+		case ts.SyntaxKind.AnyKeyword:
+		case ts.SyntaxKind.UnknownKeyword:
+		case ts.SyntaxKind.NeverKeyword:
+			return unsupportedDatastoreType(state, type, path, type.getText(sourceFile));
+		case ts.SyntaxKind.ArrayType: {
+			const arrayType = type as ts.ArrayTypeNode;
+			return call(field(t, "array"), [datastoreValidatorForType(state, sourceFile, arrayType.elementType, `${path}[]`, seen)]);
+		}
+		case ts.SyntaxKind.TypeLiteral:
+			return datastoreObjectValidator(state, sourceFile, type as ts.TypeLiteralNode, path, seen);
+		case ts.SyntaxKind.UnionType: {
+			const unionType = type as ts.UnionTypeNode;
+			return call(
+				field(t, "union"),
+				unionType.types.map((item) => datastoreValidatorForType(state, sourceFile, item, path, seen)),
+			);
+		}
+		case ts.SyntaxKind.LiteralType:
+			return datastoreLiteralValidator(state, sourceFile, type as ts.LiteralTypeNode, path);
+		case ts.SyntaxKind.FunctionType:
+			return unsupportedDatastoreType(state, type, path, "function");
+	}
+	if (ts.isTypeReferenceNode(type)) {
+		const name = lastTypeName(type.typeName);
+		if (DATASTORE_UNSUPPORTED_TYPES.has(name)) return unsupportedDatastoreType(state, type, path, name);
+		if (name === "Array" || name === "ReadonlyArray") {
+			const inner = type.typeArguments?.[0];
+			if (inner === undefined) return unsupportedDatastoreType(state, type, path, `${name} without element type`);
+			return call(field(t, "array"), [datastoreValidatorForType(state, sourceFile, inner, `${path}[]`, seen)]);
+		}
+		if (name === "Record") {
+			const key = type.typeArguments?.[0];
+			const value = type.typeArguments?.[1];
+			if (key === undefined || value === undefined) return unsupportedDatastoreType(state, type, path, "Record without key/value types");
+			const keyValidator = datastoreRecordKeyValidator(state, sourceFile, key, path);
+			return call(field(t, "map"), [keyValidator, datastoreValidatorForType(state, sourceFile, value, `${path}[id]`, seen)]);
+		}
+		if ((type.typeArguments?.length ?? 0) > 0) return unsupportedDatastoreType(state, type, path, "generic unresolved type");
+		const key = type.getText(sourceFile);
+		if (seen.has(key)) return unsupportedDatastoreType(state, type, path, "recursive type");
+		const declaration = typeDeclarationForTypeReference(state, type);
+		if (declaration === undefined) return unsupportedDatastoreType(state, type, path, name);
+		seen.add(key);
+		if (ts.isTypeAliasDeclaration(declaration)) {
+			const validator = datastoreValidatorForType(state, sourceFile, declaration.type, path, seen);
+			seen.delete(key);
+			return validator;
+		}
+		if (ts.isInterfaceDeclaration(declaration)) {
+			if (declaration.typeParameters !== undefined && declaration.typeParameters.length > 0) {
+				return unsupportedDatastoreType(state, type, path, "generic unresolved type");
+			}
+			const validator = datastoreInterfaceValidator(state, sourceFile, declaration, path, seen);
+			seen.delete(key);
+			return validator;
+		}
+	}
+	return unsupportedDatastoreType(state, type, path, type.getText(sourceFile));
+}
+
+function datastoreRecordKeyValidator(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	type: ts.TypeNode,
+	path: string,
+): ts.Expression {
+	const t = state.addTImport(sourceFile);
+	if (type.kind === ts.SyntaxKind.StringKeyword) return field(t, "string");
+	if (type.kind === ts.SyntaxKind.NumberKeyword) return field(t, "number");
+	return unsupportedDatastoreType(state, type, `${path}[id]`, type.getText(sourceFile));
+}
+
+function datastoreObjectValidator(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.TypeLiteralNode,
+	path: string,
+	seen: Set<string>,
+): ts.Expression {
+	const t = state.addTImport(sourceFile);
+	const properties: ts.PropertyAssignment[] = [];
+	for (const member of node.members) {
+		if (ts.isPropertySignature(member)) {
+			const name = propertyNameText(member.name);
+			if (name === undefined || member.type === undefined) {
+				return unsupportedDatastoreType(state, member, path, "unsupported object property");
+			}
+			let validator = datastoreValidatorForType(state, sourceFile, member.type, `${path}.${name}`, seen);
+			if (member.questionToken !== undefined) validator = call(field(t, "optional"), [validator]);
+			properties.push(prop(name, validator));
+		} else if (ts.isIndexSignatureDeclaration(member)) {
+			const keyType = member.parameters[0]?.type;
+			const valueType = member.type;
+			if (keyType === undefined || valueType === undefined) {
+				return unsupportedDatastoreType(state, member, path, "unsupported index signature");
+			}
+			return call(field(t, "map"), [
+				datastoreRecordKeyValidator(state, sourceFile, keyType, path),
+				datastoreValidatorForType(state, sourceFile, valueType, `${path}[id]`, seen),
+			]);
+		} else {
+			return unsupportedDatastoreType(state, member, path, "unsupported object member");
+		}
+	}
+	return call(field(t, "interface"), [obj(properties, true)]);
+}
+
+function datastoreInterfaceValidator(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.InterfaceDeclaration,
+	path: string,
+	seen: Set<string>,
+): ts.Expression {
+	return datastoreObjectValidator(
+		state,
+		sourceFile,
+		ts.factory.createTypeLiteralNode(node.members),
+		path,
+		seen,
+	);
+}
+
+function datastoreLiteralValidator(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.LiteralTypeNode,
+	path: string,
+): ts.Expression {
+	const literal = node.literal;
+	if (ts.isStringLiteral(literal)) return call(field(state.addTImport(sourceFile), "literal"), [str(literal.text)]);
+	if (ts.isNumericLiteral(literal)) return call(field(state.addTImport(sourceFile), "literal"), [num(Number(literal.text))]);
+	if (literal.kind === ts.SyntaxKind.TrueKeyword) return call(field(state.addTImport(sourceFile), "literal"), [bool(true)]);
+	if (literal.kind === ts.SyntaxKind.FalseKeyword) return call(field(state.addTImport(sourceFile), "literal"), [bool(false)]);
+	return unsupportedDatastoreType(state, node, path, literal.getText(sourceFile));
+}
+
+function typeDeclarationForTypeReference(
+	state: TransformState,
+	node: ts.TypeReferenceNode,
+): ts.Declaration | undefined {
+	const checker = state.typeChecker;
+	if (checker === undefined) return undefined;
+	const symbol = checker.getSymbolAtLocation(node.typeName);
+	const resolved = symbol !== undefined && (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
+	return resolved?.declarations?.[0];
+}
+
+function unsupportedDatastoreType(
+	state: TransformState,
+	node: ts.Node,
+	path: string,
+	label: string,
+): ts.Expression {
+	state.diagnostic(
+		node,
+		`[rovy/datastore] Cannot generate validator for ${path}: unsupported type '${label}'. Use a datastore-safe type or add a codec in a future version.`,
+	);
+	return alwaysTrueValidator();
+}
+
 function alwaysTrueValidator(): ts.ArrowFunction {
 	return arrow(bool(true));
 }
@@ -1253,10 +1542,22 @@ function lowerParam(
 			validateNetworkingBoundary(state, sourceFile, type, "server", "NetServer");
 			return externalParam("@rovy/networking/NetServer");
 		}
-		if (isNetworkingType(state, sourceFile, type, "NetEventContext")) {
-			return externalParam("@rovy/networking/NetEventContext");
-		}
-		if (name === "Query") {
+			if (isNetworkingType(state, sourceFile, type, "NetEventContext")) {
+				return externalParam("@rovy/networking/NetEventContext");
+			}
+			if (isDatastoreType(state, sourceFile, type, "DocumentReader")) {
+				const documentId = documentIdFromInjectedDocumentType(state, type);
+				return externalParam(`@rovy/datastore/reader:${documentId}`);
+			}
+			if (isDatastoreType(state, sourceFile, type, "DocumentWriter")) {
+				const documentId = documentIdFromInjectedDocumentType(state, type);
+				return externalParam(`@rovy/datastore/writer:${documentId}`);
+			}
+			if (isDatastoreType(state, sourceFile, type, "DocumentOpener")) {
+				const documentId = documentIdFromInjectedDocumentType(state, type);
+				return externalParam(`@rovy/datastore/opener:${documentId}`);
+			}
+			if (name === "Query") {
 			const query = buildQueryFromType(state, type, `${ctx.classId}:${ctx.paramIndex}`);
 			return {
 				descriptor: obj([prop("kind", str("query")), prop("handle", str(query.id))], false),
@@ -1268,9 +1569,18 @@ function lowerParam(
 			const kind = name === "Res" ? "res" : name === "ResMut" ? "resMut" : "optRes";
 			return { descriptor: obj([prop("kind", str(kind)), prop("ctor", ctor)], false), queryStatements: [] };
 		}
-		if (name === "EventReader" || name === "EventWriter") {
-			const ctor = ctorArg(state, type);
-			return {
+			if (name === "EventReader" || name === "EventWriter") {
+				if (name === "EventReader") {
+					const datastoreEvent = datastoreEventCtorArg(state, sourceFile, type);
+					if (datastoreEvent !== undefined) {
+						return {
+							descriptor: obj([prop("kind", str("eventReader")), prop("ctor", datastoreEvent)], false),
+							queryStatements: [],
+						};
+					}
+				}
+				const ctor = ctorArg(state, type);
+				return {
 				descriptor: obj([prop("kind", str(name === "EventReader" ? "eventReader" : "eventWriter")), prop("ctor", ctor)], false),
 				queryStatements: [],
 			};
@@ -1307,7 +1617,7 @@ function validateNetworkingBoundary(
 		if (state.strictBoundaryChecks()) {
 			state.diagnostic(
 				node,
-				`${label} could not be placed in a known boundary from .rovy.json or conventional paths`,
+				`${label} could not be placed in a known boundary from rovy-build config, .rovy.json, or conventional paths`,
 			);
 		}
 		return;
@@ -1480,6 +1790,71 @@ function isNetworkingType(
 	const name = type.typeName;
 	if (ts.isIdentifier(name)) return imports.named.get(name.text) === exportName;
 	return ts.isIdentifier(name.left) && imports.namespaces.has(name.left.text) && name.right.text === exportName;
+}
+
+function isDatastoreType(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	type: ts.TypeReferenceNode,
+	exportName: string,
+): boolean {
+	const imports = state.getDatastoreImports(sourceFile);
+	const name = type.typeName;
+	if (ts.isIdentifier(name)) return imports.named.get(name.text) === exportName;
+	return ts.isIdentifier(name.left) && imports.namespaces.has(name.left.text) && name.right.text === exportName;
+}
+
+function datastoreEventCtorArg(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.TypeReferenceNode,
+): ts.Expression | undefined {
+	const eventType = node.typeArguments?.[0];
+	if (!eventType || !ts.isTypeReferenceNode(eventType)) return undefined;
+	const eventKind = datastoreEventKind(state, sourceFile, eventType);
+	if (eventKind === undefined) return undefined;
+	const documentId = documentIdFromInjectedDocumentType(state, eventType);
+	return call(field(state.addRovyDataImport(sourceFile), "eventCtor"), [str(eventKind), str(documentId)]);
+}
+
+function datastoreEventKind(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	type: ts.TypeReferenceNode,
+): "opened" | "openFailed" | "changed" | "saved" | "saveFailed" | "closed" | undefined {
+	if (isDatastoreType(state, sourceFile, type, "DocumentOpened")) return "opened";
+	if (isDatastoreType(state, sourceFile, type, "DocumentOpenFailed")) return "openFailed";
+	if (isDatastoreType(state, sourceFile, type, "DocumentChanged")) return "changed";
+	if (isDatastoreType(state, sourceFile, type, "DocumentSaved")) return "saved";
+	if (isDatastoreType(state, sourceFile, type, "DocumentSaveFailed")) return "saveFailed";
+	if (isDatastoreType(state, sourceFile, type, "DocumentClosed")) return "closed";
+	return undefined;
+}
+
+function documentIdFromInjectedDocumentType(state: TransformState, node: ts.TypeReferenceNode): string {
+	const typeArg = node.typeArguments?.[0];
+	if (!typeArg) {
+		state.diagnostic(node, `[rovy/datastore] ${lastTypeName(node.typeName)} requires typeof Document`);
+		return "unknown";
+	}
+	if (!ts.isTypeQueryNode(typeArg)) {
+		state.diagnostic(typeArg, `[rovy/datastore] ${lastTypeName(node.typeName)} requires typeof Document`);
+		return "unknown";
+	}
+	const declaration = declarationForEntityName(state, typeArg.exprName);
+	if (declaration !== undefined) return documentIdForDeclaration(state, declaration.name ?? declaration);
+	return `${typeArg.exprName.getText().replace(/\s+/g, "")}`;
+}
+
+function declarationForEntityName(state: TransformState, name: ts.EntityName): ts.VariableDeclaration | undefined {
+	const checker = state.typeChecker;
+	if (checker === undefined) return undefined;
+	const symbol = checker.getSymbolAtLocation(name);
+	const resolved = symbol !== undefined && (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
+	for (const declaration of resolved?.declarations ?? []) {
+		if (ts.isVariableDeclaration(declaration)) return declaration;
+	}
+	return undefined;
 }
 
 function ctorArg(state: TransformState, node: ts.TypeReferenceNode): ts.Expression {

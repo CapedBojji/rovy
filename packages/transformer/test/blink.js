@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { assertNoDiagnostics, compileFixture } = require("./helpers");
+const { generateBlink } = require("../scripts/generate-blink.js");
 
 const source = `
 import { schedule, system } from "@rovy/core";
@@ -70,6 +71,29 @@ const schemas = [...result.printed.matchAll(/blink: ("(?:[^"\\]|\\.)*")/g)].map(
 assert.equal(schemas.length, 2, "expected two generated Blink event declarations");
 
 const temp = result.temp;
+fs.writeFileSync(
+	path.join(temp, "tsconfig.json"),
+	JSON.stringify(
+		{
+			compilerOptions: {
+				target: "ES2020",
+				module: "CommonJS",
+				moduleResolution: "Node",
+				rootDir: "src",
+				outDir: "out",
+				experimentalDecorators: true,
+				strict: true,
+				skipLibCheck: true,
+				types: [],
+			},
+			include: ["src/**/*"],
+		},
+		null,
+		2,
+	),
+);
+generateBlink(temp);
+
 const generatedDir = path.join(temp, "out", "shared", "net", "generated");
 const blinkSourcePath = path.join(generatedDir, "rovy.generated.blink");
 const clientOutput = path.join(generatedDir, "RovyBlinkClient.luau");

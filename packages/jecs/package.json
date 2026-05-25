@@ -1,6 +1,6 @@
 {
 	"name": "@rovy/jecs",
-	"version": "0.11.0-rovy.0",
+	"version": "0.11.0-rovy.1",
 	"description": "Rovy-vendored jecs runtime",
 	"main": "src/jecs.luau",
 	"repository": {
@@ -17,6 +17,7 @@
 	"license": "MIT",
 	"types": "src/jecs.d.ts",
 	"files": [
+		"default.project.json",
 		"src",
 		"LICENSE",
 		"README.md"

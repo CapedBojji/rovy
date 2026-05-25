@@ -23,6 +23,9 @@ importers:
       '@rovy/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@rovy/jecs':
+        specifier: workspace:*
+        version: link:../../packages/jecs
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -48,6 +51,9 @@ importers:
       '@rovy/example-gameclock':
         specifier: workspace:*
         version: link:../plugin-example
+      '@rovy/jecs':
+        specifier: workspace:*
+        version: link:../../packages/jecs
     devDependencies:
       '@rbxts/compiler-types':
         specifier: 3.0.0-types.0
@@ -79,6 +85,9 @@ importers:
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0
+      rovy-build:
+        specifier: workspace:*
+        version: link:../../packages/build
       rovy-transformer:
         specifier: workspace:*
         version: link:../../packages/transformer
@@ -91,6 +100,9 @@ importers:
       '@rovy/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@rovy/jecs':
+        specifier: workspace:*
+        version: link:../../packages/jecs
       '@rovy/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -125,6 +137,9 @@ importers:
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0
+      rovy-build:
+        specifier: workspace:*
+        version: link:../../packages/build
       rovy-transformer:
         specifier: workspace:*
         version: link:../../packages/transformer
@@ -158,6 +173,9 @@ importers:
       '@rovy/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@rovy/jecs':
+        specifier: workspace:*
+        version: link:../../packages/jecs
       '@rovy/networking':
         specifier: workspace:*
         version: link:../../packages/networking
@@ -198,6 +216,9 @@ importers:
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0
+      rovy-build:
+        specifier: workspace:*
+        version: link:../../packages/build
       rovy-transformer:
         specifier: workspace:*
         version: link:../../packages/transformer
@@ -205,17 +226,24 @@ importers:
         specifier: 5.5.3
         version: 5.5.3
 
+  packages/build:
+    dependencies:
+      typescript:
+        specifier: 5.5.3
+        version: 5.5.3
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.31
+        version: 22.19.19
+      rovy-transformer:
+        specifier: workspace:*
+        version: link:../transformer
+
   packages/core:
     dependencies:
       '@rbxts/better-janitor':
         specifier: ^0.4.0
         version: 0.4.0
-      '@rovy/jecs':
-        specifier: workspace:*
-        version: link:../jecs
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
     devDependencies:
       '@rbxts/compiler-types':
         specifier: 3.0.0-types.0
@@ -229,20 +257,21 @@ importers:
       '@rbxts/types':
         specifier: ^1.0.920
         version: 1.0.920
+      '@rovy/jecs':
+        specifier: workspace:*
+        version: link:../jecs
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0
-
-  packages/jecs: {}
-
-  packages/networking:
-    dependencies:
-      '@rovy/core':
-        specifier: workspace:*
-        version: link:../core
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+
+  packages/datastore:
+    dependencies:
+      '@rbxts/t':
+        specifier: ^3.2.1
+        version: 3.2.1
     devDependencies:
       '@rbxts/compiler-types':
         specifier: 3.0.0-types.0
@@ -250,9 +279,35 @@ importers:
       '@rbxts/types':
         specifier: ^1.0.920
         version: 1.0.920
+      '@rovy/core':
+        specifier: workspace:*
+        version: link:../core
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  packages/jecs: {}
+
+  packages/networking:
+    devDependencies:
+      '@rbxts/compiler-types':
+        specifier: 3.0.0-types.0
+        version: 3.0.0-types.0
+      '@rbxts/types':
+        specifier: ^1.0.920
+        version: 1.0.920
+      '@rovy/core':
+        specifier: workspace:*
+        version: link:../core
+      roblox-ts:
+        specifier: ^3.0.0
+        version: 3.0.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   packages/transformer:
     dependencies:
@@ -268,13 +323,6 @@ importers:
         version: 22.19.19
 
   packages/ui:
-    dependencies:
-      '@rovy/core':
-        specifier: workspace:*
-        version: link:../core
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
     devDependencies:
       '@rbxts/compiler-types':
         specifier: 3.0.0-types.0
@@ -282,12 +330,24 @@ importers:
       '@rbxts/types':
         specifier: ^1.0.920
         version: 1.0.920
+      '@rovy/core':
+        specifier: workspace:*
+        version: link:../core
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   packages/world-inspector:
-    dependencies:
+    devDependencies:
+      '@rbxts/compiler-types':
+        specifier: 3.0.0-types.0
+        version: 3.0.0-types.0
+      '@rbxts/types':
+        specifier: ^1.0.920
+        version: 1.0.920
       '@rovy/core':
         specifier: workspace:*
         version: link:../core
@@ -297,19 +357,12 @@ importers:
       '@rovy/ui':
         specifier: workspace:*
         version: link:../ui
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-    devDependencies:
-      '@rbxts/compiler-types':
-        specifier: 3.0.0-types.0
-        version: 3.0.0-types.0
-      '@rbxts/types':
-        specifier: ^1.0.920
-        version: 1.0.920
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
 packages:
 

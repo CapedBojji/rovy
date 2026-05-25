@@ -39,6 +39,7 @@ TARGETS: dict[str, dict] = {
     "zombie": {
         "packages": [
             ["--filter", "rovy-transformer", "build"],
+            ["--filter", "rovy-build", "build"],
             ["--filter", "@rovy/core", "build"],
             ["--filter", "@rovy/networking", "build"],
             ["--filter", "@rovy/example-zombie-game", "build:place"],

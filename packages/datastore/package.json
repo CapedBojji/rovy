@@ -1,7 +1,7 @@
 {
-  "name": "@rovy/networking",
+  "name": "@rovy/datastore",
   "version": "0.0.0",
-  "description": "Networking package for Rovy net events over generated transports",
+  "description": "Compile-time persistent document package for Rovy",
   "main": "out/init.luau",
   "types": "out/index.d.ts",
   "license": "MIT",
@@ -16,6 +16,9 @@
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@rbxts/t": "^3.2.1"
   },
   "peerDependencies": {
     "@rovy/core": "0.0.0"

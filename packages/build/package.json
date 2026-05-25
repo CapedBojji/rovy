@@ -1,0 +1,30 @@
+{
+  "name": "rovy-build",
+  "version": "0.0.0",
+  "description": "Build manager and project orchestrator for Rovy games",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "rovy": "dist/index.js",
+    "rovy-build": "dist/index.js"
+  },
+  "license": "MIT",
+  "files": [
+    "dist",
+    "!**/*.tsbuildinfo"
+  ],
+  "scripts": {
+    "build": "pnpm --filter rovy-transformer build && tsc -p tsconfig.json",
+    "test": "pnpm run build && node test/run.js"
+  },
+  "dependencies": {
+    "typescript": "5.5.3"
+  },
+  "peerDependencies": {
+    "rovy-transformer": "0.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.31",
+    "rovy-transformer": "workspace:*"
+  }
+}

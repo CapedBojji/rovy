@@ -80,6 +80,24 @@ return function(TS, t)
 			t.expect(destroyed).toBe(1)
 		end)
 
+		t.it("despawn with cleanupRefs can use explicit destroy method", function()
+			local world = RovyWorld.new()
+			local destroyed = 0
+			local key = {
+				release = function(self)
+					destroyed += 1
+				end,
+			}
+			local entity = world:ref(key, { destroyMethod = "release" })
+
+			world:despawn(entity, { cleanupRefs = true })
+
+			t.expect(world:hasRef(key)).toBeFalsy()
+			t.expect(world:getRef(key)).toBeUndefined()
+			t.expect(world.jecs:contains(entity)).toBeFalsy()
+			t.expect(destroyed).toBe(1)
+		end)
+
 		t.it("keeps refs isolated per world", function()
 			local key = {}
 			local worldA = RovyWorld.new()
