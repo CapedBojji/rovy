@@ -1,44 +1,85 @@
 {
-  "name": "@rovy/example-game",
-  "private": true,
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "build": "rbxtsc --type game",
-    "watch": "rbxtsc --type game -w",
-    "build:place": "pnpm run build && mkdir -p ../../build && rojo build default.project.json -o ../../build/rovy-example.rbxl",
-    "test:output": "node test/assert-output.js",
-    "test:luau": "zune test test/smoke",
-    "test:place": "node test/assert-place.js"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "devEngines": {
-    "packageManager": {
-      "name": "pnpm",
-      "version": "^11.1.2",
-      "onFail": "download"
-    }
-  },
-  "type": "module",
-  "dependencies": {
-    "@rovy/core": "workspace:*",
-    "@rovy/example-gameclock": "workspace:*"
-  },
-  "devDependencies": {
-    "@rbxts/compiler-types": "3.0.0-types.0",
-    "@rbxts/types": "^1.0.920",
-    "@typescript-eslint/eslint-plugin": "^8.59.3",
-    "@typescript-eslint/parser": "^8.59.3",
-    "eslint": "^10.3.0",
-    "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-prettier": "^5.5.5",
-    "eslint-plugin-roblox-ts": "^1.4.0",
-    "prettier": "^3.8.3",
-    "roblox-ts": "^3.0.0",
-    "rovy-transformer": "workspace:*",
-    "typescript": "5.5.3"
-  }
+	"name": "@rovy/example-game",
+	"private": true,
+	"version": "1.0.0",
+	"description": "",
+	"main": "index.js",
+	"scripts": {
+		"compile": "rovy compile",
+		"generate": "rovy generate",
+		"build": "pnpm --filter rovy-transformer build && pnpm --filter rovy-build build && pnpm --filter @rovy/core build && pnpm --filter @rovy/example-gameclock build && rovy build",
+		"watch": "rovy watch",
+		"open": "rovy open",
+		"start": "rovy start",
+		"stop": "rovy stop",
+		"build:place": "pnpm run build",
+		"test:output": "node test/assert-output.js",
+		"test:luau": "zune test test/smoke",
+		"test:place": "node test/assert-place.js"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"devEngines": {
+		"packageManager": {
+			"name": "pnpm",
+			"version": "^11.1.2",
+			"onFail": "download"
+		}
+	},
+	"type": "module",
+	"dependencies": {
+		"@rovy/core": "workspace:*",
+		"@rovy/example-gameclock": "workspace:*",
+		"@rovy/jecs": "workspace:*"
+	},
+	"devDependencies": {
+		"@rbxts/compiler-types": "3.0.0-types.0",
+		"@rbxts/types": "^1.0.920",
+		"@typescript-eslint/eslint-plugin": "^8.59.3",
+		"@typescript-eslint/parser": "^8.59.3",
+		"eslint": "^10.3.0",
+		"eslint-config-prettier": "^10.1.8",
+		"eslint-plugin-prettier": "^5.5.5",
+		"eslint-plugin-roblox-ts": "^1.4.0",
+		"prettier": "^3.8.3",
+		"roblox-ts": "^3.0.0",
+		"rovy-build": "workspace:*",
+		"rovy-transformer": "workspace:*",
+		"typescript": "5.5.3"
+	},
+	"rovy-build": {
+		"$schema": "../../packages/core/schema/rovy-build.schema.json",
+		"current": "dev",
+		"placeFile": "../../build/rovy-example.rbxl",
+		"rbxtscArgs": [
+			"--type",
+			"game"
+		],
+		"rojoBuildArgs": [
+			"build",
+			"default.project.json",
+			"-o",
+			"../../build/rovy-example.rbxl"
+		],
+		"watchOnOpen": true,
+		"generateBlink": false,
+		"environments": {
+			"dev": {
+				"rojo": "default.project.json",
+				"sourcemap": "sourcemap.json",
+				"boundaries": {
+					"server": [
+						"src/server"
+					],
+					"client": [
+						"src/client"
+					],
+					"shared": [
+						"src/shared"
+					]
+				}
+			}
+		}
+	}
 }

@@ -312,7 +312,7 @@ class NetServer {
 }
 ```
 
-See [Networking](/packages/networking.md) for the full spec, current package boundary, backend-owned Blink generation, `.rovy.json` shape, scheduling, and boundary checks.
+See [Networking](/packages/networking.md) for the full spec, current package boundary, explicit Blink generation, `rovy-build` config shape, scheduling, and boundary checks.
 
 ## World Inspector (`@rovy/world-inspector`)
 

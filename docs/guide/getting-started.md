@@ -42,7 +42,7 @@ npm i @rovy/core
 npm i -D rovy-transformer
 ```
 
-Then register the transformer in `tsconfig.json`. Full steps — toolchain, `.rovy.json`,
+Then register the transformer in `tsconfig.json`. Full steps — toolchain, `rovy-build`,
 optional packages — are in [Installation](/guide/installation).
 
 ## Recommended reading order

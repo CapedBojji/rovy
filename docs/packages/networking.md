@@ -19,7 +19,7 @@ This spec covers:
 - `net.send(...)` and `net.trigger(...)`
 - sender / receiver semantics
 - Blink as the generated transport backend
-- `.rovy.json` environment/project configuration
+- `package.json` `rovy-build` environment/project configuration
 - compile-time and runtime boundary checks
 
 This spec does **not** cover:
@@ -348,12 +348,14 @@ There is no network equivalent of `world.trigger(...)` in MVP because networking
 
 ## Transport backend
 
-Blink is the default generated transport backend. `RemoteEvent` transport still exists as an explicit fallback when `.rovy.json` selects `"transport": "remote"`.
+Blink is the default generated transport backend. `RemoteEvent` transport still exists as an explicit fallback when the active `rovy-build` environment selects `"transport": "remote"`.
 
 ```txt
 user TypeScript
   -> @netEvent classes
   -> Rovy transformer
+  -> embedded Blink schema metadata
+  -> explicit Blink generator
   -> generated .blink schema
   -> Blink compiler
   -> generated Blink client/server modules
@@ -538,48 +540,54 @@ literal unions     -> enum
 object payload     -> struct
 ```
 
-## `.rovy.json` configuration
+## rovy-build configuration
 
 Do not hardcode active Rojo project selection into `tsconfig.json`.
 
-`tsconfig.json` should only point at the Rovy config file:
+`tsconfig.json` should only register the transformer:
 
 ```json
 {
 	"compilerOptions": {
 		"plugins": [
 			{
-				"transform": "rovy-transformer",
-				"config": ".rovy.json"
+				"transform": "rovy-transformer"
 			}
 		]
 	}
 }
 ```
 
-`.rovy.json` owns environment/project selection and network settings:
+`package.json` `rovy-build` owns build orchestration, environment/project selection, and network settings:
 
 ```json
 {
-	"$schema": "./node_modules/@rovy/core/schema/rovy.schema.json",
-	"current": "dev",
-	"environments": {
-		"dev": {
-			"rojo": "default.project.json",
-			"sourcemap": "sourcemap.json",
-			"boundaries": {
-				"server": ["src/server"],
-				"client": ["src/client"],
-				"shared": ["src/shared"]
-			},
-			"net": {
-				"strictBoundaryChecks": true,
-				"transport": "blink",
-				"blink": {
-					"enabled": true,
-					"remoteScope": "ROVY",
-					"manualReplication": true,
-					"usePolling": true
+	"rovy-build": {
+		"$schema": "./node_modules/@rovy/core/schema/rovy-build.schema.json",
+		"current": "dev",
+		"placeFile": "game.rbxl",
+		"rbxtscArgs": ["--type", "game"],
+		"rojoBuildArgs": ["build", "default.project.json", "-o", "game.rbxl"],
+		"watchOnOpen": true,
+		"generateBlink": true,
+		"environments": {
+			"dev": {
+				"rojo": "default.project.json",
+				"sourcemap": "sourcemap.json",
+				"boundaries": {
+					"server": ["src/server"],
+					"client": ["src/client"],
+					"shared": ["src/shared"]
+				},
+				"net": {
+					"strictBoundaryChecks": true,
+					"transport": "blink",
+					"blink": {
+						"enabled": true,
+						"remoteScope": "ROVY",
+						"manualReplication": true,
+						"usePolling": true
+					}
 				}
 			}
 		}
@@ -590,10 +598,10 @@ Do not hardcode active Rojo project selection into `tsconfig.json`.
 Active environment resolution order:
 
 1. `process.env.ROVY_ENV`
-2. `.rovy.json` `current`
+2. `package.json` `rovy-build.current`
 3. default environment, usually `"dev"`
 
-When Blink transport is active, Rovy writes generated build outputs here:
+When Blink transport is active, the explicit Blink generator writes build outputs here:
 
 - `out/shared/net/generated/rovy.generated.blink`
 - `out/shared/net/generated/RovyBlinkClient.luau`
@@ -612,7 +620,7 @@ type RuntimeBoundary = "server" | "client" | "shared" | "unknown";
 
 Detection order:
 
-1. explicit `.rovy.json` boundaries
+1. explicit `rovy-build` boundaries
 2. Rojo project tree
 3. Rojo sourcemap, if present
 4. conventional paths

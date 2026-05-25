@@ -2,7 +2,7 @@
 
 The roblox-ts transformer handles compile-time work that runtime TypeScript cannot do: resolving generic types, validating decorator usage, hoisting query descriptors, injecting `rovy.__*` registration calls after each decorated class, and lowering widget authoring for `@rovy/ui`.
 
-Shipped as the `rovy-transformer` package — a dev-only roblox-ts plugin, separate from the `@rovy/core` runtime. See [Packages](/packages/packages.md) for the split and `.rovy.json`-driven setup.
+Shipped as the `rovy-transformer` package — a dev-only roblox-ts plugin, separate from the `@rovy/core` runtime. See [Packages](/packages/packages.md) for the split and `rovy-build` setup.
 
 ## Responsibilities
 
@@ -17,7 +17,7 @@ All of the following happen at **build time**. Nothing below runs at Luau startu
 7. Hoist `Query<...>` descriptors and `query<...>()` macros to module-level constants (pre-built jecs query handles).
 8. Inject a `rovy.__*` registration call right after each decorated class declaration.
 
-The networking layer adds more transformer duties: detect `@netEvent` from `@rovy/networking`, treat it as implicit core `@event`, read network settings from `.rovy.json`, generate Blink-validated `.blink` schema metadata, lower `NetClient`/`NetServer` params through core's package-extension injection hook, and inject `rovyNet.__netEvent(...)` metadata. See [Networking](/packages/networking.md).
+The networking layer adds more transformer duties: detect `@netEvent` from `@rovy/networking`, treat it as implicit core `@event`, read network settings from `package.json` `rovy-build`, generate Blink-validated `.blink` schema metadata, lower `NetClient`/`NetServer` params through core's package-extension injection hook, and inject `rovyNet.__netEvent(...)` metadata. See [Networking](/packages/networking.md).
 
 UI work adds another compile-time path: detect JSDoc `@widget` functions, require a same-file implementation, hoist a module-level `const __rovyWidgetMeta_X = { id, name } as const` per widget, wrap the function through `RovyUi.__widget(fn, __rovyWidgetMeta_X)`, lower later plain widget calls and built-in `@rovy/ui` widget calls through `RovyUi.__scope("module:key", () => Widget(args))`, erase leading `style: Style` authoring sugar into `RovyUi.getActiveStyle()`, lower storage helpers like `useState` / `useEffect` / `useInstance` to keyed internals, and lower `StyleScope(...)` / `scope(...)` as keyed callback-bounded runtime scopes. See [UI](/packages/ui.md).
 
@@ -25,22 +25,21 @@ UI work adds another compile-time path: detect JSDoc `@widget` functions, requir
 
 Do not keep active environment or Rojo selection in `tsconfig.json`.
 
-`tsconfig.json` should only register the transformer and point it at `.rovy.json`:
+`tsconfig.json` should only register the transformer:
 
 ```json
 {
 	"compilerOptions": {
 		"plugins": [
 			{
-				"transform": "rovy-transformer",
-				"config": ".rovy.json"
+				"transform": "rovy-transformer"
 			}
 		]
 	}
 }
 ```
 
-`.rovy.json` is the source of truth for:
+`package.json` `rovy-build` is the source of truth for:
 
 - active environment selection
 - Rojo project path
@@ -53,25 +52,32 @@ Example:
 
 ```json
 {
-	"$schema": "./node_modules/@rovy/core/schema/rovy.schema.json",
-	"current": "dev",
-	"environments": {
-		"dev": {
-			"rojo": "default.project.json",
-			"sourcemap": "sourcemap.json",
-			"boundaries": {
-				"server": ["src/server"],
-				"client": ["src/client"],
-				"shared": ["src/shared"]
-			},
-			"net": {
-				"strictBoundaryChecks": true,
-				"transport": "blink",
-				"blink": {
-					"enabled": true,
-					"remoteScope": "ROVY",
-					"manualReplication": true,
-					"usePolling": true
+	"rovy-build": {
+		"$schema": "./node_modules/@rovy/core/schema/rovy-build.schema.json",
+		"current": "dev",
+		"placeFile": "game.rbxl",
+		"rbxtscArgs": ["--type", "game"],
+		"rojoBuildArgs": ["build", "default.project.json", "-o", "game.rbxl"],
+		"watchOnOpen": true,
+		"generateBlink": true,
+		"environments": {
+			"dev": {
+				"rojo": "default.project.json",
+				"sourcemap": "sourcemap.json",
+				"boundaries": {
+					"server": ["src/server"],
+					"client": ["src/client"],
+					"shared": ["src/shared"]
+				},
+				"net": {
+					"strictBoundaryChecks": true,
+					"transport": "blink",
+					"blink": {
+						"enabled": true,
+						"remoteScope": "ROVY",
+						"manualReplication": true,
+						"usePolling": true
+					}
 				}
 			}
 		}
@@ -82,17 +88,17 @@ Example:
 Environment resolution order:
 
 1. `process.env.ROVY_ENV`
-2. `.rovy.json` `current`
+2. `package.json` `rovy-build.current`
 3. transformer default
 
-When `net.transport` is `"blink"` (the default), the transformer owns Blink generation. It writes backend artifacts to:
+When `net.transport` is `"blink"` (the default), the transformer embeds Blink schema metadata in transformed net-event registrations. The explicit Blink generator command reads that metadata and writes backend artifacts to:
 
 - `out/shared/net/generated/rovy.generated.blink`
 - `out/shared/net/generated/RovyBlinkClient.luau`
 - `out/shared/net/generated/RovyBlinkServer.luau`
 - `out/shared/net/generated/RovyBlinkTypes.luau`
 
-These are generated build outputs, not user-authored source files.
+These are generated build outputs, not user-authored source files. Standalone `.rovy.json` still works as a deprecated compatibility fallback when `package.json` has no `rovy-build` key.
 
 ## Inference boundary
 
@@ -276,7 +282,7 @@ UI lowering explicitly does **not** include:
 
 Roblox ModuleScripts do not run unless required. A self-registering module is silently absent if no game code requires it.
 
-`rovy.loadPaths(...)` solves this — authored TS passes string paths like `"src/client/systems"`. The transformer resolves each string to the matching Roblox Instance root via the active `.rovy.json` environment's Rojo config, then runtime recursively requires every `ModuleScript` under that instance so every injected `rovy.__*` side effect runs.
+`rovy.loadPaths(...)` solves this — authored TS passes string paths like `"src/client/systems"`. The transformer resolves each string to the matching Roblox Instance root via the active `rovy-build` environment's Rojo config, then runtime recursively requires every `ModuleScript` under that instance so every injected `rovy.__*` side effect runs.
 
 ```ts
 rovy.loadPaths(

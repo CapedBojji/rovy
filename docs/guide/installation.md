@@ -1,19 +1,19 @@
 # Installation
 
 This guide covers setting up Rovy in a roblox-ts project: the toolchain, the npm
-packages, the transformer registration, and the `.rovy.json` config.
+packages, the transformer registration, and the `rovy-build` config.
 
 ## Toolchain
 
 Rovy targets [roblox-ts](https://roblox-ts.com/) and uses a standard Roblox
 development toolchain. The Rovy repo pins its tools with [mise](https://mise.jdx.dev/):
 
-| Tool | Purpose |
-|------|---------|
-| [pnpm](https://pnpm.io/) | package manager (workspace-aware) |
-| [Rojo](https://rojo.space/) | sync TypeScript output into a Roblox place |
-| [Blink](https://github.com/1Axen/blink) | networking IDL — only needed with `@rovy/networking` |
-| [zune](https://github.com/Scythe-Technology/zune) | Luau runtime used for tests |
+| Tool                                              | Purpose                                              |
+| ------------------------------------------------- | ---------------------------------------------------- |
+| [pnpm](https://pnpm.io/)                          | package manager (workspace-aware)                    |
+| [Rojo](https://rojo.space/)                       | sync TypeScript output into a Roblox place           |
+| [Blink](https://github.com/1Axen/blink)           | networking IDL — only needed with `@rovy/networking` |
+| [zune](https://github.com/Scythe-Technology/zune) | Luau runtime used for tests                          |
 
 A typical `mise.toml`:
 
@@ -28,13 +28,13 @@ A typical `mise.toml`:
 ## Install packages
 
 Rovy ships as separate packages, Flamework-style — a runtime package you import and a
-build-time transformer you list in `tsconfig.json`.
+build-time transformer you list in `tsconfig.json`, and a build orchestrator for project commands.
 
-Install the core runtime and the transformer:
+Install the core runtime, transformer, and build orchestrator:
 
 ```sh
 npm i @rovy/core
-npm i -D rovy-transformer
+npm i -D rovy-transformer rovy-build
 ```
 
 Install networking only when you use net events:
@@ -55,36 +55,35 @@ Install the in-game inspector only when you want the debug tool:
 npm i @rovy/world-inspector
 ```
 
-| Package | Role | How you use it |
-|---------|------|----------------|
-| `@rovy/core` | Decorators, macros, types, **and the packaged runtime** | `import` it and write code |
-| `@rovy/networking` | `@netEvent` authoring surface + runtime handles | `import` when using net events |
-| `@rovy/ui` | Function-first widget/render runtime | `import` widget helpers |
-| `@rovy/world-inspector` | In-game ECS inspection and editing plugin | `import` when embedding the debug inspector |
-| `rovy-transformer` | roblox-ts compiler transformer plugin | List it in `tsconfig.json` |
+| Package                 | Role                                                           | How you use it                              |
+| ----------------------- | -------------------------------------------------------------- | ------------------------------------------- |
+| `@rovy/core`            | Decorators, macros, types, **and the packaged runtime**        | `import` it and write code                  |
+| `@rovy/networking`      | `@netEvent` authoring surface + runtime handles                | `import` when using net events              |
+| `@rovy/ui`              | Function-first widget/render runtime                           | `import` widget helpers                     |
+| `@rovy/world-inspector` | In-game ECS inspection and editing plugin                      | `import` when embedding the debug inspector |
+| `rovy-transformer`      | roblox-ts compiler transformer plugin                          | List it in `tsconfig.json`                  |
+| `rovy-build`            | build/open/watch/start orchestration and Rovy config discovery | Use it in package scripts                   |
 
-The runtime is packaged *inside* `@rovy/core` — there is no separate runtime package.
+The runtime is packaged _inside_ `@rovy/core` — there is no separate runtime package.
 
 ## Register the transformer
 
-roblox-ts reads custom transformers from `compilerOptions.plugins`. Add `rovy-transformer`
-and point it at the shared Rovy config:
+roblox-ts reads custom transformers from `compilerOptions.plugins`. Add `rovy-transformer`:
 
 ```json
 {
   "compilerOptions": {
     "plugins": [
       {
-        "transform": "rovy-transformer",
-        "config": ".rovy.json"
+        "transform": "rovy-transformer"
       }
     ]
   }
 }
 ```
 
-That is the only transformer touchpoint in `tsconfig.json`. `rbxtsc` picks it up
-automatically — no extra build step.
+That is the only transformer touchpoint in `tsconfig.json`. `rovy-build` handles
+compile, generation, Rojo build, open, and watch.
 
 ::: warning Transformer must run
 Decorators and macros (`trait<T>()`, `query<...>()`) are real exports, but their
@@ -93,29 +92,36 @@ misconfigured, the stubs throw loudly at the first macro hit — for example:
 `[rovy] trait<T>() reached runtime untransformed — is rovy-transformer in tsconfig plugins?`
 :::
 
-## Configure `.rovy.json`
+## Configure rovy-build
 
-Keep environment, Rojo, boundary, and Blink settings in `.rovy.json`:
+Keep build, environment, Rojo, boundary, and Blink settings in `package.json` under `rovy-build`:
 
 ```json
 {
-  "current": "dev",
-  "environments": {
-    "dev": {
-      "rojo": "default.project.json",
-      "boundaries": {
-        "server": ["src/server"],
-        "client": ["src/client"],
-        "shared": ["src/shared"]
-      },
-      "net": {
-        "strictBoundaryChecks": true,
-        "transport": "blink",
-        "blink": {
-          "enabled": true,
-          "remoteScope": "ROVY",
-          "manualReplication": true,
-          "usePolling": true
+  "rovy-build": {
+    "current": "dev",
+    "placeFile": "game.rbxl",
+    "rbxtscArgs": ["--type", "game"],
+    "rojoBuildArgs": ["build", "default.project.json", "-o", "game.rbxl"],
+    "watchOnOpen": true,
+    "generateBlink": true,
+    "environments": {
+      "dev": {
+        "rojo": "default.project.json",
+        "boundaries": {
+          "server": ["src/server"],
+          "client": ["src/client"],
+          "shared": ["src/shared"]
+        },
+        "net": {
+          "strictBoundaryChecks": true,
+          "transport": "blink",
+          "blink": {
+            "enabled": true,
+            "remoteScope": "ROVY",
+            "manualReplication": true,
+            "usePolling": true
+          }
         }
       }
     }
@@ -126,9 +132,45 @@ Keep environment, Rojo, boundary, and Blink settings in `.rovy.json`:
 When networking is enabled, the build generates Blink files into
 `out/shared/net/generated/*` — you only author decorators and injected params.
 
+## Build orchestrator commands
+
+`rovy-build` installs the `rovy` CLI. Put the commands in package scripts so
+project-local `node_modules/.bin` is on `PATH`:
+
+```json
+{
+  "scripts": {
+    "compile": "rovy compile",
+    "generate": "rovy generate",
+    "build": "rovy build",
+    "watch": "rovy watch",
+    "open": "rovy open",
+    "start": "rovy start",
+    "stop": "rovy stop"
+  }
+}
+```
+
+| Command         | What it does                                                                                                                           |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `rovy compile`  | Runs `rbxtsc` with `rbxtscArgs`, then runs generators unless `generateBlink` is `false`.                                               |
+| `rovy generate` | Runs Rovy generators only. Today that means Blink transport files when networking generation is enabled.                               |
+| `rovy build`    | Runs `rovy compile`, then runs `rojo` with `rojoBuildArgs` to write the configured place file.                                         |
+| `rovy watch`    | Starts `rojo serve`, optional `rojo sourcemap --watch`, and `rbxtsc -w`; also keeps Blink generated files fresh after compile changes. |
+| `rovy open`     | Opens `placeFile` in Roblox Studio. If `watchOnOpen` is not `false`, it also starts `rovy watch`.                                      |
+| `rovy start`    | Runs `rovy build`, then `rovy open`. Use this for the normal "build, open Studio, keep watching" loop.                                 |
+| `rovy stop`     | Stops tracked watch and Studio processes from `.rovy-build/*.pid`.                                                                     |
+| `rovy init`     | Writes a starter `rovy-build` config and package scripts into the current `package.json`.                                              |
+
+`rovy watch` includes an interactive prompt. Type `help` in that prompt for
+available actions: `open`, `compile`, `generate`, `build`, `stop`, and `exit`.
+
+The older `rovy-build` binary name still points at the same CLI, but examples and
+new docs use `rovy`.
+
 ## Verify the setup
 
-Write a trivial component and system, build with `rbxtsc`, and confirm the transformer
+Write a trivial component and system, build with `rovy build`, and confirm the transformer
 ran (no untransformed-macro error at startup). Continue to
 [Your First System](/guide/your-first-system) for a complete walkthrough.
 

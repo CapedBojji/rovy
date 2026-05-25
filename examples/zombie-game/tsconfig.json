@@ -19,18 +19,11 @@
 		"rootDir": "src",
 		"outDir": "out",
 		"baseUrl": "src",
-		"paths": {
-			"@rovy/core": ["../node_modules/@rovy/core/out"],
-			"@rovy/networking": ["../node_modules/@rovy/networking/out"],
-			"@rovy/ui": ["../../packages/ui/out"],
-			"@rovy/world-inspector": ["../node_modules/@rovy/world-inspector/out"]
-		},
 		"incremental": true,
 		"tsBuildInfoFile": "out/tsconfig.tsbuildinfo",
 		"plugins": [
 			{
-				"transform": "rovy-transformer",
-				"config": ".rovy.json"
+				"transform": "rovy-transformer"
 			}
 		]
 	},

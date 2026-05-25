@@ -6,7 +6,8 @@ patterns in a real layout.
 
 ## Building examples
 
-From the repo root, each example has matching `build` / `dev` / `open` scripts:
+From the repo root, each example delegates to its package-level `rovy build` /
+`rovy start` scripts:
 
 ```sh
 pnpm build:example      # build the roblox-ts game example
@@ -23,6 +24,23 @@ pnpm open:zombie
 
 pnpm build:examples     # build all of the above
 ```
+
+Inside an example package, use the Rovy build CLI directly:
+
+```sh
+pnpm build # runs rovy build with the package's rovy-build config
+pnpm compile # runs rbxtsc + Rovy generators
+pnpm generate # runs Rovy generators only
+pnpm watch # runs rovy watch
+pnpm open  # runs rovy open
+pnpm start # runs rovy build, then rovy open/watch
+pnpm stop  # stops tracked watch/Studio processes
+```
+
+`rovy build` is the one-shot place build. It runs `rbxtsc`, runs Rovy generators
+such as Blink output when enabled, then runs Rojo with the package's
+`rovy-build.rojoBuildArgs`. `rovy start` is the full local loop: build the place,
+open Studio, and keep `rojo serve` / `rbxtsc -w` running.
 
 ## The examples
 
