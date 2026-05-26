@@ -18,6 +18,46 @@ importers:
         specifier: ^1.6.3
         version: 1.6.4(@algolia/client-search@5.52.1)(@types/node@22.19.19)(postcss@8.5.15)(search-insights@2.17.3)(typescript@5.9.3)
 
+  examples/multiplace-template:
+    dependencies:
+      '@rbxts/better-janitor':
+        specifier: ^0.4.0
+        version: 0.4.0
+      '@rovy/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@rovy/jecs':
+        specifier: workspace:*
+        version: link:../../packages/jecs
+      '@rovy/networking':
+        specifier: workspace:*
+        version: link:../../packages/networking
+      '@rovy/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      '@rovy/world-inspector':
+        specifier: workspace:*
+        version: link:../../packages/world-inspector
+    devDependencies:
+      '@rbxts/compiler-types':
+        specifier: 3.0.0-types.0
+        version: 3.0.0-types.0
+      '@rbxts/types':
+        specifier: ^1.0.920
+        version: 1.0.920
+      roblox-ts:
+        specifier: ^3.0.0
+        version: 3.0.0
+      rovy-build:
+        specifier: workspace:*
+        version: link:../../packages/build
+      rovy-transformer:
+        specifier: workspace:*
+        version: link:../../packages/transformer
+      typescript:
+        specifier: 5.5.3
+        version: 5.5.3
+
   examples/plugin-example:
     dependencies:
       '@rovy/core':

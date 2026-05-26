@@ -70,6 +70,16 @@
 					"type": "string",
 					"description": "Path to the generated sourcemap."
 				},
+				"placeFile": {
+					"type": "string",
+					"description": "Environment-specific place file output used by build/open/start."
+				},
+				"rbxtscArgs": {
+					"$ref": "#/$defs/stringArray"
+				},
+				"rojoBuildArgs": {
+					"$ref": "#/$defs/stringArray"
+				},
 				"boundaries": {
 					"type": "object",
 					"description": "Source path boundaries used for server/client/shared checks.",

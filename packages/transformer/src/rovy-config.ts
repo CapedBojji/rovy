@@ -25,6 +25,9 @@ export interface RovyEnvironmentConfig {
 	readonly debug?: boolean;
 	readonly rojo?: string;
 	readonly sourcemap?: string;
+	readonly placeFile?: string;
+	readonly rbxtscArgs?: ReadonlyArray<string>;
+	readonly rojoBuildArgs?: ReadonlyArray<string>;
 	readonly boundaries?: {
 		readonly server?: ReadonlyArray<string>;
 		readonly client?: ReadonlyArray<string>;
@@ -38,6 +41,9 @@ interface MutableRovyEnvironmentConfig {
 	debug?: boolean;
 	rojo?: string;
 	sourcemap?: string;
+	placeFile?: string;
+	rbxtscArgs?: ReadonlyArray<string>;
+	rojoBuildArgs?: ReadonlyArray<string>;
 	boundaries?: RovyEnvironmentConfig["boundaries"];
 	editor?: RovyEditorConfig;
 	net?: RovyNetConfig;

@@ -1,0 +1,53 @@
+{
+	"name": "rovy-multiplace-arena",
+	"globIgnorePaths": ["**/package.json", "**/tsconfig.json"],
+	"tree": {
+		"$className": "DataModel",
+		"ServerScriptService": {
+			"$className": "ServerScriptService",
+			"TS": {
+				"$path": "../../out/arena/arena/src/server"
+			}
+		},
+		"ReplicatedStorage": {
+			"$className": "ReplicatedStorage",
+			"rbxts_include": {
+				"$path": "../../include",
+				"node_modules": {
+					"$className": "Folder",
+					"@rbxts": {
+						"$path": "../../node_modules/@rbxts"
+					},
+					"@rovy": {
+						"$path": "../../node_modules/@rovy"
+					}
+				}
+			},
+			"Shared": {
+				"$path": "../../out/arena/shared/src"
+			}
+		},
+		"StarterPlayer": {
+			"$className": "StarterPlayer",
+			"StarterPlayerScripts": {
+				"$className": "StarterPlayerScripts",
+				"TS": {
+					"$path": "../../out/arena/arena/src/client"
+				}
+			}
+		},
+		"Workspace": {
+			"$className": "Workspace",
+			"SpawnLocation": {
+				"$className": "SpawnLocation",
+				"$properties": {
+					"Anchored": true,
+					"Duration": 0,
+					"Neutral": true,
+					"Position": [0, 3, 0],
+					"Size": [8, 1, 8]
+				}
+			}
+		}
+	}
+}

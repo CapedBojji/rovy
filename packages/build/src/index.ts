@@ -128,7 +128,7 @@ export async function openProject(context: CommandContext): Promise<void> {
 
 export async function openStudio(context: CommandContext): Promise<void> {
   const config = readConfig(context.projectDir);
-  const placeFile = placeFilePath(context.projectDir, config.build);
+  const placeFile = placeFilePath(context.projectDir, config);
   if (!fs.existsSync(placeFile))
     throw new Error(`place file missing: ${placeFile}`);
 
@@ -460,16 +460,20 @@ function readConfig(projectDir: string): ResolvedRovyBuildConfig {
 }
 
 function rbxtscArgs(config: ResolvedRovyBuildConfig): string[] {
-  return [...(config.build.rbxtscArgs ?? ["--type", "game"])];
+  return [
+    ...(config.environment.rbxtscArgs ??
+      config.build.rbxtscArgs ?? ["--type", "game"]),
+  ];
 }
 
 function rojoBuildArgs(config: ResolvedRovyBuildConfig): string[] {
   return [
-    ...(config.build.rojoBuildArgs ?? [
+    ...(config.environment.rojoBuildArgs ??
+      config.build.rojoBuildArgs ?? [
       "build",
       config.environment.rojo ?? "default.project.json",
       "-o",
-      config.build.placeFile ?? DEFAULT_PLACE_FILE,
+      config.environment.placeFile ?? config.build.placeFile ?? DEFAULT_PLACE_FILE,
     ]),
   ];
 }
@@ -502,9 +506,12 @@ function scriptNames(
 
 function placeFilePath(
   projectDir: string,
-  config: RovyBuildConfigFile,
+  config: ResolvedRovyBuildConfig,
 ): string {
-  return path.resolve(projectDir, config.placeFile ?? DEFAULT_PLACE_FILE);
+  return path.resolve(
+    projectDir,
+    config.environment.placeFile ?? config.build.placeFile ?? DEFAULT_PLACE_FILE,
+  );
 }
 
 function tsBuildInfoPath(projectDir: string): string {

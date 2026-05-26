@@ -1,0 +1,90 @@
+{
+	"name": "@rovy/multiplace-template",
+	"private": true,
+	"version": "1.0.0",
+	"description": "Rovy multi-place roblox-ts template with shared code and per-place builds.",
+	"scripts": {
+		"compile:lobby": "ROVY_ENV=lobby rovy compile",
+		"compile:arena": "ROVY_ENV=arena rovy compile",
+		"build:lobby": "ROVY_ENV=lobby rovy build",
+		"build:arena": "ROVY_ENV=arena rovy build",
+		"build": "pnpm --filter rovy-transformer build && pnpm --filter rovy-build build && pnpm --filter @rovy/core build && pnpm run build:lobby && pnpm run build:arena",
+		"check": "tsc -p tsconfig.json --noEmit --pretty false",
+		"lint": "pnpm run check",
+		"open:lobby": "ROVY_ENV=lobby rovy open",
+		"open:arena": "ROVY_ENV=arena rovy open",
+		"watch:lobby": "ROVY_ENV=lobby rovy watch",
+		"watch:arena": "ROVY_ENV=arena rovy watch",
+		"test:output": "node test/assert-output.js",
+		"test:place": "node test/assert-place.js"
+	},
+	"type": "module",
+	"dependencies": {
+		"@rbxts/better-janitor": "^0.4.0",
+		"@rovy/core": "workspace:*",
+		"@rovy/jecs": "workspace:*",
+		"@rovy/networking": "workspace:*",
+		"@rovy/ui": "workspace:*",
+		"@rovy/world-inspector": "workspace:*"
+	},
+	"devDependencies": {
+		"@rbxts/compiler-types": "3.0.0-types.0",
+		"@rbxts/types": "^1.0.920",
+		"roblox-ts": "^3.0.0",
+		"rovy-build": "workspace:*",
+		"rovy-transformer": "workspace:*",
+		"typescript": "5.5.3"
+	},
+	"rovy-build": {
+		"$schema": "../../packages/core/schema/rovy-build.schema.json",
+		"current": "lobby",
+		"watchOnOpen": true,
+		"generateBlink": false,
+		"environments": {
+			"lobby": {
+				"rojo": "projects/lobby/default.project.json",
+				"sourcemap": "projects/lobby/sourcemap.json",
+				"placeFile": "../../build/rovy-multiplace-lobby.rbxl",
+				"rbxtscArgs": [
+					"-p",
+					"tsconfig.lobby.json",
+					"--type",
+					"game",
+					"--rojo",
+					"projects/lobby/default.project.json"
+				],
+				"boundaries": {
+					"server": ["projects/lobby/src/server"],
+					"client": ["projects/lobby/src/client"],
+					"shared": ["projects/shared/src"]
+				},
+				"net": {
+					"strictBoundaryChecks": true,
+					"transport": "remote"
+				}
+			},
+			"arena": {
+				"rojo": "projects/arena/default.project.json",
+				"sourcemap": "projects/arena/sourcemap.json",
+				"placeFile": "../../build/rovy-multiplace-arena.rbxl",
+				"rbxtscArgs": [
+					"-p",
+					"tsconfig.arena.json",
+					"--type",
+					"game",
+					"--rojo",
+					"projects/arena/default.project.json"
+				],
+				"boundaries": {
+					"server": ["projects/arena/src/server"],
+					"client": ["projects/arena/src/client"],
+					"shared": ["projects/shared/src"]
+				},
+				"net": {
+					"strictBoundaryChecks": true,
+					"transport": "remote"
+				}
+			}
+		}
+	}
+}

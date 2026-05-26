@@ -1,0 +1,36 @@
+{
+	"compilerOptions": {
+		"allowSyntheticDefaultImports": true,
+		"downlevelIteration": true,
+		"jsx": "react",
+		"jsxFactory": "React.createElement",
+		"jsxFragmentFactory": "React.Fragment",
+		"module": "commonjs",
+		"moduleResolution": "Node",
+		"noLib": true,
+		"resolveJsonModule": true,
+		"experimentalDecorators": true,
+		"forceConsistentCasingInFileNames": true,
+		"moduleDetection": "force",
+		"skipLibCheck": true,
+		"strict": true,
+		"target": "ESNext",
+		"typeRoots": ["node_modules/@rbxts", "node_modules/@rovy"],
+		"rootDir": "projects",
+		"rootDirs": ["projects/lobby/src", "projects/shared/src"],
+		"outDir": "out/lobby",
+		"baseUrl": "projects/lobby/src",
+		"paths": {
+			"shared/*": ["../../shared/src/*"]
+		},
+		"incremental": true,
+		"tsBuildInfoFile": "out/lobby/tsconfig.tsbuildinfo",
+		"plugins": [
+			{
+				"transform": "rovy-transformer"
+			}
+		]
+	},
+	"include": ["projects/lobby/src/**/*", "projects/shared/src/**/*"],
+	"exclude": ["projects/**/default.project.json"]
+}

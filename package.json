@@ -30,6 +30,8 @@
     "open:zombie": "pnpm --filter @rovy/example-zombie-game open",
     "dev:zombie": "pnpm --filter @rovy/example-zombie-game start",
     "test:zombie": "pnpm run build:zombie && pnpm --filter @rovy/example-zombie-game test:output && pnpm --filter @rovy/example-zombie-game test:luau && pnpm --filter @rovy/example-zombie-game test:place",
+    "build:multiplace": "pnpm --filter @rovy/multiplace-template build",
+    "test:multiplace": "pnpm run build:multiplace && pnpm --filter @rovy/multiplace-template test:output && pnpm --filter @rovy/multiplace-template test:place",
     "build:examples": "pnpm run build:example && pnpm run build:ui-inventory && pnpm run build:zombie",
     "clean": "bash scripts/clean.sh",
     "clean:modules": "bash scripts/clean.sh --modules",

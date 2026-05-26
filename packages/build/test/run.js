@@ -61,6 +61,27 @@ async function capture(argv, dir) {
   ]);
   assert.equal(fs.existsSync(path.join(nestedBuildDir, "build")), true);
 
+  const envOverrideDir = tempProject({
+    generateBlink: false,
+    rojoBuildArgs: undefined,
+    environments: {
+      lobby: {
+        rojo: "projects/lobby/default.project.json",
+        placeFile: "build/lobby.rbxl",
+        rbxtscArgs: ["-p", "projects/lobby", "--type", "game"],
+      },
+    },
+    current: "lobby",
+  });
+  assert.deepEqual(await capture(["build"], envOverrideDir), [
+    ["rbxtsc", ["-p", "projects/lobby", "--type", "game"]],
+    [
+      "rojo",
+      ["build", "projects/lobby/default.project.json", "-o", "build/lobby.rbxl"],
+    ],
+  ]);
+  assert.equal(fs.existsSync(path.join(envOverrideDir, "build")), true);
+
   const initDir = fs.mkdtempSync(path.join(os.tmpdir(), "rovy-build-init-"));
   fs.writeFileSync(
     path.join(initDir, "package.json"),

@@ -22,7 +22,10 @@ pnpm build:zombie       # zombie game example
 pnpm dev:zombie
 pnpm open:zombie
 
-pnpm build:examples     # build all of the above
+pnpm build:multiplace   # multi-place template
+pnpm test:multiplace
+
+pnpm build:examples     # build the main playable examples
 ```
 
 Inside an example package, use the Rovy build CLI directly:
@@ -72,6 +75,21 @@ the in-game [World Inspector](/packages/world-inspector). The client example bin
 the inspector toggle to `F2`.
 
 Source: [`examples/zombie-game/src`](https://github.com/CapedBojji/rovy/tree/main/examples/zombie-game/src)
+
+### Multi-place template — `examples/multiplace-template`
+
+Package `@rovy/multiplace-template`. A roblox-ts multi-place layout inspired by
+`roblox-ts/demo-multiplace-game`: each place owns its own Rojo project, while
+root per-place tsconfigs compile `projects/shared/src` into both place outputs.
+
+```sh
+pnpm build:multiplace
+pnpm --filter @rovy/multiplace-template build:lobby
+pnpm --filter @rovy/multiplace-template build:arena
+pnpm test:multiplace
+```
+
+Source: [`examples/multiplace-template`](https://github.com/CapedBojji/rovy/tree/main/examples/multiplace-template)
 
 ### Plugin example — `examples/plugin-example`
 
