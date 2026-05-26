@@ -43,6 +43,12 @@ Install networking only when you use net events:
 npm i @rovy/networking
 ```
 
+Install datastore only when you need persistent documents:
+
+```sh
+npm i @rovy/datastore
+```
+
 Install UI only when you author widgets:
 
 ```sh
@@ -59,6 +65,7 @@ npm i @rovy/world-inspector
 | ----------------------- | -------------------------------------------------------------- | ------------------------------------------- |
 | `@rovy/core`            | Decorators, macros, types, **and the packaged runtime**        | `import` it and write code                  |
 | `@rovy/networking`      | `@netEvent` authoring surface + runtime handles                | `import` when using net events              |
+| `@rovy/datastore`       | Persistent document declarations + reader/writer/opener handles | `import` when using datastore documents     |
 | `@rovy/ui`              | Function-first widget/render runtime                           | `import` widget helpers                     |
 | `@rovy/world-inspector` | In-game ECS inspection and editing plugin                      | `import` when embedding the debug inspector |
 | `rovy-transformer`      | roblox-ts compiler transformer plugin                          | List it in `tsconfig.json`                  |
@@ -177,6 +184,7 @@ ran (no untransformed-macro error at startup). Continue to
 ## See also
 
 - [Packages Overview](/packages/packages) — full package breakdown.
+- [Datastore](/packages/datastore) — typed persistent documents.
 - [World Inspector](/packages/world-inspector) — in-game ECS inspection and editing.
 - [Transformer](/runtime/transformer) — build-time duty list.
 - [Runtime Lifecycle](/runtime/lifecycle) — how the runtime consumes registrations.

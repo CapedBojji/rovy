@@ -1,6 +1,6 @@
 # Transformer
 
-The roblox-ts transformer handles compile-time work that runtime TypeScript cannot do: resolving generic types, validating decorator usage, hoisting query descriptors, injecting `rovy.__*` registration calls after each decorated class, and lowering widget authoring for `@rovy/ui`.
+The roblox-ts transformer handles compile-time work that runtime TypeScript cannot do: resolving generic types, validating decorator usage, hoisting query descriptors, injecting `rovy.__*` registration calls after each decorated class, lowering datastore declarations for `@rovy/datastore`, and lowering widget authoring for `@rovy/ui`.
 
 Shipped as the `rovy-transformer` package — a dev-only roblox-ts plugin, separate from the `@rovy/core` runtime. See [Packages](/packages/packages.md) for the split and `rovy-build` setup.
 
@@ -18,6 +18,8 @@ All of the following happen at **build time**. Nothing below runs at Luau startu
 8. Inject a `rovy.__*` registration call right after each decorated class declaration.
 
 The networking layer adds more transformer duties: detect `@netEvent` from `@rovy/networking`, treat it as implicit core `@event`, read network settings from `package.json` `rovy-build`, generate Blink-validated `.blink` schema metadata, lower `NetClient`/`NetServer` params through core's package-extension injection hook, and inject `rovyNet.__netEvent(...)` metadata. See [Networking](/packages/networking.md).
+
+Datastore work adds another compile-time path: detect `playerDocument<T>()`, `document<T, Owner>()`, and `sharedDocument<T>()` from `@rovy/datastore`, require explicit data types, generate datastore-safe `@rbxts/t` validators from TypeScript data shapes, lower declarations into `rovyData.__document(...)`, generate lifecycle event constructors, and lower `DocumentReader` / `DocumentWriter` / `DocumentOpener` params through core's package-extension injection hook. See [Datastore](/packages/datastore.md).
 
 UI work adds another compile-time path: detect JSDoc `@widget` functions, require a same-file implementation, hoist a module-level `const __rovyWidgetMeta_X = { id, name } as const` per widget, wrap the function through `RovyUi.__widget(fn, __rovyWidgetMeta_X)`, lower later plain widget calls and built-in `@rovy/ui` widget calls through `RovyUi.__scope("module:key", () => Widget(args))`, erase leading `style: Style` authoring sugar into `RovyUi.getActiveStyle()`, lower storage helpers like `useState` / `useEffect` / `useInstance` to keyed internals, and lower `StyleScope(...)` / `scope(...)` as keyed callback-bounded runtime scopes. See [UI](/packages/ui.md).
 

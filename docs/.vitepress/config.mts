@@ -67,6 +67,7 @@ export default defineConfig({
         items: [
           { text: "Packages Overview", link: "/packages/packages" },
           { text: "Networking", link: "/packages/networking" },
+          { text: "Datastore", link: "/packages/datastore" },
           { text: "UI", link: "/packages/ui" },
           { text: "World Inspector", link: "/packages/world-inspector" },
         ],

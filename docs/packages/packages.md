@@ -1,4 +1,4 @@
-# Packages — core, networking, ui, world inspector, and transformer
+# Packages — core, networking, datastore, ui, world inspector, and transformer
 
 Rovy ships as distinct packages, mirroring the split between runtime packages and build-time transformer tooling:
 
@@ -6,20 +6,22 @@ Rovy ships as distinct packages, mirroring the split between runtime packages an
 | ----------------------- | -------------------------------------------------------------- | --------------------------------------------------------- |
 | `@rovy/core`            | Decorators, macros, types, **and the packaged runtime**        | `import` it and write code                                |
 | `@rovy/networking`      | Net-event authoring surface and runtime handles                | `import` it when using `@netEvent`                        |
+| `@rovy/datastore`       | Persistent document declarations and runtime handles           | `import` it when using persistent documents               |
 | `@rovy/ui`              | Widget/render integration package                              | `import` widget helpers and JSDoc-tagged widget functions |
 | `@rovy/world-inspector` | In-game ECS inspection and editing plugin                      | `import` it when embedding the debug inspector            |
 | `rovy-transformer`      | roblox-ts compiler transformer plugin                          | Listing it in `tsconfig.json`                             |
 | `rovy-build`            | build/open/watch/start orchestration and Rovy config discovery | Use it in package scripts                                 |
 
 Most ECS code authors against `@rovy/core`. Networked event code additionally
-imports `@rovy/networking`. UI code authors against `@rovy/ui`. Debug tooling
-can additionally import `@rovy/world-inspector`. `rovy-transformer` runs
+imports `@rovy/networking`. Persistent game data code imports
+`@rovy/datastore`. UI code authors against `@rovy/ui`. Debug tooling can
+additionally import `@rovy/world-inspector`. `rovy-transformer` runs
 silently at build time and rewrites decorated and widget code into the runtime
 calls the packages consume. `rovy-build` owns the project command flow around
 `rbxtsc`, generators, Rojo, and Studio.
 
 Inside this repo, the shipped packages live in a pnpm workspace at
-`packages/core`, `packages/networking`, `packages/ui`,
+`packages/core`, `packages/networking`, `packages/datastore`, `packages/ui`,
 `packages/world-inspector`, `packages/transformer`, and `packages/build`.
 
 ## What lives in `@rovy/core`
@@ -53,6 +55,25 @@ import { NetClient, netEvent } from "@rovy/networking";
 ```
 
 `@netEvent` implies a core `@event`: the transformer emits both `rovy.__event(...)` and `rovyNet.__netEvent(...)`.
+
+## What lives in `@rovy/datastore`
+
+Datastore is separate from core. Import it only when a package needs persistent
+documents:
+
+- **Declarations** — `playerDocument<T>()`, `document<T, Owner>()`, and `sharedDocument<T>()`
+- **Runtime handles** — `DocumentReader<D>`, `DocumentWriter<D>`, and `DocumentOpener<D>`
+- **Lifecycle events** — `DocumentOpened<D>`, `DocumentOpenFailed<D>`, `DocumentChanged<D>`, `DocumentSaved<D>`, `DocumentSaveFailed<D>`, and `DocumentClosed<D>`
+- **Registry** — `rovyData.__document(...)` is transformer-injected; users should not hand-call it
+- **Runtime** — queued open/close/save processing through package-installed `DataStoreSet`
+
+```ts
+import { playerDocument, type DocumentWriter } from "@rovy/datastore";
+```
+
+Document declarations are transformer-backed. The transformer generates runtime
+validators from datastore-safe TypeScript data types and lowers injected
+document handle params to external package param ids.
 
 ## What lives in `@rovy/ui`
 
@@ -93,7 +114,8 @@ A roblox-ts custom transformer. Pure build-time. It never ships to the game. Dut
 4. Inject a `rovy.__*` registration call after each decorated class.
 5. Rewrite `trait<T>()` → `rovy.traitToken("stable/path")`.
 6. Validate decorator usage (observer field exclusivity, monitor param order, `@resource` defaulted ctor, planned `@prefab` zero-arg ctor + `build(...)` shape).
-7. UI support: detect JSDoc `@widget` functions, inject widget registration, wrap them through `RovyUi.__widget(...)`, lower plain/custom and built-in widget calls through `RovyUi.__scope(...)`, lower storage helpers to keyed internals, and lower style sugar.
+7. Datastore support: lower document declarations, generate validators, generate lifecycle event constructors, and lower `DocumentReader` / `DocumentWriter` / `DocumentOpener` params to external package ids.
+8. UI support: detect JSDoc `@widget` functions, inject widget registration, wrap them through `RovyUi.__widget(...)`, lower plain/custom and built-in widget calls through `RovyUi.__scope(...)`, lower storage helpers to keyed internals, and lower style sugar.
 
 ## How they connect
 
@@ -132,6 +154,12 @@ Install networking only when using net events:
 
 ```sh
 npm i @rovy/networking
+```
+
+Install datastore only when using persistent documents:
+
+```sh
+npm i @rovy/datastore
 ```
 
 Install UI only when using widget authoring:
@@ -287,6 +315,7 @@ So a missing/misconfigured transformer surfaces as an immediate, explicit error 
 - [Compiled output](/runtime/compiled-output.md) — what the transformer emits
 - [Runtime lifecycle](/runtime/lifecycle.md) — how the runtime consumes it
 - [API reference](/reference/api.md)
+- [Datastore](/packages/datastore.md)
 - [Prefabs](/concepts/prefabs.md)
 - [UI](/packages/ui.md)
 - [World Inspector](/packages/world-inspector.md)

@@ -38,6 +38,16 @@ Available in `run` (systems/observers) and `onEnter`/`onExit`/`onChange` (monito
 | `Local<T>` | per-instance persistent state |
 | `World` | raw world (escape hatch) |
 
+Datastore params:
+
+| Param type | Injected value |
+|------------|----------------|
+| `DocumentReader<D>` | read-only handle for document `D` |
+| `DocumentWriter<D>` | read/write/save handle for document `D` |
+| `DocumentOpener<D>` | open/close/reopen handle for document `D` |
+
+These come from `@rovy/datastore`, not `@rovy/core`. Core provides the package-extension injection hook; the datastore package owns document runtime handles and lifecycle events.
+
 Draft networking params:
 
 | Param type | Injected value |
@@ -314,6 +324,131 @@ class NetServer {
 
 See [Networking](/packages/networking.md) for the full spec, current package boundary, explicit Blink generation, `rovy-build` config shape, scheduling, and boundary checks.
 
+## Datastore (`@rovy/datastore`)
+
+Datastore lives in a separate package. The v1 public surface is:
+
+```ts
+import {
+  document,
+  playerDocument,
+  sharedDocument,
+  type DocumentReader,
+  type DocumentWriter,
+  type DocumentOpener,
+} from "@rovy/datastore";
+
+const Profile = playerDocument<ProfileData>()({
+  name: "Profile",
+  store: "PlayerData",
+  key: (player) => tostring(player.UserId),
+  default: () => ({ coins: 0 }),
+  session: {
+    lock: true,
+    stealOnSessionLocked: true,
+  },
+  lifecycle: {
+    autoOpen: true,
+    autoClose: true,
+    kickOnOpenFailure: true,
+  },
+});
+```
+
+Declarations:
+
+```ts
+playerDocument<T>()(options: PlayerDocumentOptions<T>): PlayerDocument<T>;
+document<T, Owner>()(options: DocumentOptions<T, Owner>): KeyedDocument<T, Owner>;
+sharedDocument<T>()(options: SharedDocumentOptions<T>): SharedDocument<T>;
+```
+
+Common options:
+
+```ts
+{
+  name: string;
+  store: string;
+  key: (owner) => string; // playerDocument has default UserId key; sharedDocument uses string key
+  default: () => T;
+  migrations?: DocumentMigration<T>[];
+  session?: {
+    lock?: boolean;
+    stealOnSessionLocked?: boolean;
+  };
+  lifecycle?: {
+    autoOpen?: boolean;
+    autoClose?: boolean;
+    kickOnOpenFailure?: boolean; // player documents only
+  };
+  debug?: {
+    printLifecycle?: boolean;
+    printWrites?: boolean;
+  };
+  unsafeCheckOverride?: (value: unknown) => boolean;
+}
+```
+
+Handles:
+
+```ts
+interface DocumentReader<D> {
+  get(owner: DocumentOwner<D>): ReadonlyDeep<DocumentData<D>> | undefined;
+  require(owner: DocumentOwner<D>): ReadonlyDeep<DocumentData<D>>;
+  has(owner: DocumentOwner<D>): boolean;
+  status(owner: DocumentOwner<D>): DocumentStatus;
+  isOpen(owner: DocumentOwner<D>): boolean;
+  keyOf(owner: DocumentOwner<D>): string;
+}
+
+interface DocumentWriter<D> extends DocumentReader<D> {
+  update(owner: DocumentOwner<D>, transform: (data) => nextData, options?: DocumentUpdateOptions): DocumentUpdateResult;
+  patch(owner: DocumentOwner<D>, patch: Partial<DocumentData<D>>, options?: DocumentUpdateOptions): DocumentUpdateResult;
+  save(owner: DocumentOwner<D>, options?: DocumentSaveOptions): void;
+}
+
+interface DocumentOpener<D> {
+  open(owner: DocumentOwner<D>, options?: DocumentOpenOptions): void;
+  close(owner: DocumentOwner<D>, options?: DocumentCloseOptions): void;
+  reopen(owner: DocumentOwner<D>, options?: DocumentOpenOptions): void;
+  status(owner: DocumentOwner<D>): DocumentStatus;
+  isOpen(owner: DocumentOwner<D>): boolean;
+  keyOf(owner: DocumentOwner<D>): string;
+}
+```
+
+Statuses:
+
+```ts
+type DocumentStatus = "closed" | "opening" | "open" | "saving" | "closing" | "failed";
+```
+
+Failure reasons:
+
+```ts
+type DocumentFailureReason =
+  | "SessionLockedError"
+  | "BackwardsCompatibilityError"
+  | "RobloxAPIError"
+  | "ValidationError"
+  | "NotOpen"
+  | "Closed"
+  | "Unknown";
+```
+
+Lifecycle event payload types:
+
+```ts
+DocumentOpened<D>
+DocumentOpenFailed<D>
+DocumentChanged<D>
+DocumentSaved<D>
+DocumentSaveFailed<D>
+DocumentClosed<D>
+```
+
+See [Datastore](/packages/datastore.md) for examples, queue behavior, session-lock behavior, rate-limit failure handling, and current backend-adapter boundary.
+
 ## World Inspector (`@rovy/world-inspector`)
 
 Optional debug package for live ECS inspection and editing:
@@ -359,6 +494,7 @@ and instance-expression syntax like `Workspace/Zombie/HumanoidRootPart`.
 - [Observers](/concepts/observers.md)
 - [Monitors](/concepts/monitors.md)
 - [Systems and injection](/concepts/systems-and-injection.md)
+- [Datastore](/packages/datastore.md)
 - [Networking](/packages/networking.md)
 - [Prefabs](/concepts/prefabs.md)
 - [UI](/packages/ui.md)
