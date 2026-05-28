@@ -22,6 +22,10 @@ pnpm build:zombie       # zombie game example
 pnpm dev:zombie
 pnpm open:zombie
 
+pnpm build:tower        # tower defense simulation example
+pnpm dev:tower
+pnpm open:tower
+
 pnpm build:multiplace   # multi-place template
 pnpm test:multiplace
 
@@ -68,13 +72,33 @@ Source: [`examples/ui-inventory-game/src`](https://github.com/CapedBojji/rovy/tr
 ### Zombie game — `examples/zombie-game`
 
 Package `@rovy/example-zombie-game`. The largest example: a full client/server game
-with components, resources, collectors (external Roblox/Flamework signal translation),
-shared network contracts, and a Blink-backed networking layer. Use it as a reference
-for [collectors](/concepts/collectors), [networking](/packages/networking), and
-the in-game [World Inspector](/packages/world-inspector). The client example binds
-the inspector toggle to `F2`.
+with components, resources, collectors for Roblox ingress, shared network contracts,
+and a Blink-backed networking layer. The HUD shows wave state, health, score, kills,
+shots fired, and combo/best-combo. Server wave, score, and smoke-test resources are
+marked with `@inspect`, so the in-game [World Inspector](/packages/world-inspector)
+frame recorder can capture both component changes and resource diffs. Use it as a
+reference for [collectors](/concepts/collectors), [networking](/packages/networking),
+and the World Inspector. The client example binds the inspector toggle to `F2`.
 
 Source: [`examples/zombie-game/src`](https://github.com/CapedBojji/rovy/tree/main/examples/zombie-game/src)
+
+### Tower defense game — `examples/tower-defense-game`
+
+Package `@rovy/example-tower-defense-game`. A forever-running tower-defense
+simulation: monsters spawn on a straight lane, a single middle turret shoots,
+some monsters leak through the end, and each leak emits a server-side damage
+event without tracking base HP. Spawn rate is capped to three active monsters;
+the turret takes one deterministic shot per spawn, killing every second spawn
+while the alternating shots miss and let monsters leak. It uses `@netEvent`
+snapshots from server to client and periodic client heartbeats back to server,
+so both worlds mutate resources/components during a normal run. Server
+resources (`ServerClock`, `TowerDefenseStats`, `TurretState`,
+`ClientSignalState`) and client resources (`ClientClock`, `ClientPlaybackState`,
+`HudState`) are marked with `@inspect`, which makes it a compact smoke target
+for the World Inspector frame recorder on local client state and remote
+server/player targets.
+
+Source: [`examples/tower-defense-game/src`](https://github.com/CapedBojji/rovy/tree/main/examples/tower-defense-game/src)
 
 ### Multi-place template — `examples/multiplace-template`
 

@@ -3,7 +3,7 @@ import { NetServer } from "@rovy/networking";
 import { PLAYER_MAX_HEALTH, WorldSnapshotPayload } from "shared/contracts";
 import { toWorldSnapshotNet } from "shared/network";
 import { Health, PlayerUnit, Position, Projectile, WireId, Zombie } from "../components";
-import { DevPauseState, ServerClock, SnapshotState, WaveState } from "../resources";
+import { DevPauseState, ScoreState, ServerClock, SmokeStats, SnapshotState, WaveState } from "../resources";
 import { SnapshotSet, tickSnapshotAccumulator, Update } from "../state";
 
 @system({ schedule: Update, set: SnapshotSet })
@@ -12,6 +12,8 @@ export class BuildSnapshot {
 		clock: Res<ServerClock>,
 		wave: Res<WaveState>,
 		pause: Res<DevPauseState>,
+		score: Res<ScoreState>,
+		stats: Res<SmokeStats>,
 		snap: ResMut<SnapshotState>,
 		network: NetServer,
 		players: Query<[PlayerUnit, Position, Health]>,
@@ -55,6 +57,11 @@ export class BuildSnapshot {
 			zombieSnaps,
 			projectileSnaps,
 			pause.paused,
+			score.score,
+			score.kills,
+			stats.shotsFired,
+			score.combo,
+			score.bestCombo,
 		);
 
 		snap.snapshotCount += 1;

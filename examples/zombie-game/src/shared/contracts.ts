@@ -74,6 +74,11 @@ export class WorldSnapshotPayload {
 		public zombies: Array<ZombieSnapshot> = [],
 		public projectiles: Array<ProjectileSnapshot> = [],
 		public paused: boolean = false,
+		public score: number = 0,
+		public kills: number = 0,
+		public shotsFired: number = 0,
+		public combo: number = 0,
+		public bestCombo: number = 0,
 	) {}
 }
 
@@ -109,4 +114,7 @@ export interface ZombieGameSmokeResult {
 	readonly restartApplied: boolean;
 	readonly snapshotCount: number;
 	readonly pauseFreezeVerified: boolean;
+	readonly score: number;
+	readonly bestCombo: number;
+	readonly scoreResetVerified: boolean;
 }

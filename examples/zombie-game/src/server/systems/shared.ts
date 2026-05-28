@@ -23,6 +23,7 @@ import {
 	Zombie,
 } from "../components";
 import {
+	ScoreState,
 	SmokeStats,
 	WaveState,
 	WireIdAllocator,
@@ -79,6 +80,7 @@ export function applyRestart(
 	wave: WaveState,
 	ids: WireIdAllocator,
 	stats: SmokeStats,
+	score: ScoreState,
 	zombies: Query<[Entity], With<Zombie>>,
 	projectiles: Query<[Entity], With<Projectile>>,
 	players: Query<[Entity, PlayerUnit, WeaponCooldown]>,
@@ -96,6 +98,10 @@ export function applyRestart(
 	wave.spawnRemaining = 0;
 	wave.spawnCooldown = 0;
 	wave.spawnIndex = 0;
+	score.score = 0;
+	score.kills = 0;
+	score.combo = 0;
+	score.bestCombo = 0;
 	ids.reset();
 	stats.restartApplied = true;
 }

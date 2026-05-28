@@ -1,0 +1,104 @@
+{
+	"name": "@rovy/example-tower-defense-game",
+	"private": true,
+	"version": "1.0.0",
+	"description": "Rovy tower-defense simulation example with networking and world inspector frame-recorder targets.",
+	"main": "index.js",
+	"scripts": {
+		"compile": "rovy compile",
+		"generate": "rovy generate",
+		"build": "pnpm --filter rovy-transformer build && pnpm --filter rovy-build build && pnpm --filter @rovy/networking build && pnpm --filter @rovy/ui build && pnpm --filter @rovy/world-inspector build && rovy build",
+		"watch": "rovy watch",
+		"open": "rovy open",
+		"start": "rovy start",
+		"stop": "rovy stop",
+		"build:place": "pnpm run build",
+		"test:output": "node test/assert-output.js",
+		"test:luau": "zune test test/smoke",
+		"test:place": "node test/assert-place.js"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"devEngines": {
+		"packageManager": {
+			"name": "pnpm",
+			"version": "^11.1.2",
+			"onFail": "download"
+		}
+	},
+	"type": "module",
+	"dependencies": {
+		"@rbxts/better-janitor": "^0.4.0",
+		"@rbxts/egooe": "0.1.7",
+		"@rbxts/iris": "2.3.1-ts.1",
+		"@rbxts/maid": "^1.1.0",
+		"@rbxts/object-utils": "^1.0.4",
+		"@rbxts/services": "^1.6.0",
+		"@rbxts/signal": "^1.1.1",
+		"@rbxts/t": "^3.2.1",
+		"@rovy/core": "workspace:*",
+		"@rovy/jecs": "workspace:*",
+		"@rovy/networking": "workspace:*",
+		"@rovy/ui": "workspace:*",
+		"@rovy/world-inspector": "workspace:*"
+	},
+	"devDependencies": {
+		"@rbxts/compiler-types": "3.0.0-types.0",
+		"@rbxts/types": "^1.0.920",
+		"@typescript-eslint/eslint-plugin": "^8.59.3",
+		"@typescript-eslint/parser": "^8.59.3",
+		"eslint": "^10.3.0",
+		"eslint-config-prettier": "^10.1.8",
+		"eslint-plugin-prettier": "^5.5.5",
+		"eslint-plugin-roblox-ts": "^1.4.0",
+		"prettier": "^3.8.3",
+		"roblox-ts": "^3.0.0",
+		"rovy-build": "workspace:*",
+		"rovy-transformer": "workspace:*",
+		"typescript": "5.5.3"
+	},
+	"rovy-build": {
+		"$schema": "../../packages/core/schema/rovy-build.schema.json",
+		"current": "dev",
+		"placeFile": "../../build/rovy-tower-defense-game.rbxl",
+		"rbxtscArgs": [
+			"--type",
+			"game"
+		],
+		"rojoBuildArgs": [
+			"build",
+			"default.project.json",
+			"-o",
+			"../../build/rovy-tower-defense-game.rbxl"
+		],
+		"watchOnOpen": true,
+		"generateBlink": true,
+		"environments": {
+			"dev": {
+				"rojo": "default.project.json",
+				"boundaries": {
+					"server": [
+						"src/server"
+					],
+					"client": [
+						"src/client"
+					],
+					"shared": [
+						"src/shared"
+					]
+				},
+				"net": {
+					"strictBoundaryChecks": true,
+					"transport": "blink",
+					"blink": {
+						"enabled": true,
+						"remoteScope": "ROVY",
+						"manualReplication": true,
+						"usePolling": true
+					}
+				}
+			}
+		}
+	}
+}

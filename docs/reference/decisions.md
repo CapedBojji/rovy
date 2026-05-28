@@ -5,7 +5,7 @@ Settled design decisions. Change only with a strong reason.
 ## Locked
 
 - Build on top of jecs. Do not fork.
-- Decorator-based authoring: `@component`, `@resource`, `@event`, `@system`, `@observer`, `@monitor`, `@relation`, `@schedule`, `@set`, `@plugin`.
+- Decorator-based authoring: `@component`, `@resource`, `@inspect`, `@event`, `@system`, `@observer`, `@monitor`, `@relation`, `@schedule`, `@set`, `@plugin`.
 - Components, resources, events, systems, observers, monitors, relations, schedules, sets are classes.
 - Traits are interfaces. `trait<T>()` macro for value positions; `Trait<T>`/`HasTrait<T>`/`AllTraits<T>` for type positions.
 - `@component` classes must explicitly `implements Trait`. No structural inference from method shape.
@@ -21,6 +21,7 @@ Settled design decisions. Change only with a strong reason.
 - Relationships are in scope: `@relation` classes, `Pair<R>`/`HasPair<R>`, `commands.relate/unrelate`.
 - Change detection filters `Changed<C>` / `Added<C>` / `Removed<C>` are kept as query filters and coexist with `@monitor` onExit/onChange.
 - `@resource` auto-registers from default constructor. No manual `app.insertResource()` required. `app.insertResource()` exists only as override.
+- `@inspect` is opt-in resource metadata for frame-recorder snapshots. Components are tracked from registered component change ticks; resources record only when explicitly marked.
 - No central manifest. Transformer injects side-effect registration calls (`rovy.__component`, `rovy.__system`, `rovy.__observer`, ...) right after each decorated class. `rovy.loadPaths(...)` force-requires module trees so those registrations run; must be called before `app.start()`. `app.start()` finalizes (allocates jecs IDs, wires hooks, sorts observers, auto-instantiates resources, fires `runOnStart`).
 - Mutation must go through `commands.set` / `world.set` for change detection to fire.
 

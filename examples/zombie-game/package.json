@@ -7,7 +7,7 @@
 	"scripts": {
 		"compile": "rovy compile",
 		"generate": "rovy generate",
-		"build": "pnpm --filter rovy-transformer build && pnpm --filter rovy-build build && pnpm --filter @rovy/networking build && rovy build",
+		"build": "pnpm --filter rovy-transformer build && pnpm --filter rovy-build build && pnpm --filter @rovy/networking build && pnpm --filter @rovy/ui build && pnpm --filter @rovy/world-inspector build && rovy build",
 		"watch": "rovy watch",
 		"open": "rovy open",
 		"start": "rovy start",
@@ -29,6 +29,7 @@
 	},
 	"type": "module",
 	"dependencies": {
+		"@rbxts/better-janitor": "^0.4.0",
 		"@rbxts/egooe": "0.1.7",
 		"@rbxts/iris": "2.3.1-ts.1",
 		"@rbxts/maid": "^1.1.0",

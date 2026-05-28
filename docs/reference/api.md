@@ -9,6 +9,7 @@ Full public surface. Authoring is decorator-based; the transformer reads decorat
 @collect
 @prefab
 @resource
+@inspect(options?: { depth?: number }) // resource snapshots in world-inspector frame recordings
 @event(options?: { capacity?: number; label?: string })
 @system(options: { schedule: ScheduleCtor; set?: typeof SystemSet; after?: SystemCtor[]; before?: SystemCtor[]; runIf?: () => boolean })
 @observer(options: { event: EventCtor; priority?: number })
@@ -71,7 +72,7 @@ Decorators inject these — you call only `loadPaths`.
 rovy.loadPaths(...paths);   // `paths: string[]`; transformer lowers to Instance roots
 rovy.traitToken<T>();           // value-position trait handle (see Traits)
 // rovy.__component / __collect / __resource / __event / __system / __observer
-// / __monitor / __relation / __schedule / __traitImpl / __query
+// / __monitor / __relation / __schedule / __inspect / __traitImpl / __query
 //   are transformer-injected — never hand-written
 ```
 

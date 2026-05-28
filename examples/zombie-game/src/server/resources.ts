@@ -1,4 +1,4 @@
-import { Entity, resource } from "@rovy/core";
+import { Entity, inspect, resource } from "@rovy/core";
 import {
 	ARENA_HALF_SIZE,
 	INITIAL_INTERMISSION_SECONDS,
@@ -13,6 +13,7 @@ export class ServerClock {
 	fixedDelta = SERVER_FIXED_DELTA;
 }
 
+@inspect
 @resource
 export class WaveState {
 	phase: WavePhase = "intermission";
@@ -21,6 +22,15 @@ export class WaveState {
 	spawnRemaining = 0;
 	spawnCooldown = 0;
 	spawnIndex = 0;
+}
+
+@inspect
+@resource
+export class ScoreState {
+	score = 0;
+	kills = 0;
+	combo = 0;
+	bestCombo = 0;
 }
 
 @resource
@@ -47,6 +57,7 @@ export class DevPauseState {
 	paused = false;
 }
 
+@inspect
 @resource
 export class SmokeStats {
 	zombiesSpawned = 0;

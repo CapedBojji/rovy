@@ -1,4 +1,4 @@
-import { App } from "@rovy/core";
+import { App, type Plugin } from "@rovy/core";
 import { WorldInspectorServerPlugin } from "@rovy/world-inspector";
 import {
 	FireWeaponRequestPayload,
@@ -38,7 +38,7 @@ import {
 	Update,
 	WaveSet,
 } from "./state";
-import { ArenaState, DevPauseState, PlayerRegistry, SmokeStats, SnapshotState, WaveState } from "./resources";
+import { ArenaState, DevPauseState, PlayerRegistry, ScoreState, SmokeStats, SnapshotState, WaveState } from "./resources";
 
 export function boot(): App {
 	const app = new App();
@@ -46,7 +46,7 @@ export function boot(): App {
 	app.addPlugin(new WorldInspectorServerPlugin({
 		schedule: Update,
 		access: () => true,
-	}));
+	}) as unknown as Plugin);
 	app.start();
 	return app;
 }
@@ -119,12 +119,15 @@ export function runZombieGameSmoke(): ZombieGameSmokeResult {
 
 	stepN(2);
 	const defeatReached = app.world.resource(WaveState).phase === "defeat";
+	const scoreBeforeRestart = app.world.resource(ScoreState).score;
+	const bestComboBeforeRestart = app.world.resource(ScoreState).bestCombo;
 
 	app.commands.send(toRestartRequestNet(new RestartRequestPayload(0)));
 	stepN(2);
 
 	const wave = app.world.resource(WaveState);
 	const stats = app.world.resource(SmokeStats);
+	const score = app.world.resource(ScoreState);
 	const snap = app.world.resource(SnapshotState);
 	const playerHealth = app.world.get(playerEntity, Health);
 
@@ -141,5 +144,8 @@ export function runZombieGameSmoke(): ZombieGameSmokeResult {
 		restartApplied: stats.restartApplied,
 		snapshotCount: snap.snapshotCount,
 		pauseFreezeVerified,
+		score: scoreBeforeRestart,
+		bestCombo: bestComboBeforeRestart,
+		scoreResetVerified: score.score === 0 && score.kills === 0 && score.combo === 0 && score.bestCombo === 0,
 	};
 }

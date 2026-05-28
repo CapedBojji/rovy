@@ -26,6 +26,11 @@ export class HudState {
 	phase: WavePhase = "intermission";
 	waveNumber = 0;
 	enemiesRemaining = 0;
+	score = 0;
+	kills = 0;
+	shotsFired = 0;
+	combo = 0;
+	bestCombo = 0;
 	playerHealth = PLAYER_MAX_HEALTH;
 	playerMaxHealth = PLAYER_MAX_HEALTH;
 	gameOver = false;

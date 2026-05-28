@@ -85,6 +85,9 @@ importers:
 
   examples/roblox-ts-game:
     dependencies:
+      '@rbxts/better-janitor':
+        specifier: ^0.4.0
+        version: 0.4.0
       '@rovy/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -135,8 +138,93 @@ importers:
         specifier: 5.5.3
         version: 5.5.3
 
+  examples/tower-defense-game:
+    dependencies:
+      '@rbxts/better-janitor':
+        specifier: ^0.4.0
+        version: 0.4.0
+      '@rbxts/egooe':
+        specifier: 0.1.7
+        version: 0.1.7
+      '@rbxts/iris':
+        specifier: 2.3.1-ts.1
+        version: 2.3.1-ts.1
+      '@rbxts/maid':
+        specifier: ^1.1.0
+        version: 1.1.0
+      '@rbxts/object-utils':
+        specifier: ^1.0.4
+        version: 1.0.4
+      '@rbxts/services':
+        specifier: ^1.6.0
+        version: 1.6.0
+      '@rbxts/signal':
+        specifier: ^1.1.1
+        version: 1.1.1
+      '@rbxts/t':
+        specifier: ^3.2.1
+        version: 3.2.1
+      '@rovy/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@rovy/jecs':
+        specifier: workspace:*
+        version: link:../../packages/jecs
+      '@rovy/networking':
+        specifier: workspace:*
+        version: link:../../packages/networking
+      '@rovy/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      '@rovy/world-inspector':
+        specifier: workspace:*
+        version: link:../../packages/world-inspector
+    devDependencies:
+      '@rbxts/compiler-types':
+        specifier: 3.0.0-types.0
+        version: 3.0.0-types.0
+      '@rbxts/types':
+        specifier: ^1.0.920
+        version: 1.0.920
+      '@typescript-eslint/eslint-plugin':
+        specifier: ^8.59.3
+        version: 8.59.3(@typescript-eslint/parser@8.59.3(eslint@10.4.0)(typescript@5.5.3))(eslint@10.4.0)(typescript@5.5.3)
+      '@typescript-eslint/parser':
+        specifier: ^8.59.3
+        version: 8.59.3(eslint@10.4.0)(typescript@5.5.3)
+      eslint:
+        specifier: ^10.3.0
+        version: 10.4.0
+      eslint-config-prettier:
+        specifier: ^10.1.8
+        version: 10.1.8(eslint@10.4.0)
+      eslint-plugin-prettier:
+        specifier: ^5.5.5
+        version: 5.5.5(eslint-config-prettier@10.1.8(eslint@10.4.0))(eslint@10.4.0)(prettier@3.8.3)
+      eslint-plugin-roblox-ts:
+        specifier: ^1.4.0
+        version: 1.4.0(@typescript-eslint/parser@8.59.3(eslint@10.4.0)(typescript@5.5.3))(eslint@10.4.0)(typescript@5.5.3)
+      prettier:
+        specifier: ^3.8.3
+        version: 3.8.3
+      roblox-ts:
+        specifier: ^3.0.0
+        version: 3.0.0
+      rovy-build:
+        specifier: workspace:*
+        version: link:../../packages/build
+      rovy-transformer:
+        specifier: workspace:*
+        version: link:../../packages/transformer
+      typescript:
+        specifier: 5.5.3
+        version: 5.5.3
+
   examples/ui-inventory-game:
     dependencies:
+      '@rbxts/better-janitor':
+        specifier: ^0.4.0
+        version: 0.4.0
       '@rovy/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -189,6 +277,9 @@ importers:
 
   examples/zombie-game:
     dependencies:
+      '@rbxts/better-janitor':
+        specifier: ^0.4.0
+        version: 0.4.0
       '@rbxts/egooe':
         specifier: 0.1.7
         version: 0.1.7

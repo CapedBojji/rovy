@@ -19,6 +19,7 @@ export {
 	relation,
 	schedule,
 	set,
+	inspect,
 } from "./decorators";
 export type {
 	EventOptions,
@@ -28,6 +29,7 @@ export type {
 	RelationOptions,
 	ScheduleOptions,
 	SetOptions,
+	InspectOptions,
 } from "./decorators";
 
 // Compile-time macros (transformer rewrites; throw if reached untransformed).

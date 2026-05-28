@@ -95,3 +95,17 @@ export interface SetOptions {
 export function set(_options?: SetOptions): (ctor: Ctor) => void {
 	return noop;
 }
+
+export interface InspectOptions {
+	/** Max table recursion depth when snapshotting and diffing (default 4). */
+	depth?: number;
+	/** Property names to ignore when diffing (top-level only). */
+	exclude?: ReadonlyArray<string>;
+}
+/** Dual: `@inspect class R {}` or `@inspect({ depth: 6 }) class R {}`. Marks a resource for frame-recorder snapshot tracking. */
+export function inspect(ctor: Ctor): void;
+export function inspect(options?: InspectOptions): (ctor: Ctor) => void;
+export function inspect(arg?: Ctor | InspectOptions): ((ctor: Ctor) => void) | void {
+	if (typeIs(arg, "function")) return;
+	return noop;
+}
