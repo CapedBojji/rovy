@@ -157,6 +157,7 @@ The injected surface also includes collectors for external signal translation:
 @system({ schedule: Update })
 class ConsumeFireRequests {
 	run(fire: FireWeaponCollect, commands: Commands) {
+		if (fire.peek().length === 0) return;
 		for (const request of fire.drain()) {
 			// translate external payload into ECS work
 		}
@@ -164,7 +165,7 @@ class ConsumeFireRequests {
 }
 ```
 
-Author collectors as `class FireWeaponCollect extends Collector<Payload>`. The queue inside the collector is the meaningful state; systems consume that queue through inherited `drain()`. Keep domain logic out of `drain()` itself.
+Author collectors as `class FireWeaponCollect extends Collector<Payload>`. Queue inside collector is meaningful state; systems can inspect it through inherited `peek()` and consume it through inherited `drain()`. Keep domain logic out of those queue helpers.
 
 If you need reusable outbound handles such as network clients/servers, prefer a `@resource`:
 

@@ -111,6 +111,8 @@ class MoveUnits {
 		_clock: Res<Health>,
 		_inbox: RemoteInbox,
 	) {
+		const preview: ReadonlyArray<number> = _inbox.peek();
+		void preview;
 		_units.forEach((_e, _pos, _shield) => {});
 	}
 }

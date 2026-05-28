@@ -172,13 +172,18 @@ export interface ComponentInspection {
 
 /**
  * Base class for `@collect` authoring. Subclasses own external hookups and
- * call `enqueue`; systems consume queued payloads through inherited `drain()`.
+ * call `enqueue`; systems inspect queued payloads through inherited `peek()`
+ * and consume them through inherited `drain()`.
  */
 export abstract class Collector<T extends defined> {
 	protected queue = new Array<T>();
 
 	protected enqueue(value: T): void {
 		this.queue.push(value);
+	}
+
+	peek(): ReadonlyArray<T> {
+		return this.queue;
 	}
 
 	drain(): Array<T> {

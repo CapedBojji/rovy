@@ -53,8 +53,8 @@ The important authored structure is:
 
 - constructor wires external callbacks and pushes plain payloads into `queue`
 - `queue` is the actual collector state
-- systems consume that queued data
-- `Collector<T>` supplies `drain()` already; it should stay a thin queue-emptying adapter, not hold domain logic
+- systems inspect queued data with `peek()` or consume it with `drain()`
+- `Collector<T>` supplies `peek()` and `drain()` already; they should stay thin queue helpers, not hold domain logic
 
 System usage stays Bevy-like:
 
@@ -62,6 +62,7 @@ System usage stays Bevy-like:
 @system({ schedule: Update, set: CombatSet })
 class ConsumeFireRequests {
 	run(fire: FireWeaponCollect, commands: Commands) {
+		if (fire.peek().length === 0) return;
 		for (const request of fire.drain()) {
 			commands.send(new FireWeaponRequested(
 				request.shooterUserId,
@@ -79,8 +80,9 @@ class ConsumeFireRequests {
 - Collectors are instantiated once per `App` during `app.start()`.
 - The same collector instance is injected anywhere that collector class appears as a param type in a system, observer, or monitor.
 - A collector stores plain payload DTOs in an internal queue.
-- The queue is the real contract. Constructor code fills it; systems consume it.
-- Author collectors as `extends Collector<T>` so `drain()` comes from the base class.
+- The queue is the real contract. Constructor code fills it; systems inspect or consume it.
+- Author collectors as `extends Collector<T>` so `peek()` and `drain()` come from base class.
+- `peek()` is for non-consuming inspection; `drain()` is for single-consumer handoff.
 - `drain()` should remain a thin queue-emptying wrapper, not a place for gameplay behavior.
 - Queue draining is intentionally single-consumer.
 - If two different consumers are needed, define two collectors bound to the same external source instead of sharing one drained queue.

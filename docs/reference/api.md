@@ -197,6 +197,7 @@ Runtime base class for `@collect` authoring:
 ```ts
 abstract class Collector<T> {
 	protected enqueue(value: T): void;
+	peek(): ReadonlyArray<T>;
 	drain(): Array<T>;
 }
 ```
