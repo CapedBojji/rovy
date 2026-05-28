@@ -83,10 +83,10 @@ function renderFields(
 			const key = draftKey(targetKey, entity, componentId, field.key);
 			const upstream = "valueText" in field ? field.valueText : "";
 			let displayValue = upstream;
-			if (live || !state.drafts.has(key)) {
-				state.drafts.set(key, upstream);
+			if (live || !state.hasDraft(key)) {
+				state.setDraft(key, upstream);
 			}
-			if (!live) displayValue = state.drafts.get(key) as string;
+			if (!live) displayValue = state.getDraft(key) as string;
 			tableRow(() => {
 				tableCell(() => {
 					label(field.key);
@@ -103,7 +103,7 @@ function renderFields(
 							});
 						});
 						if (fieldInput.changed() || fieldInput.submitted()) {
-							state.drafts.set(key, fieldInput.value());
+							state.setDraft(key, fieldInput.value());
 							displayValue = fieldInput.value();
 						}
 					}
@@ -199,12 +199,11 @@ function renderResourceField(
 	const key = resourceDraftKey(target.key, resource.resourceId, field.path);
 	const errorKey = resourceErrorKey(target.key, resource.resourceId, field.path);
 	const upstream = field.valueText;
-	if (state.draftRevisions.get(key) !== resource.revision) {
-		state.drafts.set(key, upstream);
-		state.draftRevisions.set(key, resource.revision);
+	if (state.getDraftRevision(key) !== resource.revision) {
+		state.setDraft(key, upstream, resource.revision);
 		state.setActionError(errorKey);
 	}
-	const displayValue = state.drafts.get(key) as string;
+	const displayValue = state.getDraft(key) as string;
 	tableRow(() => {
 		tableCell(() => {
 			const indent = string.rep("  ", field.depth);
@@ -219,7 +218,7 @@ function renderResourceField(
 				useKey(key);
 				return input({ text: displayValue, placeholder: field.typeLabel });
 			});
-			if (fieldInput.changed() || fieldInput.submitted()) state.drafts.set(key, fieldInput.value());
+			if (fieldInput.changed() || fieldInput.submitted()) state.setDraft(key, fieldInput.value(), resource.revision);
 			row(() => {
 				if (button("Commit").clicked()) {
 					const result = target.apply({
@@ -229,12 +228,11 @@ function renderResourceField(
 						field: {
 							key: field.key,
 							typeLabel: field.typeLabel,
-							valueText: state.drafts.get(key) as string,
+							valueText: state.getDraft(key) as string,
 						},
 					});
 					if (result.ok) {
-						state.drafts.delete(key);
-						state.draftRevisions.delete(key);
+						state.clearDraft(key);
 						state.setActionError(errorKey);
 					} else {
 						state.setActionError(errorKey, result.error);
@@ -385,7 +383,7 @@ function renderEntityDetail(target: WorldInspectorTarget, state: WorldInspectorS
 		if (nextLive) {
 			for (const component of target.listComponents(entity)) {
 				for (const field of component.fields) {
-					state.drafts.delete(draftKey(target.key, entity, component.componentId, field.key));
+					state.clearDraft(draftKey(target.key, entity, component.componentId, field.key));
 				}
 			}
 		}
