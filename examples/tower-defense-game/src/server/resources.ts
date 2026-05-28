@@ -67,6 +67,7 @@ export class ClientSignalState {
 	heartbeatsReceived = 0;
 }
 
+@inspect
 @resource
 export class PathState {
 	start = new Vector3(PATH_START_X, PATH_Y, PATH_Z);

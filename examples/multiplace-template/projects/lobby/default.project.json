@@ -19,7 +19,43 @@
 						"$path": "../../node_modules/@rbxts"
 					},
 					"@rovy": {
-						"$path": "../../node_modules/@rovy"
+						"$className": "Folder",
+						"core": {
+							"$path": "../../node_modules/@rovy/core"
+						},
+						"jecs": {
+							"$path": "../../node_modules/@rovy/jecs"
+						},
+						"networking": {
+							"$path": "../../node_modules/@rovy/networking"
+						},
+						"ui": {
+							"$path": "../../node_modules/@rovy/ui"
+						},
+						"world-inspector": {
+							"$className": "Folder",
+							"out": {
+								"$path": "../../node_modules/@rovy/world-inspector/out"
+							},
+							"node_modules": {
+								"$className": "Folder",
+								"@rovy": {
+									"$className": "Folder",
+									"core": {
+										"$path": "../../node_modules/@rovy/world-inspector/node_modules/@rovy/core"
+									},
+									"jecs": {
+										"$path": "../../node_modules/@rovy/jecs"
+									},
+									"networking": {
+										"$path": "../../node_modules/@rovy/world-inspector/node_modules/@rovy/networking"
+									},
+									"ui": {
+										"$path": "../../node_modules/@rovy/world-inspector/node_modules/@rovy/ui"
+									}
+								}
+							}
+						}
 					}
 				}
 			},

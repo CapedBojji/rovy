@@ -7,7 +7,7 @@
  */
 
 import type { Entity as JecsEntity } from "@rovy/jecs";
-import type { ComponentEditorReg, ComponentReg, Ctor, StableId } from "../contract";
+import type { ComponentEditorReg, ComponentReg, Ctor, ResourceInspectReg, ResourceReg, StableId } from "../contract";
 
 /** A jecs entity id. Add `Entity` to a query term tuple to bind it. */
 export type Entity = JecsEntity;
@@ -157,6 +157,9 @@ export interface World {
 	inspectEntities(): Entity[];
 	inspectRegisteredComponents(): ReadonlyArray<ComponentReg>;
 	inspectEntityComponents(entity: Entity): ReadonlyArray<ComponentInspection>;
+	inspectRegisteredResources(): ReadonlyArray<ResourceReg>;
+	inspectResources(): ReadonlyArray<ResourceInspection>;
+	inspectSetResourceValue(resource: Ctor, path: ReadonlyArray<string>, value: unknown): { ok: boolean; error?: string };
 }
 
 export interface ComponentInspection {
@@ -166,6 +169,16 @@ export interface ComponentInspection {
 	readonly value: unknown;
 	readonly tag: boolean;
 	readonly editor?: ComponentEditorReg;
+}
+
+export interface ResourceInspection {
+	readonly ctor: Ctor;
+	readonly id: StableId;
+	readonly name: string;
+	readonly value: unknown;
+	readonly inspect: ResourceInspectReg;
+	readonly revision: number;
+	readonly changedPaths: ReadonlyArray<ReadonlyArray<string>>;
 }
 
 // ─── Collector base (runtime value) ──────────────────────────────────────────

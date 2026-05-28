@@ -12,12 +12,15 @@ export interface WorldInspectorEntityWindowState {
 	size?: Vector2;
 }
 
+export type WorldInspectorMainTab = "entities" | "resources";
+
 export class WorldInspectorState {
 	visible = false;
 	windowOpen = false;
 	openEntityWindows = new Map<string, WorldInspectorEntityWindowState>();
 	liveUpdate = new Map<string, boolean>();
 	selectedTargetKey = "local";
+	activeTab: WorldInspectorMainTab = "entities";
 	query = "";
 	position?: Vector2;
 	size?: Vector2;
@@ -56,6 +59,7 @@ export class WorldInspectorState {
 		this.openEntityWindows.clear();
 		this.liveUpdate.clear();
 		this.selectedTargetKey = "local";
+		this.activeTab = "entities";
 		this.query = "";
 		this.componentPicker = "";
 		this.error = undefined;

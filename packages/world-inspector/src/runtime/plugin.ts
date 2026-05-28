@@ -516,7 +516,7 @@ function resolveRemoteTarget(targetKey: string): { kind: "server" } | { kind: "p
 }
 
 function emptySnapshot(targetKey: string): WorldInspectorSnapshotDto {
-	return { targetKey, entities: [], registeredComponents: [] };
+	return { targetKey, entities: [], registeredComponents: [], resources: [] };
 }
 
 function retargetSnapshot(snapshot: WorldInspectorSnapshotDto, targetKey: string): WorldInspectorSnapshotDto {
@@ -524,5 +524,6 @@ function retargetSnapshot(snapshot: WorldInspectorSnapshotDto, targetKey: string
 		targetKey,
 		entities: snapshot.entities,
 		registeredComponents: snapshot.registeredComponents,
+		resources: snapshot.resources,
 	};
 }

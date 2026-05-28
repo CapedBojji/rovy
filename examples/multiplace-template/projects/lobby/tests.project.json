@@ -1,12 +1,12 @@
 {
-	"name": "rovy-multiplace-arena",
+	"name": "rovy-multiplace-lobby-tests",
 	"globIgnorePaths": ["**/package.json", "**/tsconfig.json"],
 	"tree": {
 		"$className": "DataModel",
 		"ServerScriptService": {
 			"$className": "ServerScriptService",
 			"TS": {
-				"$path": "../../out/arena/arena/src/server"
+				"$path": "../../out/lobby/lobby/src/server"
 			}
 		},
 		"ReplicatedStorage": {
@@ -60,7 +60,10 @@
 				}
 			},
 			"Shared": {
-				"$path": "../../out/arena/shared/src"
+				"$path": "../../out/lobby/shared/src"
+			},
+			"RovyRobloxTests": {
+				"$path": "test/roblox"
 			}
 		},
 		"StarterPlayer": {
@@ -68,7 +71,7 @@
 			"StarterPlayerScripts": {
 				"$className": "StarterPlayerScripts",
 				"TS": {
-					"$path": "../../out/arena/arena/src/client"
+					"$path": "../../out/lobby/lobby/src/client"
 				}
 			}
 		},

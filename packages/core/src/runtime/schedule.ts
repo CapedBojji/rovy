@@ -120,6 +120,20 @@ export class Scheduler {
 	run(schedule: Ctor, dt?: number): void {
 		const def = this.schedules.get(schedule);
 		assert(def !== undefined, `[rovy] unknown schedule: ${tostring(schedule)}`);
+		const runBody = () => this.runScheduleBody(schedule, def, dt);
+		const lifecycle = this.world.lifecycle;
+		if (lifecycle !== undefined) {
+			lifecycle.withRunScope(
+				{ kind: "schedule_started", ctor: schedule, schedule },
+				{ kind: "schedule_finished", ctor: schedule, schedule },
+				runBody,
+			);
+		} else {
+			runBody();
+		}
+	}
+
+	private runScheduleBody(schedule: Ctor, def: ScheduleDef, dt?: number): void {
 		const ctx = this.scheduleContext;
 		const prevSchedule = ctx.schedule;
 		const prevDt = ctx.dt;
@@ -142,29 +156,44 @@ export class Scheduler {
 			if (bucket === undefined || bucket.size() === 0) continue;
 			for (const sr of this.topoSort(bucket)) {
 				if (sr.reg.runIf !== undefined && !sr.reg.runIf()) continue;
-				const args = resolveParams(sr.reg.params, {
-					world: this.world,
-					commands: this.commands,
-					collectors: this.collectors,
-					externalParams: this.externalParams,
-					locals: sr.locals,
-					queries: this.queries,
-					events: this.events,
-					makeReader: this.makeReader,
-					makeWriter: this.makeWriter,
-					lastRunTick: this.lastRunTick.get(sr.reg.ctor) ?? -1,
-				});
-				sr.instance.run(sr.instance, ...args);
-				this.lastRunTick.set(sr.reg.ctor, this.world.changeTick);
+				const runSystem = () => {
+					const resourceScope = this.world.beginResourceScope();
+					const args = resolveParams(sr.reg.params, {
+						world: this.world,
+						commands: this.commands,
+						collectors: this.collectors,
+						externalParams: this.externalParams,
+						locals: sr.locals,
+						resourceScope,
+						queries: this.queries,
+						events: this.events,
+						makeReader: this.makeReader,
+						makeWriter: this.makeWriter,
+						lastRunTick: this.lastRunTick.get(sr.reg.ctor) ?? -1,
+					});
+					sr.instance.run(sr.instance, ...args);
+					this.world.commitResourceScope(resourceScope);
+					this.lastRunTick.set(sr.reg.ctor, this.world.changeTick);
+				};
+				const lifecycle = this.world.lifecycle;
+				if (lifecycle !== undefined) {
+					lifecycle.withRunScope(
+						{ kind: "system_started", ctor: sr.reg.ctor, id: sr.reg.id, name: shortName(sr.reg.id), schedule: sr.reg.schedule },
+						{ kind: "system_finished", ctor: sr.reg.ctor, id: sr.reg.id, name: shortName(sr.reg.id), schedule: sr.reg.schedule },
+						runSystem,
+					);
+				} else {
+					runSystem();
+				}
 			}
-			flush(this.commands); // set boundary
+			this.flushCommands(); // set boundary
 			if (this.onFlush !== undefined) this.onFlush(); // monitor reconcile
 		}
 
 		// final flush + reconcile: trailing commands from the last set's
 		// reconcile (e.g. a monitor onEnter despawn) must apply this run, even
 		// when later sets are empty/skipped.
-		flush(this.commands);
+		this.flushCommands();
 		if (this.onFlush !== undefined) this.onFlush();
 
 		this.depth -= 1;
@@ -177,6 +206,12 @@ export class Scheduler {
 		ctx.schedule = prevSchedule;
 		ctx.dt = prevDt;
 		ctx.rawDt = prevRawDt;
+	}
+
+	private flushCommands(): void {
+		const lifecycle = this.world.lifecycle;
+		if (lifecycle !== undefined) lifecycle.withBatch(() => flush(this.commands));
+		else flush(this.commands);
 	}
 
 	/** Stable topological sort by after/before within a set. */
@@ -229,4 +264,11 @@ export class Scheduler {
 		);
 		return out;
 	}
+}
+
+function shortName(id: string): string {
+	const pathParts = id.split("/");
+	const tail = pathParts[pathParts.size() - 1] ?? id;
+	const scopeParts = tail.split("@");
+	return scopeParts[scopeParts.size() - 1] ?? tail;
 }

@@ -36,6 +36,7 @@ import {
 	$collectRef,
 	component,
 	collect,
+	inspect,
 	event,
 	monitor,
 	observer,
@@ -490,6 +491,77 @@ ${header}
 	assert.match(result.printed, /__resource\(InboxRefs, "src\/main@InboxRefs", \{[\s\S]*collectorRefs: \[\s*\{ key: "inbox", ctor: FireInbox \}\s*\]/);
 	assert.match(result.printed, /inbox = undefined as unknown as FireInbox/);
 	assert.doesNotMatch(result.printed, /\$collectRef<FireInbox>\(\)/);
+});
+
+runCase("@inspect resource emits debug metadata for public data fields", () => {
+	const result = compileFixture(
+		`
+${header}
+@inspect
+@resource
+class DebugState {
+	public tick = 0;
+	name = "ready";
+	readonly alive: boolean = true;
+	private secret = 1;
+	protected hidden = 2;
+	static shared = 3;
+	callback: () => void = () => {};
+	method() {}
+}
+`,
+		{
+			packageRovyBuild: {
+				current: "dev",
+				environments: {
+					dev: { debug: true },
+				},
+			},
+		},
+	);
+	assertNoDiagnostics(result, "inspect resource metadata");
+	assert.match(result.printed, /__resource\(DebugState, "src\/main@DebugState", \{ inspect: \{ fields: \[/);
+	assert.match(result.printed, /\{ key: "tick", typeLabel: "number", validator: \(\) => true \}/);
+	assert.match(result.printed, /\{ key: "name", typeLabel: "string", validator: \(\) => true \}/);
+	assert.match(result.printed, /\{ key: "alive", typeLabel: "boolean", validator: .*\.boolean \}/);
+	assert.doesNotMatch(result.printed, /key: "secret"/);
+	assert.doesNotMatch(result.printed, /key: "hidden"/);
+	assert.doesNotMatch(result.printed, /key: "shared"/);
+	assert.doesNotMatch(result.printed, /key: "callback"/);
+});
+
+runCase("@inspect resource strips metadata when debug is false", () => {
+	const result = compileFixture(
+		`
+${header}
+@inspect
+@resource
+class DebugState {
+	tick = 0;
+}
+`,
+		{
+			packageRovyBuild: {
+				current: "prod",
+				environments: {
+					prod: { debug: false },
+				},
+			},
+		},
+	);
+	assertNoDiagnostics(result, "inspect stripped");
+	assert.match(result.printed, /__resource\(DebugState, "src\/main@DebugState"\)/);
+	assert.doesNotMatch(result.printed, /inspect:/);
+});
+
+runCase("@inspect rejects non-resource classes", () => {
+	const result = compileFixture(`
+${header}
+@inspect
+@component
+class BadInspect {}
+`);
+	assert.match(result.diagnostics.join("\n"), /@inspect can only be used on @resource classes/);
 });
 
 runCase("JSDoc widget functions register and plain calls lower", () => {

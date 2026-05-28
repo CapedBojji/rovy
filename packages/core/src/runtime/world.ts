@@ -19,7 +19,7 @@ import {
 	Exclusive as JecsExclusive,
 } from "@rovy/jecs";
 import type { Entity as JecsEntity, Id as JecsId, Query as JecsQuery, World as JecsWorld } from "@rovy/jecs";
-import type { CleanupPolicy, ComponentReg, Ctor } from "../contract";
+import type { CleanupPolicy, ComponentReg, Ctor, ResourceInspectFieldReg, ResourceReg } from "../contract";
 import {
 	ChildOf,
 	Delete,
@@ -29,8 +29,14 @@ import {
 	Remove,
 	Wildcard,
 } from "../types";
-import type { ComponentInspection, Entity, RefCleanupOptions, RefOptions, World } from "../types";
+import type { ComponentInspection, Entity, RefCleanupOptions, RefOptions, ResourceInspection, World } from "../types";
+import type { LifecycleHub } from "./lifecycle";
 import { EntityRefStore } from "./ref";
+
+export interface ResourceTrackScope {
+	readonly baselines: Map<Ctor, object>;
+	readonly clones: Map<Ctor, object>;
+}
 
 /** Sentinel entity that holds every resource singleton as a jecs component. */
 export class RovyWorld implements World {
@@ -43,6 +49,10 @@ export class RovyWorld implements World {
 	private readonly trackedEntities = new Set<Entity>();
 	/** rovy resource class → jecs component id. */
 	readonly resourceMap = new Map<Ctor, JecsEntity>();
+	private readonly resourceRegByCtor = new Map<Ctor, ResourceReg>();
+	private readonly resourceRegs = new Array<ResourceReg>();
+	private readonly resourceRevisions = new Map<Ctor, number>();
+	private readonly resourceChangedPaths = new Map<Ctor, Array<ReadonlyArray<string>>>();
 	private readonly refs = new EntityRefStore();
 	/** Bumped once per schedule run (Phase 4); change detection reads it. */
 	changeTick = 0;
@@ -50,6 +60,7 @@ export class RovyWorld implements World {
 	prefabCtors?: Set<Ctor>;
 	/** Invokes a prefab's build() against a target entity. */
 	prefabInvoker?: (ctor: Ctor, entity: Entity) => void;
+	lifecycle?: LifecycleHub;
 
 	// ── change detection stores (Phase 7), keyed by jecs component id ────────
 	/** entity → tick of last add OR set. */
@@ -99,9 +110,31 @@ export class RovyWorld implements World {
 		this.jecs.added(jecsId as never, (e: Entity) => {
 			changed.set(e, this.changeTick);
 			added.set(e, this.changeTick);
+			const entry = this.componentRegById.get(jecsId);
+			if (entry !== undefined) {
+				this.lifecycle?.emit({
+					kind: "component_added",
+					ctor: entry.ctor,
+					id: entry.id,
+					name: shortComponentName(entry.id),
+					entity: e,
+					value: this.jecs.get(e, jecsId as never),
+				});
+			}
 		});
 		this.jecs.changed(jecsId as never, (e: Entity) => {
 			changed.set(e, this.changeTick);
+			const entry = this.componentRegById.get(jecsId);
+			if (entry !== undefined) {
+				this.lifecycle?.emit({
+					kind: "component_changed",
+					ctor: entry.ctor,
+					id: entry.id,
+					name: shortComponentName(entry.id),
+					entity: e,
+					value: this.jecs.get(e, jecsId as never),
+				});
+			}
 		});
 		this.jecs.removed(jecsId as never, (e: Entity) => {
 			// on_remove fires before the archetype move → value still readable
@@ -109,6 +142,17 @@ export class RovyWorld implements World {
 			removed.push({ entity: e, value, tick: this.changeTick });
 			changed.delete(e);
 			added.delete(e);
+			const entry = this.componentRegById.get(jecsId);
+			if (entry !== undefined) {
+				this.lifecycle?.emit({
+					kind: "component_removed",
+					ctor: entry.ctor,
+					id: entry.id,
+					name: shortComponentName(entry.id),
+					entity: e,
+					oldValue: value,
+				});
+			}
 		});
 	}
 
@@ -194,6 +238,20 @@ export class RovyWorld implements World {
 		return id;
 	}
 
+	registerResourceEntry(entry: ResourceReg): JecsEntity {
+		const id = this.registerResource(entry.ctor);
+		this.resourceRegByCtor.set(entry.ctor, entry);
+		let seen = false;
+		for (const existing of this.resourceRegs) {
+			if (existing.ctor === entry.ctor) {
+				seen = true;
+				break;
+			}
+		}
+		if (!seen) this.resourceRegs.push(entry);
+		return id;
+	}
+
 	// ── bundle classification ───────────────────────────────────────────────
 
 	private applyBundle(entity: JecsEntity, bundle: ReadonlyArray<object>): void {
@@ -236,28 +294,40 @@ export class RovyWorld implements World {
 	// ── World interface ─────────────────────────────────────────────────────
 
 	spawn(...bundle: ReadonlyArray<object>): Entity {
-		const entity = this.jecs.entity();
-		this.trackedEntities.add(entity);
-		this.applyBundle(entity, bundle);
-		return entity;
+		return this.withLifecycleMutation(() => {
+			const entity = this.jecs.entity();
+			this.trackedEntities.add(entity);
+			this.lifecycle?.emit({ kind: "entity_spawned", entity });
+			this.applyBundle(entity, bundle);
+			return entity;
+		});
 	}
 
 	despawn(entity: Entity, options?: RefCleanupOptions): void {
-		if (options?.cleanupRefs === true) this.refs.deleteEntity(entity, options);
-		this.trackedEntities.delete(entity);
-		this.jecs.delete(entity);
+		this.withLifecycleMutation(() => {
+			if (options?.cleanupRefs === true) this.refs.deleteEntity(entity, options);
+			this.lifecycle?.emit({ kind: "entity_despawned", entity });
+			this.trackedEntities.delete(entity);
+			this.jecs.delete(entity);
+		});
 	}
 
 	insert(entity: Entity, componentOrTag: object | Ctor): void {
-		this.applyBundleSlow(entity, [componentOrTag as object]);
+		this.withLifecycleMutation(() => {
+			this.applyBundleSlow(entity, [componentOrTag as object]);
+		});
 	}
 
 	set<T extends object>(entity: Entity, component: Ctor<T>, value: T): void {
-		this.jecs.set(entity, this.idOf(component), value as never);
+		this.withLifecycleMutation(() => {
+			this.jecs.set(entity, this.idOf(component), value as never);
+		});
 	}
 
 	remove(entity: Entity, component: Ctor): void {
-		this.jecs.remove(entity, this.idOf(component));
+		this.withLifecycleMutation(() => {
+			this.jecs.remove(entity, this.idOf(component));
+		});
 	}
 
 	has(entity: Entity, component: Ctor): boolean {
@@ -313,12 +383,103 @@ export class RovyWorld implements World {
 	}
 
 	insertResource(instance: object): void {
-		const cls = getmetatable(instance) as unknown as Ctor;
-		// allow override before or after start: register lazily if needed
-		if (!this.resourceMap.has(cls)) {
-			this.registerResource(cls);
+		this.withLifecycleMutation(() => {
+			const cls = getmetatable(instance) as unknown as Ctor;
+			// allow override before or after start: register lazily if needed
+			if (!this.resourceMap.has(cls)) {
+				this.registerResource(cls);
+			}
+			this.setResource(cls, instance);
+			this.markResourceChanged(cls, []);
+		});
+	}
+
+	beginResourceScope(): ResourceTrackScope {
+		return { baselines: new Map(), clones: new Map() };
+	}
+
+	resolveResourceForInjection<T extends object>(
+		resource: Ctor<T>,
+		optional: boolean,
+		scope?: ResourceTrackScope,
+	): T | undefined {
+		const raw = optional ? this.optResource(resource) : this.resource(resource);
+		if (raw === undefined) return undefined;
+		if (scope === undefined || this.resourceRegByCtor.get(resource as unknown as Ctor)?.inspect === undefined) {
+			return raw;
 		}
-		this.setResource(cls, instance);
+		const ctor = resource as unknown as Ctor;
+		const existing = scope.clones.get(ctor) as T | undefined;
+		if (existing !== undefined) return existing;
+		const baseline = cloneResourceValue(raw) as object;
+		const clone = cloneResourceValue(raw) as object;
+		scope.baselines.set(ctor, baseline);
+		scope.clones.set(ctor, clone);
+		return clone as T;
+	}
+
+	commitResourceScope(scope: ResourceTrackScope): void {
+		for (const [ctor, clone] of scope.clones) {
+			const baseline = scope.baselines.get(ctor);
+			if (baseline === undefined || inspectValuesEqual(baseline, clone)) continue;
+			const entry = this.resourceRegByCtor.get(ctor);
+			const paths = diffResourceValues(baseline, clone, entry?.inspect?.fields.map((field) => field.key) ?? []);
+			this.setResource(ctor, clone);
+			this.markResourceChanged(ctor, paths);
+		}
+	}
+
+	inspectRegisteredResources(): ReadonlyArray<ResourceReg> {
+		return this.resourceRegs.filter((entry) => entry.inspect !== undefined);
+	}
+
+	inspectResources(): ReadonlyArray<ResourceInspection> {
+		const out = new Array<ResourceInspection>();
+		for (const entry of this.inspectRegisteredResources()) {
+			const inspected = this.inspectResource(entry.ctor);
+			if (inspected !== undefined) out.push(inspected);
+		}
+		return out;
+	}
+
+	inspectResource(resource: Ctor): ResourceInspection | undefined {
+		const entry = this.resourceRegByCtor.get(resource);
+		if (entry?.inspect === undefined) return undefined;
+		const value = this.optResource(resource as never);
+		if (value === undefined) return undefined;
+		return {
+			ctor: entry.ctor,
+			id: entry.id,
+			name: shortComponentName(entry.id),
+			value,
+			inspect: entry.inspect,
+			revision: this.resourceRevisions.get(entry.ctor) ?? 0,
+			changedPaths: this.resourceChangedPaths.get(entry.ctor) ?? [],
+		};
+	}
+
+	inspectSetResourceValue(resource: Ctor, path: ReadonlyArray<string>, value: unknown): { ok: boolean; error?: string } {
+		return this.withLifecycleMutation(() => {
+			const entry = this.resourceRegByCtor.get(resource);
+			if (entry?.inspect === undefined) return { ok: false, error: "resource is not inspectable" };
+			if (path.size() === 0) return { ok: false, error: "resource edit path is empty" };
+			const topKey = path[0];
+			let topField: ResourceInspectFieldReg | undefined;
+			for (const field of entry.inspect.fields) {
+				if (field.key === topKey) {
+					topField = field;
+					break;
+				}
+			}
+			if (topField === undefined) return { ok: false, error: `resource field '${topKey}' is not inspectable` };
+			if (path.size() === 1 && !topField.validator(value)) return { ok: false, error: `field '${topKey}' failed validator` };
+			const root = this.resource(resource as never) as Record<string, unknown>;
+			const target = resolveResourcePathParent(root, path);
+			if (!target.ok) return target;
+			target.parent[target.key as never] = value as never;
+			this.markResourceChanged(resource, [path]);
+			return { ok: true };
+		});
 	}
 
 	// ── relationship / trigger / schedule stubs (later phases) ──────────────
@@ -413,21 +574,31 @@ export class RovyWorld implements World {
 	}
 
 	relate(source: Entity, relation: Ctor, target: Entity, data?: object): void {
-		const pid = this.pairId(relation, target);
-		const changeId = this.wildcardPairId(relation);
-		const had = this.jecs.has(source, pid as never);
-		if (data !== undefined) this.jecs.set(source, pid as never, data as never);
-		else this.jecs.add(source, pid as never);
-		if (!had) this.markRelationAdded(changeId, source);
-		else if (data !== undefined) this.markRelationChanged(changeId, source);
+		this.withLifecycleMutation(() => {
+			const pid = this.pairId(relation, target);
+			const changeId = this.wildcardPairId(relation);
+			const had = this.jecs.has(source, pid as never);
+			if (data !== undefined) this.jecs.set(source, pid as never, data as never);
+			else this.jecs.add(source, pid as never);
+			if (!had) {
+				this.markRelationAdded(changeId, source);
+				this.lifecycle?.emit({ kind: "relation_added", ctor: relation, relation, entity: source, target, data });
+			} else if (data !== undefined) {
+				this.markRelationChanged(changeId, source);
+				this.lifecycle?.emit({ kind: "relation_changed", ctor: relation, relation, entity: source, target, data });
+			}
+		});
 	}
 	unrelate(source: Entity, relation: Ctor, target: Entity): void {
-		const pid = this.pairId(relation, target);
-		if (this.jecs.has(source, pid as never)) {
-			const value = this.jecs.get(source, pid as never);
-			this.jecs.remove(source, pid as never);
-			this.markRelationRemoved(this.wildcardPairId(relation), source, value);
-		}
+		this.withLifecycleMutation(() => {
+			const pid = this.pairId(relation, target);
+			if (this.jecs.has(source, pid as never)) {
+				const value = this.jecs.get(source, pid as never);
+				this.jecs.remove(source, pid as never);
+				this.markRelationRemoved(this.wildcardPairId(relation), source, value);
+				this.lifecycle?.emit({ kind: "relation_removed", ctor: relation, relation, entity: source, target, oldValue: value });
+			}
+		});
 	}
 	hasRelation(source: Entity, relation: Ctor, target: Entity): boolean {
 		return this.jecs.has(source, this.pairId(relation, target) as never);
@@ -510,6 +681,27 @@ export class RovyWorld implements World {
 		}
 		return out;
 	}
+
+	private markResourceChanged(resource: Ctor, paths: ReadonlyArray<ReadonlyArray<string>>): void {
+		const entry = this.resourceRegByCtor.get(resource);
+		if (entry?.inspect !== undefined) {
+			this.resourceRevisions.set(resource, (this.resourceRevisions.get(resource) ?? 0) + 1);
+			this.resourceChangedPaths.set(resource, [...paths]);
+		}
+		this.lifecycle?.emit({
+			kind: "resource_changed",
+			ctor: resource,
+			id: entry?.id,
+			name: entry !== undefined ? shortComponentName(entry.id) : tostring(resource),
+			value: this.optResource(resource as never),
+			paths,
+		});
+	}
+
+	private withLifecycleMutation<T>(body: () => T): T {
+		const lifecycle = this.lifecycle;
+		return lifecycle !== undefined ? lifecycle.withMutation(body) : body();
+	}
 }
 
 function shortComponentName(id: string): string {
@@ -526,4 +718,110 @@ function ticksSince(store: Map<Entity, number> | undefined, lastRunTick: number)
 		if (tick > lastRunTick) out.push(entity);
 	}
 	return out;
+}
+
+function cloneResourceValue(value: unknown, seen = new Map<object, object>()): unknown {
+	if (!typeIs(value, "table")) return value;
+	const source = value as object;
+	const existing = seen.get(source);
+	if (existing !== undefined) return existing;
+	const out = {} as Record<string | number, unknown>;
+	seen.set(source, out);
+	for (const [key, child] of pairs(source as Record<never, unknown>)) {
+		const outKey = typeIs(key, "number") || typeIs(key, "string") ? key : tostring(key);
+		out[outKey] = cloneResourceValue(child, seen);
+	}
+	setmetatable(out, getmetatable(source) as never);
+	return out;
+}
+
+function inspectValuesEqual(a: unknown, b: unknown, seen = new Map<object, Set<object>>()): boolean {
+	if (a === b) return true;
+	if (typeOf(a) !== typeOf(b)) return false;
+	if (!typeIs(a, "table") || !typeIs(b, "table")) return false;
+	const ao = a as object;
+	const bo = b as object;
+	let paired = seen.get(ao);
+	if (paired?.has(bo)) return true;
+	if (paired === undefined) {
+		paired = new Set<object>();
+		seen.set(ao, paired);
+	}
+	paired.add(bo);
+	for (const [key, av] of pairs(ao as Record<never, unknown>)) {
+		const bv = (bo as Record<never, unknown>)[key as never];
+		if (!inspectValuesEqual(av, bv, seen)) return false;
+	}
+	for (const [key] of pairs(bo as Record<never, unknown>)) {
+		if ((ao as Record<never, unknown>)[key as never] === undefined) return false;
+	}
+	return true;
+}
+
+function diffResourceValues(
+	before: object,
+	after: object,
+	fieldKeys: ReadonlyArray<string>,
+): Array<ReadonlyArray<string>> {
+	const out = new Array<ReadonlyArray<string>>();
+	if (fieldKeys.size() === 0) {
+		diffValue(before, after, [], out, 0);
+		return out;
+	}
+	for (const key of fieldKeys) {
+		diffValue((before as Record<string, unknown>)[key], (after as Record<string, unknown>)[key], [key], out, 0);
+	}
+	return out;
+}
+
+function diffValue(
+	before: unknown,
+	after: unknown,
+	path: ReadonlyArray<string>,
+	out: Array<ReadonlyArray<string>>,
+	depth: number,
+): void {
+	if (inspectValuesEqual(before, after)) return;
+	if (depth >= 4 || !typeIs(before, "table") || !typeIs(after, "table")) {
+		out.push(path);
+		return;
+	}
+	const keys = new Map<string, true>();
+	for (const [key] of pairs(before as Record<never, unknown>)) keys.set(tostring(key), true);
+	for (const [key] of pairs(after as Record<never, unknown>)) keys.set(tostring(key), true);
+	for (const [key] of keys) {
+		diffValue(
+			findPathValue(before, key),
+			findPathValue(after, key),
+			[...path, key],
+			out,
+			depth + 1,
+		);
+	}
+}
+
+function findPathValue(parent: unknown, segment: string): unknown {
+	if (!typeIs(parent, "table")) return undefined;
+	for (const [key, value] of pairs(parent as Record<never, unknown>)) {
+		if (tostring(key) === segment) return value;
+	}
+	return undefined;
+}
+
+function resolveResourcePathParent(
+	root: Record<string, unknown>,
+	path: ReadonlyArray<string>,
+): { ok: true; parent: Record<never, unknown>; key: unknown } | { ok: false; error: string } {
+	let current = root as unknown;
+	for (let i = 0; i < path.size() - 1; i++) {
+		const child = findPathValue(current, path[i]);
+		if (!typeIs(child, "table")) return { ok: false, error: `resource path '${path.join(".")}' is not a table` };
+		current = child;
+	}
+	if (!typeIs(current, "table")) return { ok: false, error: `resource path '${path.join(".")}' is not a table` };
+	const finalSegment = path[path.size() - 1];
+	for (const [key] of pairs(current as Record<never, unknown>)) {
+		if (tostring(key) === finalSegment) return { ok: true, parent: current as Record<never, unknown>, key };
+	}
+	return { ok: true, parent: current as Record<never, unknown>, key: finalSegment };
 }

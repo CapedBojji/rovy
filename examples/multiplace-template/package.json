@@ -16,7 +16,10 @@
 		"watch:lobby": "ROVY_ENV=lobby node ../../packages/build/bin/rovy-build.js watch",
 		"watch:arena": "ROVY_ENV=arena node ../../packages/build/bin/rovy-build.js watch",
 		"test:output": "node test/assert-output.js",
-		"test:place": "node test/assert-place.js"
+		"test:place": "node test/assert-place.js",
+		"test:roblox:lobby": "pnpm run build:lobby && bash ../../scripts/run-roblox-test.sh projects/lobby/tests.project.json ../../build/rovy-multiplace-lobby-tests.rbxlx ../../test/roblox/run-tests.luau",
+		"test:roblox:arena": "pnpm run build:arena && bash ../../scripts/run-roblox-test.sh projects/arena/tests.project.json ../../build/rovy-multiplace-arena-tests.rbxlx ../../test/roblox/run-tests.luau",
+		"test:roblox": "pnpm run test:roblox:lobby && pnpm run test:roblox:arena"
 	},
 	"type": "module",
 	"dependencies": {
@@ -29,6 +32,7 @@
 	},
 	"devDependencies": {
 		"@rbxts/compiler-types": "3.0.0-types.0",
+		"@rbxts/testez": "0.4.2-ts.0",
 		"@rbxts/types": "^1.0.920",
 		"roblox-ts": "^3.0.0",
 		"rovy-build": "workspace:*",

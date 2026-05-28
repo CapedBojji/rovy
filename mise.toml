@@ -1,5 +1,6 @@
 [tools]
 "github:Scythe-Technology/zune" = "latest"
 "github:rojo-rbx/rojo" = "7.6.1"
+"github:rojo-rbx/run-in-roblox" = "0.3.0"
 "npm:pnpm" = "11.1.2"
 "github:1Axen/blink" = "latest"
