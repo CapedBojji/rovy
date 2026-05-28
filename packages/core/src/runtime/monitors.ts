@@ -18,6 +18,7 @@ import type { Entity } from "../types";
 import type { RovyWorld } from "./world";
 
 interface MonitorState {
+	ctor: Ctor;
 	instance: { [m: string]: ((self: unknown, ...a: Array<unknown>) => void) | undefined };
 	base: QueryLike;
 	descriptor: QueryDescriptor;
@@ -38,6 +39,7 @@ export class MonitorRegistry {
 	register(reg: MonitorReg, base: QueryLike): void {
 		const factory = reg.ctor as unknown as new () => MonitorState["instance"];
 		const state: MonitorState = {
+			ctor: reg.ctor,
 			instance: new factory(),
 			base,
 			descriptor: base.getDescriptor(),
@@ -87,14 +89,29 @@ export class MonitorRegistry {
 	private call(state: MonitorState, method: string, entity: Entity): void {
 		const fn = state.instance[method];
 		if (fn === undefined) return;
-		const ctx: ResolveCtx = {
-			...this.resolveBase(),
-			entity,
-			terms: this.terms(state, entity),
-			locals: new Map(),
+		const runMonitor = () => {
+			const resourceScope = this.world.beginResourceScope();
+			const ctx: ResolveCtx = {
+				...this.resolveBase(),
+				entity,
+				terms: this.terms(state, entity),
+				locals: new Map(),
+				resourceScope,
+			};
+			const args = resolveParams(state.params, ctx);
+			fn(state.instance, ...args);
+			this.world.commitResourceScope(resourceScope);
 		};
-		const args = resolveParams(state.params, ctx);
-		fn(state.instance, ...args);
+		const lifecycle = this.world.lifecycle;
+		if (lifecycle !== undefined) {
+			lifecycle.withRunScope(
+				{ kind: "monitor_started", ctor: state.ctor, method, entity },
+				{ kind: "monitor_finished", ctor: state.ctor, method, entity },
+				runMonitor,
+			);
+		} else {
+			runMonitor();
+		}
 	}
 
 	/**

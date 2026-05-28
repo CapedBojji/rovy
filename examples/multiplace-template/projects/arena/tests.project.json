@@ -1,5 +1,5 @@
 {
-	"name": "rovy-multiplace-arena",
+	"name": "rovy-multiplace-arena-tests",
 	"globIgnorePaths": ["**/package.json", "**/tsconfig.json"],
 	"tree": {
 		"$className": "DataModel",
@@ -61,6 +61,9 @@
 			},
 			"Shared": {
 				"$path": "../../out/arena/shared/src"
+			},
+			"RovyRobloxTests": {
+				"$path": "test/roblox"
 			}
 		},
 		"StarterPlayer": {

@@ -10,6 +10,7 @@ export {
 	component,
 	collect,
 	resource,
+	inspect,
 	prefab,
 	plugin,
 	event,
@@ -19,7 +20,6 @@ export {
 	relation,
 	schedule,
 	set,
-	inspect,
 } from "./decorators";
 export type {
 	EventOptions,
@@ -51,6 +51,14 @@ export { MonitorRegistry } from "./runtime/monitors";
 export { TraitQueryHandle } from "./runtime/traits";
 export { RelationQueryHandle } from "./runtime/relations";
 export { EntityRefStore } from "./runtime/ref";
+export { LifecycleHub, LifecyclePrintPlugin } from "./runtime/lifecycle";
+export type {
+	LifecycleCallback,
+	LifecycleKind,
+	LifecyclePrintPluginOptions,
+	LifecycleRecord,
+	LifecycleUnsubscribe,
+} from "./runtime/lifecycle";
 export { resolveParams } from "./runtime/resolve-param";
 export type { ResolveCtx, LocalStore } from "./runtime/resolve-param";
 export { registerAppExtension, runAppExtensions, resetAppExtensions } from "./runtime/extensions";

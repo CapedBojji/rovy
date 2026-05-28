@@ -175,6 +175,45 @@ return function(TS, t)
 			t.expect(target:listComponents(entity)[1].componentId).toBe("client/Position")
 		end)
 
+		t.it("local adapter lists and mutates inspected resources", function()
+			rovy:__reset()
+			local Runtime = class()
+			function Runtime.new()
+				return setmetatable({ score = 1, nested = { wave = 2 } }, Runtime)
+			end
+			rovy:__resource(Runtime, "client/Runtime", {
+				inspect = {
+					fields = {
+						{ key = "score", typeLabel = "number", validator = function(value)
+							return type(value) == "number"
+						end },
+						{ key = "nested", typeLabel = "table", validator = function()
+							return true
+						end },
+					},
+				},
+			})
+
+			local app = App.new()
+			app:start()
+			local target = pkg.LocalWorldInspectorTarget.new(app.world)
+			local resources = target:listResources()
+			t.expect(#resources).toBe(1)
+			t.expect(resources[1].resourceId).toBe("client/Runtime")
+			t.expect(resources[1].fields[1].valueText).toBe("1")
+			t.expect(resources[1].fields[2].key).toBe("nested")
+			t.expect(resources[1].fields[3].key).toBe("wave")
+
+			local result = target:apply({
+				kind = "setResource",
+				resourceId = "client/Runtime",
+				path = { "score" },
+				field = { key = "score", typeLabel = "number", valueText = "7" },
+			})
+			t.expect(result.ok).toBe(true)
+			t.expect(app.world:resource(Runtime).score).toBe(7)
+		end)
+
 		t.it("parses Vector3 field text before applying edits", function()
 			rovy:__reset()
 			local Position = class()
@@ -352,6 +391,10 @@ return function(TS, t)
 			function Position.new(x)
 				return setmetatable({ x = x }, Position)
 			end
+			local Runtime = class()
+			function Runtime.new()
+				return setmetatable({ score = 3 }, Runtime)
+			end
 			rovy:__component(Position, "server/Position", {
 				editor = {
 					fields = {
@@ -362,6 +405,15 @@ return function(TS, t)
 					constructorValidator = function(values)
 						return type(values[1]) == "number"
 					end,
+				},
+			})
+			rovy:__resource(Runtime, "server/Runtime", {
+				inspect = {
+					fields = {
+						{ key = "score", typeLabel = "number", validator = function(value)
+							return type(value) == "number"
+						end },
+					},
 				},
 			})
 
@@ -396,6 +448,7 @@ return function(TS, t)
 			serverApp:runSchedule(Update)
 			clientApp:runSchedule(Update)
 			t.expect(state.snapshots.server.entities[1].components[1].componentId).toBe("server/Position")
+			t.expect(state.snapshots.server.resources[1].resourceId).toBe("server/Runtime")
 
 			state:queueEdit("server", {
 				kind = "set",
@@ -410,6 +463,18 @@ return function(TS, t)
 			clientApp:runSchedule(Update)
 			t.expect(serverApp.world:get(entity, Position).x).toBe(9)
 			t.expect(state.snapshots.server.entities[1].components[1].fields[1].valueText).toBe("9")
+
+			state:queueEdit("server", {
+				kind = "setResource",
+				resourceId = "server/Runtime",
+				path = { "score" },
+				field = { key = "score", typeLabel = "number", valueText = "12" },
+			})
+			clientApp:runSchedule(Update)
+			serverApp:runSchedule(Update)
+			clientApp:runSchedule(Update)
+			t.expect(serverApp.world:resource(Runtime).score).toBe(12)
+			t.expect(state.snapshots.server.resources[1].fields[1].valueText).toBe("12")
 		end)
 	end)
 end

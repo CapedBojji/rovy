@@ -1,4 +1,4 @@
-import type { ComponentInspection, ComponentReg, Entity, World } from "@rovy/core";
+import type { ComponentInspection, ComponentReg, Entity, ResourceInspection, ResourceReg, World } from "@rovy/core";
 import { buildComponentChoices, componentShortName } from "./component-names";
 import { resolveInstanceExpression } from "./instance-expression";
 import type { WorldInspectorState } from "../state";
@@ -25,6 +25,23 @@ export interface WorldInspectorComponentDto {
 	readonly fields: ReadonlyArray<WorldInspectorFieldDto>;
 }
 
+export interface WorldInspectorResourceFieldDto {
+	readonly key: string;
+	readonly path: ReadonlyArray<string>;
+	readonly typeLabel: string;
+	readonly valueText: string;
+	readonly editable: boolean;
+	readonly depth: number;
+}
+
+export interface WorldInspectorResourceDto {
+	readonly resourceId: string;
+	readonly resourceName: string;
+	readonly fields: ReadonlyArray<WorldInspectorResourceFieldDto>;
+	readonly revision: number;
+	readonly changedPaths: ReadonlyArray<ReadonlyArray<string>>;
+}
+
 export interface WorldInspectorRegisteredComponentDto {
 	readonly componentId: string;
 	readonly componentName: string;
@@ -41,6 +58,7 @@ export interface WorldInspectorSnapshotDto {
 	readonly targetKey: string;
 	readonly entities: ReadonlyArray<WorldInspectorEntityDto>;
 	readonly registeredComponents: ReadonlyArray<WorldInspectorRegisteredComponentDto>;
+	readonly resources: ReadonlyArray<WorldInspectorResourceDto>;
 }
 
 export type WorldInspectorEditDto =
@@ -48,7 +66,8 @@ export type WorldInspectorEditDto =
 	| { readonly kind: "despawn"; readonly entityId: number }
 	| { readonly kind: "insert"; readonly entityId: number; readonly componentId: string; readonly fields: ReadonlyArray<WorldInspectorFieldDto> }
 	| { readonly kind: "set"; readonly entityId: number; readonly componentId: string; readonly fields: ReadonlyArray<WorldInspectorFieldDto> }
-	| { readonly kind: "remove"; readonly entityId: number; readonly componentId: string };
+	| { readonly kind: "remove"; readonly entityId: number; readonly componentId: string }
+	| { readonly kind: "setResource"; readonly resourceId: string; readonly path: ReadonlyArray<string>; readonly field: WorldInspectorFieldDto };
 
 export interface WorldInspectorEditResult {
 	ok: boolean;
@@ -62,6 +81,7 @@ export interface WorldInspectorTarget {
 	listEntities(): ReadonlyArray<WorldInspectorEntityDto>;
 	listComponents(entityId: number): ReadonlyArray<WorldInspectorComponentDto>;
 	listRegisteredComponents(): ReadonlyArray<WorldInspectorRegisteredComponentDto>;
+	listResources(): ReadonlyArray<WorldInspectorResourceDto>;
 	apply(edit: WorldInspectorEditDto): WorldInspectorEditResult;
 }
 
@@ -87,10 +107,19 @@ export function targetForKey(world: World, state: WorldInspectorState, targetKey
 export function worldToSnapshot(world: World, targetKey: string): WorldInspectorSnapshotDto {
 	const entities = world.inspectEntities().map((entity) => entityToDto(world, entity));
 	const registeredComponents = registeredComponentsToDto(world.inspectRegisteredComponents());
-	return { targetKey, entities, registeredComponents };
+	const resources = world.inspectResources().map(resourceToDto);
+	return { targetKey, entities, registeredComponents, resources };
 }
 
 export function applyWorldInspectorEdit(world: World, edit: WorldInspectorEditDto): WorldInspectorEditResult {
+	if (edit.kind === "setResource") {
+		const resource = findResource(world, edit.resourceId);
+		if (resource === undefined) return { ok: false, error: `resource '${edit.resourceId}' is not inspectable` };
+		const parsed = parseFieldValue(edit.field);
+		if (!parsed.ok) return parsed;
+		return world.inspectSetResourceValue(resource.ctor, edit.path, parsed.value);
+	}
+
 	const component = edit.kind === "spawn" || edit.kind === "despawn" ? undefined : findComponent(world, edit.componentId);
 	if (edit.kind !== "spawn" && edit.kind !== "despawn" && component === undefined) {
 		return { ok: false, error: `component '${edit.componentId}' is not registered` };
@@ -137,6 +166,10 @@ export class LocalWorldInspectorTarget implements WorldInspectorTarget {
 		return registeredComponentsToDto(this.world.inspectRegisteredComponents());
 	}
 
+	listResources(): ReadonlyArray<WorldInspectorResourceDto> {
+		return this.world.inspectResources().map(resourceToDto);
+	}
+
 	apply(edit: WorldInspectorEditDto): WorldInspectorEditResult {
 		return applyWorldInspectorEdit(this.world, edit);
 	}
@@ -176,6 +209,10 @@ export class RemoteWorldInspectorTarget implements WorldInspectorTarget {
 
 	listRegisteredComponents(): ReadonlyArray<WorldInspectorRegisteredComponentDto> {
 		return this.snapshot()?.registeredComponents ?? [];
+	}
+
+	listResources(): ReadonlyArray<WorldInspectorResourceDto> {
+		return this.snapshot()?.resources ?? [];
 	}
 
 	apply(edit: WorldInspectorEditDto): WorldInspectorEditResult {
@@ -259,6 +296,62 @@ function valueToText(value: unknown): string {
 	return tostring(value);
 }
 
+function valueTypeLabel(value: unknown): string {
+	if (value === undefined) return "unknown";
+	if (typeIs(value, "string")) return "string";
+	if (typeIs(value, "number")) return "number";
+	if (typeIs(value, "boolean")) return "boolean";
+	if (typeIs(value, "Instance")) return "Instance";
+	const label = typeOf(value);
+	return label !== undefined ? label : "unknown";
+}
+
+function isEditableTypeLabel(typeLabel: string): boolean {
+	const lowered = typeLabel.lower();
+	return (
+		lowered === "string" ||
+		lowered === "number" ||
+		lowered === "boolean" ||
+		lowered.find("vector2", 1, true)[0] !== undefined ||
+		lowered.find("vector3", 1, true)[0] !== undefined ||
+		lowered === "udim" ||
+		lowered.find("udim2", 1, true)[0] !== undefined ||
+		lowered.find("color3", 1, true)[0] !== undefined ||
+		lowered.find("cframe", 1, true)[0] !== undefined ||
+		isInstanceTypeLabel(lowered)
+	);
+}
+
+function shouldBrowseResourceValue(value: unknown, depth: number): boolean {
+	return typeIs(value, "table") && depth < 4 && !isEditableTypeLabel(valueTypeLabel(value));
+}
+
+function pushResourceField(
+	out: Array<WorldInspectorResourceFieldDto>,
+	key: string,
+	path: ReadonlyArray<string>,
+	typeLabel: string,
+	value: unknown,
+	depth: number,
+): void {
+	const runtimeLabel = valueTypeLabel(value);
+	const editable = isEditableTypeLabel(typeLabel) || isEditableTypeLabel(runtimeLabel);
+	const label = isEditableTypeLabel(typeLabel) ? typeLabel : runtimeLabel;
+	out.push({
+		key,
+		path,
+		typeLabel: label,
+		valueText: valueToText(value),
+		editable,
+		depth,
+	});
+	if (!shouldBrowseResourceValue(value, depth)) return;
+	for (const [childKey, childValue] of pairs(value as Record<never, unknown>)) {
+		const childText = tostring(childKey);
+		pushResourceField(out, childText, [...path, childText], valueTypeLabel(childValue), childValue, depth + 1);
+	}
+}
+
 function registeredComponentsToDto(components: ReadonlyArray<ComponentReg>): WorldInspectorRegisteredComponentDto[] {
 	const choices = buildComponentChoices(components);
 	return choices.map((choice) => componentRegToDto(choice.component, choice.label));
@@ -295,6 +388,26 @@ function componentToDto(component: ComponentInspection): WorldInspectorComponent
 	};
 }
 
+function resourceToDto(resource: ResourceInspection): WorldInspectorResourceDto {
+	return {
+		resourceId: resource.id,
+		resourceName: resource.name,
+		fields: resourceFieldsToDto(resource),
+		revision: resource.revision,
+		changedPaths: resource.changedPaths,
+	};
+}
+
+function resourceFieldsToDto(resource: ResourceInspection): WorldInspectorResourceFieldDto[] {
+	const out = new Array<WorldInspectorResourceFieldDto>();
+	const root = resource.value as Record<string, unknown> | undefined;
+	for (const field of resource.inspect.fields) {
+		const value = root !== undefined ? root[field.key] : undefined;
+		pushResourceField(out, field.key, [field.key], field.typeLabel, value, 0);
+	}
+	return out;
+}
+
 function entityToDto(world: World, entity: Entity): WorldInspectorEntityDto {
 	return {
 		entityId: entity as number,
@@ -305,6 +418,13 @@ function entityToDto(world: World, entity: Entity): WorldInspectorEntityDto {
 function findComponent(world: World, componentId: string): ComponentReg | undefined {
 	for (const component of world.inspectRegisteredComponents()) {
 		if (component.id === componentId) return component;
+	}
+	return undefined;
+}
+
+function findResource(world: World, resourceId: string): ResourceReg | undefined {
+	for (const resource of world.inspectRegisteredResources()) {
+		if (resource.id === resourceId) return resource;
 	}
 	return undefined;
 }

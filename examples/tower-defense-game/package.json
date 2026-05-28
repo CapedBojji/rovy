@@ -15,7 +15,8 @@
 		"build:place": "pnpm run build",
 		"test:output": "node test/assert-output.js",
 		"test:luau": "zune test test/smoke",
-		"test:place": "node test/assert-place.js"
+		"test:place": "node test/assert-place.js",
+		"test:roblox": "pnpm run build && bash ../../scripts/run-roblox-test.sh tests.project.json ../../build/rovy-tower-defense-game-tests.rbxlx ../../test/roblox/run-tests.luau"
 	},
 	"keywords": [],
 	"author": "",
@@ -45,6 +46,7 @@
 	},
 	"devDependencies": {
 		"@rbxts/compiler-types": "3.0.0-types.0",
+		"@rbxts/testez": "0.4.2-ts.0",
 		"@rbxts/types": "^1.0.920",
 		"@typescript-eslint/eslint-plugin": "^8.59.3",
 		"@typescript-eslint/parser": "^8.59.3",
@@ -76,6 +78,10 @@
 		"generateBlink": true,
 		"environments": {
 			"dev": {
+				"debug": true,
+				"editor": {
+					"runtimeTypeChecks": false
+				},
 				"rojo": "default.project.json",
 				"boundaries": {
 					"server": [

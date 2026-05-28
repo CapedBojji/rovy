@@ -28,6 +28,7 @@ const DECORATORS = new Set([
 	"component",
 	"collect",
 	"resource",
+	"inspect",
 	"prefab",
 	"event",
 	"netEvent",
@@ -38,7 +39,6 @@ const DECORATORS = new Set([
 	"schedule",
 	"set",
 	"plugin",
-	"inspect",
 ]);
 
 type MonitorMethod = "onEnter" | "onExit" | "onChange";
@@ -421,6 +421,7 @@ function transformClass(
 
 	const stripped = removeRovyDecorators(state, sourceFile, node);
 	const isResource = decorators.some((d) => d.name === "resource");
+	const inspectDecorator = decorators.find((d) => d.name === "inspect");
 	const resourceCollectRefs = isResource ? collectRefBindings(state, sourceFile, stripped) : [];
 	const resourceReadyClass = isResource ? stripCollectRefInitializers(state, sourceFile, stripped) : stripped;
 	const transformedClass = ts.visitEachChild(resourceReadyClass, visitor, state.context);
@@ -450,7 +451,10 @@ function transformClass(
 			case "resource":
 				{
 					const args: ts.Expression[] = [className, str(classId)];
-					const meta = buildResourceMeta(pluginBinding, resourceCollectRefs);
+					const inspect = inspectDecorator !== undefined && state.inspectResourcesEnabled()
+						? buildResourceInspectMeta(state, sourceFile, node)
+						: undefined;
+					const meta = buildResourceMeta(pluginBinding, resourceCollectRefs, inspect);
 					if (meta !== undefined) args.push(meta);
 					afterStatements.push(
 						regCall(
@@ -459,6 +463,11 @@ function transformClass(
 							args,
 						),
 					);
+				}
+				break;
+			case "inspect":
+				if (isResource && state.inspectResourcesEnabled()) {
+					afterStatements.push(regCall(rovy, "__inspect", [className, buildInspectMeta(decorator, pluginBinding)].filter(isExpression)));
 				}
 				break;
 			case "event":
@@ -530,9 +539,6 @@ function transformClass(
 				break;
 			case "plugin":
 				afterStatements.push(regCall(rovy, "__plugin", [className, buildPluginMeta(state, node)]));
-				break;
-			case "inspect":
-				afterStatements.push(regCall(rovy, "__inspect", [className, buildInspectMeta(decorator, pluginBinding)].filter(isExpression)));
 				break;
 		}
 	}
@@ -679,6 +685,10 @@ function validateClass(state: TransformState, node: ts.ClassDeclaration, decorat
 	if (decorators.some((d) => d.name === "netEvent") && decorators.some((d) => d.name === "event")) {
 		state.diagnostic(node, "@netEvent implies @event; remove the extra @event decorator");
 	}
+
+	if (decorators.some((d) => d.name === "inspect") && !decorators.some((d) => d.name === "resource")) {
+		state.diagnostic(node, "@inspect can only be used on @resource classes");
+	}
 }
 
 function collectRefBindings(
@@ -823,10 +833,12 @@ function buildRelationMeta(decorator: DecoratorInfo, plugin?: PluginBinding): ts
 function buildResourceMeta(
 	plugin: PluginBinding | undefined,
 	collectorRefs: readonly ts.ObjectLiteralExpression[],
+	inspect?: ts.ObjectLiteralExpression,
 ): ts.ObjectLiteralExpression | undefined {
 	const properties = stripUndefinedProperties([
 		maybeProp("plugin", plugin?.expr),
 		collectorRefs.length > 0 ? prop("collectorRefs", arr(collectorRefs, true)) : undefined,
+		maybeProp("inspect", inspect),
 	]);
 	return properties.length > 0 ? obj(properties, true) : undefined;
 }
@@ -841,6 +853,82 @@ function buildInspectMeta(decorator: DecoratorInfo, plugin?: PluginBinding): ts.
 		excludeExpr !== undefined ? prop("exclude", excludeExpr) : undefined,
 	]);
 	return properties.length > 0 ? obj(properties, true) : undefined;
+}
+
+function buildResourceInspectMeta(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.ClassDeclaration,
+): ts.ObjectLiteralExpression {
+	const fields: ts.ObjectLiteralExpression[] = [];
+	for (const member of node.members) {
+		if (!ts.isPropertyDeclaration(member)) continue;
+		if (isPrivateProtectedOrStatic(member)) continue;
+		if (isFunctionLikeResourceField(member)) continue;
+		const key = member.name ? propertyNameText(member.name) : undefined;
+		if (key === undefined) {
+			state.diagnostic(member, "@inspect resource fields must use an identifier, string, or number property name");
+			continue;
+		}
+		const typeLabel = resourceFieldTypeLabel(state, sourceFile, member);
+		fields.push(
+			obj(
+				[
+					prop("key", str(key)),
+					prop("typeLabel", str(typeLabel)),
+					prop("validator", validatorForType(state, sourceFile, member.type, member.questionToken !== undefined)),
+				],
+				true,
+			),
+		);
+	}
+	return obj([prop("fields", arr(fields, true))], true);
+}
+
+function isPrivateProtectedOrStatic(member: ts.PropertyDeclaration): boolean {
+	return (member.modifiers ?? []).some((modifier) =>
+		modifier.kind === ts.SyntaxKind.PrivateKeyword ||
+		modifier.kind === ts.SyntaxKind.ProtectedKeyword ||
+		modifier.kind === ts.SyntaxKind.StaticKeyword
+	);
+}
+
+function isFunctionLikeResourceField(member: ts.PropertyDeclaration): boolean {
+	if (member.type !== undefined) {
+		if (ts.isFunctionTypeNode(member.type)) return true;
+		if (ts.isTypeReferenceNode(member.type) && lastTypeName(member.type.typeName) === "Function") return true;
+	}
+	const initializer = member.initializer;
+	return initializer !== undefined && (ts.isFunctionExpression(initializer) || ts.isArrowFunction(initializer));
+}
+
+function resourceFieldTypeLabel(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	member: ts.PropertyDeclaration,
+): string {
+	if (member.type !== undefined) return member.type.getText(sourceFile);
+	if (member.initializer !== undefined) {
+		const inferred = typeLabelForInitializer(member.initializer);
+		if (inferred !== undefined) return inferred;
+		const checker = state.typeChecker;
+		const type = checker?.getTypeAtLocation(member);
+		const label = type !== undefined ? checker?.typeToString(type) : undefined;
+		if (label !== undefined && label !== "{}") return label;
+	}
+	return "unknown";
+}
+
+function typeLabelForInitializer(initializer: ts.Expression): string | undefined {
+	if (ts.isStringLiteral(initializer) || ts.isNoSubstitutionTemplateLiteral(initializer)) return "string";
+	if (ts.isNumericLiteral(initializer)) return "number";
+	if (initializer.kind === ts.SyntaxKind.TrueKeyword || initializer.kind === ts.SyntaxKind.FalseKeyword) return "boolean";
+	if (ts.isNewExpression(initializer) && ts.isIdentifier(initializer.expression)) return initializer.expression.text;
+	if (ts.isCallExpression(initializer) && ts.isPropertyAccessExpression(initializer.expression)) {
+		const left = initializer.expression.expression;
+		if (ts.isIdentifier(left)) return left.text;
+	}
+	return undefined;
 }
 
 function buildComponentMeta(

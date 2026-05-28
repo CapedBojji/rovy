@@ -32,7 +32,8 @@ Everything you import:
 - **Planned decorator** — `@prefab`
 - **Macros** — `trait<T>()`, `query<...>()`
 - **Type-only helpers** — `Query<...>`, `Res<T>`, `ResMut<T>`, `OptRes<T>`, `Trait<T>`, `HasTrait<T>`, `AllTraits<T>`, `Pair<R>`, `Optional<C>`, `With<C>`, `Without<C>`, `Changed<C>`, `Added<C>`, `Removed<C>`, `Entity`, `Commands`, `World`, `EventReader<E>`, `EventWriter<E>`, `Local<T>`, `SystemSet`
-- **Runtime** — `App`, the `World` wrapper, `Commands`, scheduler, observer/monitor dispatch, event buffers, resource store, change-detection stores, trait registry
+- **Runtime** — `App`, the `World` wrapper, `Commands`, scheduler, observer/monitor dispatch, lifecycle hooks, event buffers, resource store, change-detection stores, trait registry
+- **Debug helpers** — `LifecyclePrintPlugin` for opt-in lifecycle logging
 - **The `rovy` registry object** — `rovy.loadPaths(...)` (public; authored TS passes string paths that the transformer lowers to Instance roots) plus the `rovy.__component` / `__collect` / `__prefab` / `__resource` / `__event` / `__system` / `__observer` / `__monitor` / `__relation` / `__schedule` / `__traitImpl` / `__query` / `rovy.traitToken` entry points (transformer-only — never hand-called; `__prefab` is planned)
 
 ```ts

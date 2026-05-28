@@ -13,6 +13,7 @@ import { resolveParams } from "./resolve-param";
 import type { RovyWorld } from "./world";
 
 interface ObserverEntry {
+	ctor: Ctor;
 	instance: { run: (self: unknown, ...args: Array<unknown>) => void };
 	priority: number;
 	params: ReadonlyArray<ParamDescriptor>;
@@ -48,7 +49,7 @@ export class EventRegistry {
 		const factory = reg.ctor as unknown as new () => {
 			run: (self: unknown, ...a: Array<unknown>) => void;
 		};
-		buf.observers.push({ instance: new factory(), priority: reg.priority, params: reg.params });
+		buf.observers.push({ ctor: reg.ctor, instance: new factory(), priority: reg.priority, params: reg.params });
 		// higher priority first; stable
 		buf.observers.sort((a, b) => a.priority > b.priority);
 	}
@@ -74,13 +75,29 @@ export class EventRegistry {
 		const base = this.resolveBase;
 		assert(base !== undefined, "[rovy] event registry not wired (App not started?)");
 		for (const obs of buf.observers) {
-			const ctx: ResolveCtx = {
-				...base(),
-				event,
-				locals: new Map(),
+			const resolvedBase = base();
+			const runObserver = () => {
+				const resourceScope = resolvedBase.world.beginResourceScope();
+				const ctx: ResolveCtx = {
+					...resolvedBase,
+					event,
+					locals: new Map(),
+					resourceScope,
+				};
+				const args = resolveParams(obs.params, ctx);
+				obs.instance.run(obs.instance, ...args);
+				resolvedBase.world.commitResourceScope(resourceScope);
 			};
-			const args = resolveParams(obs.params, ctx);
-			obs.instance.run(obs.instance, ...args);
+			const lifecycle = resolvedBase.world.lifecycle;
+			if (lifecycle !== undefined) {
+				lifecycle.withRunScope(
+					{ kind: "observer_started", ctor: obs.ctor, event },
+					{ kind: "observer_finished", ctor: obs.ctor, event },
+					runObserver,
+				);
+			} else {
+				runObserver();
+			}
 		}
 	}
 

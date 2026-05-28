@@ -105,12 +105,13 @@ export const rovy = {
 	__collect(ctor: Ctor, id: StableId, meta?: { plugin?: Ctor }): void {
 		registry.collectors.push({ ctor, id, plugin: meta?.plugin } satisfies CollectReg);
 	},
-	__resource(ctor: Ctor, id: StableId, meta?: { plugin?: Ctor; collectorRefs?: ReadonlyArray<CollectorRefReg> }): void {
+	__resource(ctor: Ctor, id: StableId, meta?: { plugin?: Ctor; collectorRefs?: ReadonlyArray<CollectorRefReg>; inspect?: ResourceReg["inspect"] }): void {
 		registry.resources.push({
 			ctor,
 			id,
 			plugin: meta?.plugin,
 			collectorRefs: meta?.collectorRefs,
+			inspect: meta?.inspect,
 		} satisfies ResourceReg);
 	},
 	__inspect(ctor: Ctor, meta?: { plugin?: Ctor; depth?: number; exclude?: ReadonlyArray<string> }): void {

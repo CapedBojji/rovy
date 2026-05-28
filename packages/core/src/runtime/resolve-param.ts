@@ -11,6 +11,7 @@ import type { CommandsImpl } from "./commands";
 import type { EventReaderHandle, EventRegistry, EventWriterHandle } from "./events";
 import { FilteredQueryHandle, hasTickFilters } from "./query";
 import type { QueryLike } from "./query";
+import type { ResourceTrackScope } from "./world";
 import type { RovyWorld } from "./world";
 
 /** Per-instance Local<T> slots, keyed by the descriptor's index. */
@@ -36,6 +37,8 @@ export interface ResolveCtx {
 	lastRunTick: number;
 	/** Event buffers/observers registry. */
 	events: EventRegistry;
+	/** Per-callback tracked resource clone scope. */
+	resourceScope?: ResourceTrackScope;
 	/** Factories so each resolve builds a fresh handle bound to the ctx event ctor. */
 	makeReader: (registry: EventRegistry, event: Ctor) => EventReaderHandle;
 	makeWriter: (registry: EventRegistry, event: Ctor) => EventWriterHandle;
@@ -59,9 +62,9 @@ export function resolveParam(p: ParamDescriptor, ctx: ResolveCtx): unknown {
 		}
 		case "res":
 		case "resMut":
-			return ctx.world.resource(p.ctor as unknown as new () => object);
+			return ctx.world.resolveResourceForInjection(p.ctor as unknown as new () => object, false, ctx.resourceScope);
 		case "optRes":
-			return ctx.world.optResource(p.ctor as unknown as new () => object);
+			return ctx.world.resolveResourceForInjection(p.ctor as unknown as new () => object, true, ctx.resourceScope);
 		case "local": {
 			let v = ctx.locals.get(p.index);
 			if (v === undefined) {

@@ -155,11 +155,22 @@ export interface CollectorRefReg {
 	readonly ctor: Ctor;
 }
 
+export interface ResourceInspectFieldReg {
+	readonly key: string;
+	readonly typeLabel: string;
+	readonly validator: (value: unknown) => boolean;
+}
+
+export interface ResourceInspectReg {
+	readonly fields: ReadonlyArray<ResourceInspectFieldReg>;
+}
+
 export interface ResourceReg {
 	readonly ctor: Ctor;
 	readonly id: StableId;
 	readonly plugin?: Ctor;
 	readonly collectorRefs?: ReadonlyArray<CollectorRefReg>;
+	readonly inspect?: ResourceInspectReg;
 }
 
 export interface InspectReg {
@@ -279,4 +290,4 @@ export interface RovyRegistry {
  */
 
 /** Bumped on any breaking change to the shapes above. Transformer asserts a match. */
-export const CONTRACT_VERSION = 4;
+export const CONTRACT_VERSION = 5;

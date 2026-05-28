@@ -1,8 +1,8 @@
-import { App, type Plugin } from "@rovy/core";
+import { App, LifecyclePrintPlugin, type Plugin } from "@rovy/core";
 import { WorldInspectorServerPlugin } from "@rovy/world-inspector";
 import { ClientHeartbeatPayload, SERVER_FIXED_DELTA, TowerDefenseSmokeResult } from "shared/contracts";
 import { toClientHeartbeatNet } from "shared/network";
-import "./components";
+import { Health, Lifetime, Position, Projectile, ShotProfile } from "./components";
 import "./events";
 import "./systems";
 
@@ -20,7 +20,15 @@ import {
 	SpawnSet,
 	Update,
 } from "./state";
-import { ClientSignalState, SnapshotState, TowerDefenseStats } from "./resources";
+import { ClientSignalState, SnapshotState, TowerDefenseStats, TurretState } from "./resources";
+
+const lifecyclePrintLines = new Array<string>();
+
+export function drainLifecyclePrintLines(): ReadonlyArray<string> {
+	const lines = [...lifecyclePrintLines];
+	lifecyclePrintLines.clear();
+	return lines;
+}
 
 export function boot(): App {
 	const app = new App();
@@ -28,6 +36,15 @@ export function boot(): App {
 	app.addPlugin(new WorldInspectorServerPlugin({
 		schedule: Update,
 		access: () => true,
+	}) as unknown as Plugin);
+	app.addPlugin(new LifecyclePrintPlugin({
+		hooks: ["component_added", "component_changed", "component_removed", "entity_spawned", "entity_despawned", "resource_changed"],
+		components: [Health, Lifetime, Position, Projectile, ShotProfile],
+		resources: [ClientSignalState, TowerDefenseStats, TurretState],
+		printer: (line) => {
+			lifecyclePrintLines.push(line);
+			print(line);
+		},
 	}) as unknown as Plugin);
 	app.start();
 	return app;
@@ -37,12 +54,12 @@ export function stepFixed(app: App): void {
 	app.runSchedule(Update);
 }
 
-export function runTowerDefenseSmoke(): TowerDefenseSmokeResult {
+export function runTowerDefenseSmoke(durationSeconds = 18): TowerDefenseSmokeResult {
 	const app = boot();
 	let ticksRan = 0;
 
 	app.commands.send(toClientHeartbeatNet(new ClientHeartbeatPayload(7, 0.25, 3)));
-	for (let i = 0; i < math.ceil(18 / SERVER_FIXED_DELTA); i++) {
+	for (let i = 0; i < math.ceil(durationSeconds / SERVER_FIXED_DELTA); i++) {
 		stepFixed(app);
 		ticksRan += 1;
 	}

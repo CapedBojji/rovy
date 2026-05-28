@@ -4,8 +4,10 @@
 It gives you a UI for:
 
 - browsing entities and registered components
+- browsing inspected resources
 - opening entity detail windows
 - editing component values and tags
+- editing inspected resource values
 - spawning and despawning entities
 - inspecting the local client world, the server world, or another player's client world
 - recording per-frame component changes and opted-in resource snapshots
@@ -27,6 +29,33 @@ It is especially useful for:
 It is not a replacement for gameplay replication. Remote inspection works by
 requesting snapshots and forwarding edits through inspector-specific net events.
 It does **not** mean Rovy now has automatic entity/component replication.
+
+## Inspecting resources
+
+Resources are hidden from the inspector unless the resource class is decorated
+with `@inspect`:
+
+```ts
+import { inspect, resource } from "@rovy/core";
+
+@inspect
+@resource
+export class DebugStats {
+  zombiesSpawned = 0;
+  paused = false;
+}
+```
+
+In debug builds, injected inspected resources are cloned for each system,
+observer, or monitor run. After the callback returns, Rovy diffs the clone and
+commits any changes back internally. In production builds where the current
+`rovy-build` environment does not set `debug: true`, inspect metadata is not
+emitted and resource injection uses the live resource table directly.
+
+The Resources tab supports the same editable leaf values as component editing:
+`string`, `number`, `boolean`, `Vector2`, `Vector3`, `UDim`, `UDim2`, `Color3`,
+`CFrame`, and `Instance` paths. Complex tables can be expanded for inspection;
+unsupported values are read-only.
 
 ## Install
 

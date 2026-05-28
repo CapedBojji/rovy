@@ -374,6 +374,10 @@ export class TransformState {
 		return environment?.editor?.runtimeTypeChecks ?? environment?.debug ?? false;
 	}
 
+	inspectResourcesEnabled(): boolean {
+		return this.rovyConfig?.environment.debug === true;
+	}
+
 	resolveBoundary(file: ts.SourceFile): "server" | "client" | "shared" | "unknown" {
 		const configured = this.resolveBoundaryFromConfig(file.fileName);
 		if (configured !== "unknown") return configured;

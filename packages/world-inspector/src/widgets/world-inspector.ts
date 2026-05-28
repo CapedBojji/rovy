@@ -29,6 +29,8 @@ import {
 	type WorldInspectorComponentDto,
 	type WorldInspectorFieldDto,
 	type WorldInspectorRegisteredComponentDto,
+	type WorldInspectorResourceDto,
+	type WorldInspectorResourceFieldDto,
 	type WorldInspectorTarget,
 } from "../runtime/target";
 import { WorldInspectorState } from "../state";
@@ -46,6 +48,14 @@ function draftKey(targetKey: string, entity: number | undefined, componentId: st
 
 function componentErrorKey(targetKey: string, entity: number, componentId: string): string {
 	return `component:${targetKey}:${tostring(entity)}:${componentId}`;
+}
+
+function resourceDraftKey(targetKey: string, resourceId: string, path: ReadonlyArray<string>): string {
+	return `resource:${targetKey}:${resourceId}:${path.join(".")}`;
+}
+
+function resourceErrorKey(targetKey: string, resourceId: string, path: ReadonlyArray<string>): string {
+	return `resource-error:${targetKey}:${resourceId}:${path.join(".")}`;
 }
 
 function addComponentErrorKey(targetKey: string, entity: number, componentId: string): string {
@@ -134,6 +144,15 @@ function renderTargetPicker(state: WorldInspectorState): void {
 	}
 }
 
+function renderMainTabs(state: WorldInspectorState): void {
+	row(() => {
+		const entities = selectableLabel("Entities", { selected: state.activeTab === "entities" });
+		if (entities.clicked()) state.activeTab = "entities";
+		const resources = selectableLabel("Resources", { selected: state.activeTab === "resources" });
+		if (resources.clicked()) state.activeTab = "resources";
+	});
+}
+
 function renderEntityList(target: WorldInspectorTarget, state: WorldInspectorState): void {
 	const filterInput = input({
 		text: state.query,
@@ -168,6 +187,84 @@ function renderEntityList(target: WorldInspectorTarget, state: WorldInspectorSta
 			}
 		}
 		if (shown === 0) label("No entities match.");
+	});
+}
+
+function renderResourceField(
+	target: WorldInspectorTarget,
+	state: WorldInspectorState,
+	resource: WorldInspectorResourceDto,
+	field: WorldInspectorResourceFieldDto,
+): void {
+	const key = resourceDraftKey(target.key, resource.resourceId, field.path);
+	const errorKey = resourceErrorKey(target.key, resource.resourceId, field.path);
+	const upstream = field.valueText;
+	if (!state.drafts.has(key)) state.drafts.set(key, upstream);
+	const displayValue = state.drafts.get(key) as string;
+	tableRow(() => {
+		tableCell(() => {
+			const indent = string.rep("  ", field.depth);
+			label(`${indent}${field.key}`);
+		});
+		tableCell(() => {
+			if (!field.editable) {
+				label(upstream);
+				return;
+			}
+			const fieldInput = __scope("world-inspector:resource-field", () => {
+				useKey(key);
+				return input({ text: displayValue, placeholder: field.typeLabel });
+			});
+			if (fieldInput.changed() || fieldInput.submitted()) state.drafts.set(key, fieldInput.value());
+			row(() => {
+				if (button("Commit").clicked()) {
+					const result = target.apply({
+						kind: "setResource",
+						resourceId: resource.resourceId,
+						path: field.path,
+						field: {
+							key: field.key,
+							typeLabel: field.typeLabel,
+							valueText: state.drafts.get(key) as string,
+						},
+					});
+					state.setActionError(errorKey, result.error);
+				}
+			});
+			const scopedError = state.actionErrors.get(errorKey);
+			if (scopedError !== undefined) label(scopedError);
+		});
+	});
+}
+
+function renderResource(resource: WorldInspectorResourceDto, target: WorldInspectorTarget, state: WorldInspectorState): void {
+	collapsingHeader(resource.resourceName, () => {
+		label(resource.resourceId);
+		uiTable({ columns: [{ width: 120 }, { fill: true }] }, () => {
+			for (const field of resource.fields) {
+				__scope("world-inspector:resource-row", () => {
+					useKey(`${resource.resourceId}:${field.path.join(".")}`);
+					renderResourceField(target, state, resource, field);
+				});
+			}
+		});
+		if (resource.fields.size() === 0) label("No inspectable fields.");
+	});
+}
+
+function renderResourceList(target: WorldInspectorTarget, state: WorldInspectorState): void {
+	const resources = target.listResources();
+	childWindow({ title: `Resources (${resources.size()})`, height: 320, scrollY: true, minimizable: false }, () => {
+		if (resources.size() === 0) {
+			label("No inspected resources.");
+			return;
+		}
+		for (const resource of resources) {
+			__scope("world-inspector:resource", () => {
+				useKey(resource.resourceId);
+				renderResource(resource, target, state);
+			});
+		}
 	});
 }
 
@@ -319,7 +416,10 @@ export function worldInspector(options: WorldInspectorOptions): void {
 			if (state.error !== undefined) label(state.error);
 			renderTargetPicker(state);
 			space(4);
-			renderEntityList(target, state);
+			renderMainTabs(state);
+			space(4);
+			if (state.activeTab === "resources") renderResourceList(target, state);
+			else renderEntityList(target, state);
 			if (recorder !== undefined) {
 				separator();
 				recorderPanel(recorder);

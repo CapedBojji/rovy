@@ -23,9 +23,11 @@ import { RelationQueryHandle, descriptorUsesRelations } from "./relations";
 import { ScheduleContext } from "./schedule-context";
 import { Scheduler } from "./schedule";
 import { RovyWorld } from "./world";
+import { LifecycleHub, type LifecycleCallback, type LifecycleKind, type LifecycleUnsubscribe } from "./lifecycle";
 
 export class App {
 	readonly world = new RovyWorld();
+	readonly lifecycle = new LifecycleHub(this.world);
 	readonly commands: CommandsImpl;
 	readonly scheduler: Scheduler;
 	readonly eventRegistry = new EventRegistry();
@@ -48,6 +50,8 @@ export class App {
 	logRegistryAtStart = false;
 
 	constructor() {
+		this.lifecycle.setApp(this);
+		this.world.lifecycle = this.lifecycle;
 		this.commands = new CommandsImpl(this.world);
 		this.scheduler = new Scheduler(this.world, this.commands);
 		// wire deferred command → scheduler / world hooks
@@ -56,14 +60,14 @@ export class App {
 		this.commands.deferredUnrelate = (s, r, t) => this.world.unrelate(s, r, t);
 		this.world.runScheduleImpl = (s, dt) => this.scheduler.run(s, dt);
 		this.world.flushImpl = () => {
-			flush(this.commands);
+			this.flushCommands();
 			this.monitors?.reconcileAll();
 		};
 	}
 
 	/** Apply queued commands to convergence (escape hatch; scheduler flushes at set boundaries). */
 	flush(): this {
-		flush(this.commands);
+		this.flushCommands();
 		this.monitors?.reconcileAll();
 		return this;
 	}
@@ -78,6 +82,88 @@ export class App {
 	runSchedule(schedule: Ctor, dt?: number): this {
 		this.scheduler.run(schedule, dt);
 		return this;
+	}
+
+	on_entity_spawned(callback: LifecycleCallback): LifecycleUnsubscribe {
+		return this.onLifecycle("entity_spawned", callback);
+	}
+	on_entity_despawned(callback: LifecycleCallback): LifecycleUnsubscribe {
+		return this.onLifecycle("entity_despawned", callback);
+	}
+	on_component_added(callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_component_added(component: Ctor, callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_component_added(first: Ctor | LifecycleCallback, second?: LifecycleCallback): LifecycleUnsubscribe {
+		return this.onLifecycle("component_added", first, second);
+	}
+	on_component_changed(callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_component_changed(component: Ctor, callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_component_changed(first: Ctor | LifecycleCallback, second?: LifecycleCallback): LifecycleUnsubscribe {
+		return this.onLifecycle("component_changed", first, second);
+	}
+	on_component_removed(callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_component_removed(component: Ctor, callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_component_removed(first: Ctor | LifecycleCallback, second?: LifecycleCallback): LifecycleUnsubscribe {
+		return this.onLifecycle("component_removed", first, second);
+	}
+	on_resource_changed(callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_resource_changed(resource: Ctor, callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_resource_changed(first: Ctor | LifecycleCallback, second?: LifecycleCallback): LifecycleUnsubscribe {
+		return this.onLifecycle("resource_changed", first, second);
+	}
+	on_relation_added(callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_relation_added(relation: Ctor, callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_relation_added(first: Ctor | LifecycleCallback, second?: LifecycleCallback): LifecycleUnsubscribe {
+		return this.onLifecycle("relation_added", first, second);
+	}
+	on_relation_changed(callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_relation_changed(relation: Ctor, callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_relation_changed(first: Ctor | LifecycleCallback, second?: LifecycleCallback): LifecycleUnsubscribe {
+		return this.onLifecycle("relation_changed", first, second);
+	}
+	on_relation_removed(callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_relation_removed(relation: Ctor, callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_relation_removed(first: Ctor | LifecycleCallback, second?: LifecycleCallback): LifecycleUnsubscribe {
+		return this.onLifecycle("relation_removed", first, second);
+	}
+	on_schedule_started(callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_schedule_started(schedule: Ctor, callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_schedule_started(first: Ctor | LifecycleCallback, second?: LifecycleCallback): LifecycleUnsubscribe {
+		return this.onLifecycle("schedule_started", first, second);
+	}
+	on_schedule_finished(callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_schedule_finished(schedule: Ctor, callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_schedule_finished(first: Ctor | LifecycleCallback, second?: LifecycleCallback): LifecycleUnsubscribe {
+		return this.onLifecycle("schedule_finished", first, second);
+	}
+	on_system_started(callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_system_started(system: Ctor, callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_system_started(first: Ctor | LifecycleCallback, second?: LifecycleCallback): LifecycleUnsubscribe {
+		return this.onLifecycle("system_started", first, second);
+	}
+	on_system_finished(callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_system_finished(system: Ctor, callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_system_finished(first: Ctor | LifecycleCallback, second?: LifecycleCallback): LifecycleUnsubscribe {
+		return this.onLifecycle("system_finished", first, second);
+	}
+	on_observer_started(callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_observer_started(observer: Ctor, callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_observer_started(first: Ctor | LifecycleCallback, second?: LifecycleCallback): LifecycleUnsubscribe {
+		return this.onLifecycle("observer_started", first, second);
+	}
+	on_observer_finished(callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_observer_finished(observer: Ctor, callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_observer_finished(first: Ctor | LifecycleCallback, second?: LifecycleCallback): LifecycleUnsubscribe {
+		return this.onLifecycle("observer_finished", first, second);
+	}
+	on_monitor_started(callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_monitor_started(monitor: Ctor, callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_monitor_started(first: Ctor | LifecycleCallback, second?: LifecycleCallback): LifecycleUnsubscribe {
+		return this.onLifecycle("monitor_started", first, second);
+	}
+	on_monitor_finished(callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_monitor_finished(monitor: Ctor, callback: LifecycleCallback): LifecycleUnsubscribe;
+	on_monitor_finished(first: Ctor | LifecycleCallback, second?: LifecycleCallback): LifecycleUnsubscribe {
+		return this.onLifecycle("monitor_finished", first, second);
 	}
 
 	addPlugin(plugin: Plugin): this {
@@ -144,8 +230,9 @@ export class App {
 		}
 
 		// 2. resources → jecs ids + auto-instantiate default ctor (or override)
-		const installResource = (ctor: Ctor): void => {
-			this.world.registerResource(ctor);
+		const installResource = (ctor: Ctor, entry?: import("../contract").ResourceReg): void => {
+			if (entry !== undefined) this.world.registerResourceEntry(entry);
+			else this.world.registerResource(ctor);
 			const override = this.resourceOverrides.get(ctor);
 			if (override !== undefined) {
 				this.world.setResource(ctor, override);
@@ -157,7 +244,7 @@ export class App {
 		installResource(ScheduleContext);
 		this.scheduleContext = this.world.resource(ScheduleContext);
 		for (const entry of finalReg.resources) {
-			installResource(entry.ctor);
+			installResource(entry.ctor, entry);
 		}
 
 		// 2b. collectors → singleton app-owned external ingress bridges
@@ -325,6 +412,7 @@ export class App {
 		// 6. build scheduler (schedules → sets → systems), then fire runOnStart
 		this.scheduler.build(finalReg);
 		this.started = true;
+		this.lifecycle.enabled = true;
 		monitors.reconcileAll(); // initial membership (pre-start spawns)
 		for (const s of this.scheduler.runOnStartList()) {
 			this.scheduler.run(s);
@@ -350,6 +438,20 @@ export class App {
 			makeWriter: this.makeWriter,
 			lastRunTick,
 		};
+	}
+
+	private flushCommands(): void {
+		this.lifecycle.withBatch(() => {
+			flush(this.commands);
+		});
+	}
+
+	private onLifecycle(
+		kind: LifecycleKind,
+		first: Ctor | LifecycleCallback,
+		second?: LifecycleCallback,
+	): LifecycleUnsubscribe {
+		return this.lifecycle.on(kind, first, second);
 	}
 
 	private pluginOwnerFor(plugin: Plugin): object | undefined {

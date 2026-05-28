@@ -9,7 +9,7 @@ Full public surface. Authoring is decorator-based; the transformer reads decorat
 @collect
 @prefab
 @resource
-@inspect(options?: { depth?: number }) // resource snapshots in world-inspector frame recordings
+@inspect(options?: { depth?: number; exclude?: string[] }) // debug-only resource inspection and recorder snapshots
 @event(options?: { capacity?: number; label?: string })
 @system(options: { schedule: ScheduleCtor; set?: typeof SystemSet; after?: SystemCtor[]; before?: SystemCtor[]; runIf?: () => boolean })
 @observer(options: { event: EventCtor; priority?: number })
@@ -92,7 +92,51 @@ app.start();                 // finalize registries + fire @schedule({ runOnStar
 app.flush();                 // manual flush escape hatch
 ```
 
-No `addMetadata` / `addSystems` / `addObserver` / `onAdd*` / `step`. Systems/observers/monitors self-register via transformer-injected `rovy.__*` calls; `rovy.loadPaths(...)` takes authored TS string paths and must run before `app.start()`. Resources auto-register from `@resource` defaults — `insertResource` only needed to override. `app.step()` lives in the optional `StandardPlugin` (see [Schedules](/concepts/schedules.md#standardplugin-optional)).
+No `addMetadata` / `addSystems` / `addObserver` / `step`. Systems/observers/monitors self-register via transformer-injected `rovy.__*` calls; `rovy.loadPaths(...)` takes authored TS string paths and must run before `app.start()`. Resources auto-register from `@resource` defaults — `insertResource` only needed to override. `app.step()` lives in the optional `StandardPlugin` (see [Schedules](/concepts/schedules.md#standardplugin-optional)).
+
+Lifecycle hooks are app-owned subscriptions. Broad callbacks receive every
+record for that kind; ctor-filtered callbacks receive only that component,
+resource, relation, schedule, system, observer, or monitor. Each call returns
+an unsubscribe function.
+
+```ts
+app.on_entity_spawned((record) => print(record.entity));
+app.on_entity_despawned((record) => print(record.entity));
+
+app.on_component_added(Position, (record) => print(record.entity, record.value));
+app.on_component_changed(Position, (record) => print(record.entity, record.value));
+app.on_component_removed(Position, (record) => print(record.entity, record.oldValue));
+
+app.on_resource_changed(GameState, (record) => print(record.paths));
+app.on_relation_added(ChildOf, (record) => print(record.entity, record.target));
+app.on_relation_changed(Link, (record) => print(record.data));
+app.on_relation_removed(Link, (record) => print(record.oldValue));
+
+app.on_schedule_started(Update, (record) => print(record.kind));
+app.on_schedule_finished(Update, (record) => print(record.kind));
+app.on_system_started(MoveSystem, (record) => print(record.name));
+app.on_system_finished(MoveSystem, (record) => print(record.name));
+app.on_observer_started(ApplyDamage, (record) => print(record.event));
+app.on_observer_finished(ApplyDamage, (record) => print(record.event));
+app.on_monitor_started(HealthMonitor, (record) => print(record.method));
+app.on_monitor_finished(HealthMonitor, (record) => print(record.method));
+```
+
+Resource field diffs come from `@inspect` clone commits; non-inspected
+resources still emit replacement changes through `insertResource`.
+
+`LifecyclePrintPlugin` prints compact lifecycle summaries. Pass `hooks` and
+optional ctor filters to choose what prints.
+
+```ts
+import { LifecyclePrintPlugin } from "@rovy/core";
+
+app.addPlugin(new LifecyclePrintPlugin({
+  hooks: ["component_added", "resource_changed"],
+  components: [Position],
+  resources: [GameState],
+}));
+```
 
 ## World
 
