@@ -29,6 +29,7 @@
   },
   "type": "module",
   "dependencies": {
+    "@rbxts/better-janitor": "^0.4.0",
     "@rovy/core": "workspace:*",
     "@rovy/jecs": "workspace:*",
     "@rovy/ui": "workspace:*"

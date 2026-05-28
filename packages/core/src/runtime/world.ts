@@ -18,7 +18,7 @@ import {
 	Remove as JecsRemove,
 	Exclusive as JecsExclusive,
 } from "@rovy/jecs";
-import type { Entity as JecsEntity, World as JecsWorld } from "@rovy/jecs";
+import type { Entity as JecsEntity, Id as JecsId, Query as JecsQuery, World as JecsWorld } from "@rovy/jecs";
 import type { CleanupPolicy, ComponentReg, Ctor } from "../contract";
 import {
 	ChildOf,
@@ -477,8 +477,8 @@ export class RovyWorld implements World {
 	entitiesWith(component: Ctor): Array<Entity> {
 		const id = this.componentId(component);
 		const out = new Array<Entity>();
-		const q = this.jecs.query(id as never).cached();
-		for (const arch of (q as unknown as { archetypes: () => Array<{ entities: Array<Entity> }> }).archetypes()) {
+		const q = this.jecs.query(id as never) as JecsQuery<Array<JecsId>>;
+		for (const arch of q.archetypes()) {
 			for (const e of arch.entities) {
 				if (e === this.resourceEntity) continue;
 				out.push(e);

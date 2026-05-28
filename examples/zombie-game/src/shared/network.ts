@@ -40,6 +40,11 @@ type WorldSnapshotWire = {
 	zombies: Array<WireZombieSnapshot>;
 	projectiles: Array<WireProjectileSnapshot>;
 	paused: boolean;
+	score: number;
+	kills: number;
+	shotsFired: number;
+	combo: number;
+	bestCombo: number;
 };
 
 @netEvent({ direction: "clientToServer", receive: "send" })
@@ -83,6 +88,11 @@ export class WorldSnapshotNet {
 			position: { x: number; y: number; z: number };
 		}> = [],
 		public paused: boolean = false,
+		public score: number = 0,
+		public kills: number = 0,
+		public shotsFired: number = 0,
+		public combo: number = 0,
+		public bestCombo: number = 0,
 	) {}
 }
 
@@ -148,6 +158,11 @@ export function toWorldSnapshotNet(payload: WorldSnapshotPayload): WorldSnapshot
 			position: toWireVector3(projectile.position),
 		})),
 		payload.paused,
+		payload.score,
+		payload.kills,
+		payload.shotsFired,
+		payload.combo,
+		payload.bestCombo,
 	);
 }
 
@@ -171,5 +186,10 @@ export function fromWorldSnapshotNet(event: WorldSnapshotNet): WorldSnapshotPayl
 			position: fromWireVector3(projectile.position),
 		})),
 		event.paused,
+		event.score,
+		event.kills,
+		event.shotsFired,
+		event.combo,
+		event.bestCombo,
 	);
 }

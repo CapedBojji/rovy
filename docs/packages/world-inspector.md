@@ -8,6 +8,7 @@ It gives you a UI for:
 - editing component values and tags
 - spawning and despawning entities
 - inspecting the local client world, the server world, or another player's client world
+- recording per-frame component changes and opted-in resource snapshots
 
 It is built as a separate package on top of `@rovy/networking` and `@rovy/ui`.
 
@@ -111,6 +112,32 @@ Behavior differs by target:
 - Remote snapshots update the inspector UI snapshot cache; they do not
   automatically reconstruct gameplay entities in the target world.
 
+## Frame recorder
+
+The inspector includes a collapsible Frame Recorder panel. Press Record, let the
+game run, then Stop to open the results table. Each row is one recorded frame.
+Use Details to inspect ordered component/resource diffs for that frame.
+
+Component changes come from registered component change ticks and removed-record
+history. Resource snapshots are opt-in:
+
+```ts
+import { inspect, resource } from "@rovy/core";
+
+@inspect
+@resource
+class ScoreState {
+	score = 0;
+	combo = 0;
+}
+```
+
+Diffs use the previous recorded frame as `old` and the current recorded frame as
+`new`. The recorder keeps a ring buffer, defaulting to 3600 frames; the panel has
+a max-frames input for shorter captures. Deep snapshots have a bounded depth and
+cycle guard, so the recorder is useful for debugging but should stay in Studio or
+debug builds.
+
 ## Public surface
 
 Main exports:
@@ -121,12 +148,16 @@ Main exports:
 - `ShowWorldInspector`
 - `HideWorldInspector`
 - `ToggleWorldInspector`
+- `StartFrameRecording`
+- `StopFrameRecording`
 - `renderWorldInspector(...)`
+- `WorldInspectorRecorderState`
 
 Advanced exports also exist for custom inspector UIs and tooling:
 
 - remote event DTOs
 - target, snapshot, and edit DTO helpers
+- recorder widgets and frame-record diff helpers
 - component name helpers
 - instance expression parsing helpers
 
@@ -159,8 +190,10 @@ Lowercase service names like `workspace/...` also work.
 
 ## Example
 
-The zombie example includes the inspector on the client and toggles it from an
-input binding. See [Example Projects](/examples/) for the runnable project.
+The zombie example includes the inspector on the client, toggles it from an
+input binding, and marks wave/score resources with `@inspect` so the frame
+recorder can show gameplay-resource diffs. See [Example Projects](/examples/)
+for the runnable project.
 
 ## See also
 

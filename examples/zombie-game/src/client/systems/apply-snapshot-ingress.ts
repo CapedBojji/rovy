@@ -43,6 +43,11 @@ export class ApplySnapshotIngress {
 			hud.phase = snap.phase;
 			hud.waveNumber = snap.waveNumber;
 			hud.enemiesRemaining = snap.enemiesRemaining;
+			hud.score = snap.score;
+			hud.kills = snap.kills;
+			hud.shotsFired = snap.shotsFired;
+			hud.combo = snap.combo;
+			hud.bestCombo = snap.bestCombo;
 			hud.playerHealth = snap.playerHealth;
 			hud.playerMaxHealth = snap.playerMaxHealth;
 			hud.gameOver = snap.phase === "defeat";

@@ -68,6 +68,29 @@ return function(TS, t)
 			t.expect(regs[1].editor).toBe(editor)
 		end)
 
+		t.it("lists entities with a component through jecs archetypes", function()
+			rovy:__reset()
+			local Position = class(function(self, x)
+				self.x = x
+			end)
+			local Health = class(function(self, value)
+				self.value = value
+			end)
+			rovy:__component(Position, "client/Position")
+			rovy:__component(Health, "client/Health")
+
+			local app = App.new()
+			app:start()
+			local a = app.world:spawn(Position.new(1))
+			local b = app.world:spawn(Position.new(2), Health.new(10))
+			app.world:spawn(Health.new(20))
+
+			local entities = app.world:entitiesWith(Position)
+			t.expect(#entities).toBe(2)
+			t.expect(table.find(entities, a) ~= nil).toBeTruthy()
+			t.expect(table.find(entities, b) ~= nil).toBeTruthy()
+		end)
+
 		t.it("returns entity component values, tags, ids, names, and editor metadata", function()
 			rovy:__reset()
 			local Health = class(function(self, value)

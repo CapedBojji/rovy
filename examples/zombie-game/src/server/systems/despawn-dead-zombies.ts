@@ -1,6 +1,6 @@
 import { Commands, Entity, Query, Res, ResMut, With, system } from "@rovy/core";
 import { Health, Zombie } from "../components";
-import { DevPauseState, SmokeStats } from "../resources";
+import { DevPauseState, ScoreState, SmokeStats } from "../resources";
 import { CleanupSet, Update } from "../state";
 
 @system({ schedule: Update, set: CleanupSet })
@@ -9,6 +9,7 @@ export class DespawnDeadZombies {
 		commands: Commands,
 		pause: Res<DevPauseState>,
 		stats: ResMut<SmokeStats>,
+		score: ResMut<ScoreState>,
 		zombies: Query<[Entity, Health], With<Zombie>>,
 	) {
 		if (pause.paused) return;
@@ -16,6 +17,10 @@ export class DespawnDeadZombies {
 			if (health.current <= 0) {
 				commands.despawn(entity);
 				stats.zombiesKilled += 1;
+				score.kills += 1;
+				score.combo += 1;
+				score.bestCombo = math.max(score.bestCombo, score.combo);
+				score.score += 100 + (score.combo - 1) * 25;
 			}
 		});
 	}

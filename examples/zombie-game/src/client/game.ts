@@ -1,4 +1,4 @@
-import { App } from "@rovy/core";
+import { App, type Plugin } from "@rovy/core";
 import { ToggleWorldInspector, WorldInspectorPlugin } from "@rovy/world-inspector";
 import "./collectors";
 import "./components";
@@ -30,7 +30,7 @@ export function boot(): App {
 		uiRoot: createInspectorGui(),
 		renderSchedule: Render,
 		networkSchedule: Render,
-	}));
+	}) as unknown as Plugin);
 	app.start();
 	return app;
 }

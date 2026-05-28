@@ -33,13 +33,16 @@ export class RenderHud {
 				EgooE.window(
 					{
 						title: "Zombie Game",
-						size: new Vector2(240, 160),
+						size: new Vector2(260, 220),
 						position: new Vector2(16, 16),
 					},
 					() => {
 						EgooE.label(`Phase: ${hud.phase}`);
 						EgooE.label(`Wave: ${hud.waveNumber}`);
 						EgooE.label(`Enemies: ${hud.enemiesRemaining}`);
+						EgooE.label(`Score: ${hud.score}`);
+						EgooE.label(`Kills: ${hud.kills}  Shots: ${hud.shotsFired}`);
+						EgooE.label(`Combo: x${hud.combo}  Best: x${hud.bestCombo}`);
 						EgooE.label(`Inspector pause: ${hud.paused ? "on" : "off"}`);
 						EgooE.progressBar({
 							value: ratio,

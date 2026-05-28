@@ -103,6 +103,23 @@ class GameConfig {
 
 No boot registration needed — `@resource` decorator + defaults = auto-registered.
 
+Mark resources with `@inspect` when the World Inspector frame recorder should
+snapshot them each recorded frame:
+
+```ts
+@inspect
+@resource
+class ScoreState {
+	score = 0;
+	combo = 0;
+	bestCombo = 0;
+}
+```
+
+`@inspect` is intentionally opt-in for resources because singleton state often
+contains maps, services, caches, or other large objects. Registered components are
+tracked by component change ticks; resources are recorded only when marked.
+
 Access via injection in systems/observers/monitors:
 
 ```ts

@@ -235,7 +235,18 @@ local function normalize(path: string): string
 end
 
 local ROOT = normalize((process.cwd() :: string):gsub("[/\\]+$", ""))
-local REPO = normalize(ROOT .. "/../..")
+
+local function findRepoRoot(root: string): string
+	for _, candidate in { root, root .. "/..", root .. "/../..", root .. "/../../.." } do
+		local normalized = normalize(candidate)
+		if isDir(normalized .. "/packages/jecs") and isDir(normalized .. "/packages/core") then
+			return normalized
+		end
+	end
+	return normalize(root .. "/../..")
+end
+
+local REPO = findRepoRoot(ROOT)
 
 local function newNode(path: string, className: string?)
 	return setmetatable({ __path = normalize(path), __file = nil, __className = className or "Folder", children = {} }, Node)
@@ -383,6 +394,7 @@ end
 ensureRoot("out")
 ensureRoot("node_modules/@rbxts")
 ensureRoot("node_modules/@flamework")
+ensureRepoRoot("packages/jecs")
 ensureRepoRoot("packages/core")
 ensureRepoRoot("packages/networking")
 ensureRepoRoot("packages/ui")

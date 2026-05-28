@@ -9,7 +9,7 @@ import {
 	fromTogglePauseRequestNet,
 } from "shared/network";
 import { Health, PlayerUnit, Position, Projectile, WeaponCooldown, Zombie } from "../components";
-import { DevPauseState, PlayerRegistry, SmokeStats, WaveState, WireIdAllocator } from "../resources";
+import { DevPauseState, PlayerRegistry, ScoreState, SmokeStats, WaveState, WireIdAllocator } from "../resources";
 import { RemoteIngressSet, Update } from "../state";
 import { applyRestart, spawnProjectileFromRequest } from "./shared";
 
@@ -32,6 +32,7 @@ export class ApplyRemoteIngress {
 		pause: ResMut<DevPauseState>,
 		ids: ResMut<WireIdAllocator>,
 		stats: ResMut<SmokeStats>,
+		score: ResMut<ScoreState>,
 		wave: ResMut<WaveState>,
 		players: Query<[Entity, PlayerUnit, Position, Health, WeaponCooldown]>,
 		restartPlayers: Query<[Entity, PlayerUnit, WeaponCooldown]>,
@@ -58,7 +59,7 @@ export class ApplyRemoteIngress {
 		restartRequests.forEach((event) => {
 			const senderUserId = resolveSenderUserId(context, event, registry);
 			if (senderUserId !== undefined && registry.entitiesByUserId.has(senderUserId)) {
-				applyRestart(commands, wave, ids, stats, zombies, projectiles, restartPlayers);
+				applyRestart(commands, wave, ids, stats, score, zombies, projectiles, restartPlayers);
 			}
 		});
 	}
