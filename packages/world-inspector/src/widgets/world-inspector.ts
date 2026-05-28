@@ -198,8 +198,13 @@ function renderResourceField(
 ): void {
 	const key = resourceDraftKey(target.key, resource.resourceId, field.path);
 	const errorKey = resourceErrorKey(target.key, resource.resourceId, field.path);
+	const revisionKey = `${key}:revision`;
 	const upstream = field.valueText;
-	if (!state.drafts.has(key)) state.drafts.set(key, upstream);
+	if (state.drafts.get(revisionKey) !== resource.revision) {
+		state.drafts.set(key, upstream);
+		state.drafts.set(revisionKey, resource.revision);
+		state.setActionError(errorKey);
+	}
 	const displayValue = state.drafts.get(key) as string;
 	tableRow(() => {
 		tableCell(() => {
@@ -228,7 +233,13 @@ function renderResourceField(
 							valueText: state.drafts.get(key) as string,
 						},
 					});
-					state.setActionError(errorKey, result.error);
+					if (result.ok) {
+						state.drafts.delete(key);
+						state.drafts.delete(revisionKey);
+						state.setActionError(errorKey);
+					} else {
+						state.setActionError(errorKey, result.error);
+					}
 				}
 			});
 			const scopedError = state.actionErrors.get(errorKey);
