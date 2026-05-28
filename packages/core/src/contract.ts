@@ -162,6 +162,13 @@ export interface ResourceReg {
 	readonly collectorRefs?: ReadonlyArray<CollectorRefReg>;
 }
 
+export interface InspectReg {
+	readonly ctor: Ctor;
+	readonly plugin?: Ctor;
+	readonly depth?: number;
+	readonly exclude?: ReadonlyArray<string>;
+}
+
 export interface EventReg {
 	readonly ctor: Ctor;
 	/** Max buffered events; undefined = unbounded. */
@@ -250,6 +257,7 @@ export interface RovyRegistry {
 	readonly components: Array<ComponentReg>;
 	readonly collectors: Array<CollectReg>;
 	readonly resources: Array<ResourceReg>;
+	readonly inspects: Array<InspectReg>;
 	readonly events: Array<EventReg>;
 	readonly systems: Array<SystemReg>;
 	readonly observers: Array<ObserverReg>;

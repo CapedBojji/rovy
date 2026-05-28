@@ -131,6 +131,14 @@ export class RovyWorld implements World {
 		for (const rec of buf) if (rec.tick > lastRunTick) out.push(rec.entity);
 		return out;
 	}
+	/** Like `removedSince`, but returns full records including pre-remove value. Frame recorder uses this. */
+	removedRecordsSince(jecsId: JecsEntity, lastRunTick: number): Array<{ entity: Entity; value: unknown; tick: number }> {
+		const buf = this.removedBuf.get(jecsId);
+		if (buf === undefined) return [];
+		const out: Array<{ entity: Entity; value: unknown; tick: number }> = [];
+		for (const rec of buf) if (rec.tick > lastRunTick) out.push(rec);
+		return out;
+	}
 	/** Drain removed buffers at the schedule-run boundary. */
 	clearRemoved(): void {
 		for (const [, buf] of this.removedBuf) {
@@ -461,6 +469,20 @@ export class RovyWorld implements World {
 		for (const entity of this.trackedEntities) {
 			if (this.jecs.contains(entity)) out.push(entity);
 			else this.trackedEntities.delete(entity);
+		}
+		return out;
+	}
+
+	/** Iterate every live entity holding the given component. Skips the resource sentinel entity. */
+	entitiesWith(component: Ctor): Array<Entity> {
+		const id = this.componentId(component);
+		const out = new Array<Entity>();
+		const q = this.jecs.query(id as never).cached();
+		for (const arch of (q as unknown as { archetypes: () => Array<{ entities: Array<Entity> }> }).archetypes()) {
+			for (const e of arch.entities) {
+				if (e === this.resourceEntity) continue;
+				out.push(e);
+			}
 		}
 		return out;
 	}

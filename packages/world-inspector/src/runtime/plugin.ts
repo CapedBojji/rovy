@@ -1,4 +1,4 @@
-import { rovy, type App, type Ctor, type Plugin, type World } from "@rovy/core";
+import { rovy, ScheduleContext, type App, type Ctor, type Plugin, type World } from "@rovy/core";
 import {
 	NET_CLIENT_PARAM,
 	NET_EVENT_CONTEXT_PARAM,
@@ -13,7 +13,22 @@ import {
 	type RuntimeBoundary,
 } from "@rovy/networking";
 import { rovyUi, type Node } from "@rovy/ui";
-import { HideWorldInspector, ShowWorldInspector, ToggleWorldInspector } from "../events";
+import {
+	HideWorldInspector,
+	ShowWorldInspector,
+	StartFrameRecording,
+	StopFrameRecording,
+	ToggleWorldInspector,
+} from "../events";
+import {
+	StartFrameRecordingObserver,
+	StopFrameRecordingObserver,
+	WorldInspectorFrameRecorderSystem,
+	WorldInspectorRecorderState,
+} from "./recorder";
+import { recorderDetail } from "../widgets/recorder-detail";
+import { recorderResult } from "../widgets/recorder-result";
+import { __scope, useKey } from "@rovy/ui";
 import {
 	WorldInspectorEditRequest,
 	WorldInspectorEditResponse,
@@ -78,8 +93,8 @@ class ToggleWorldInspectorObserver {
 }
 
 class WorldInspectorRenderSystem {
-	run(world: World, state: WorldInspectorState): void {
-		renderWorldInspector(world, state);
+	run(world: World, state: WorldInspectorState, recorder: WorldInspectorRecorderState): void {
+		renderWorldInspector(world, state, recorder);
 	}
 }
 
@@ -263,9 +278,12 @@ function asRootNode(root: Instance | Node | undefined): Node | undefined {
 
 function registerRuntime(schedule?: Ctor, networkSchedule?: Ctor): void {
 	rovy.__resource(WorldInspectorState, "rovy/world-inspector/WorldInspectorState");
+	rovy.__resource(WorldInspectorRecorderState, "rovy/world-inspector/WorldInspectorRecorderState");
 	rovy.__event(ShowWorldInspector);
 	rovy.__event(HideWorldInspector);
 	rovy.__event(ToggleWorldInspector);
+	rovy.__event(StartFrameRecording);
+	rovy.__event(StopFrameRecording);
 	rovy.__observer(ShowWorldInspectorObserver, {
 		event: ShowWorldInspector,
 		priority: 0,
@@ -281,11 +299,35 @@ function registerRuntime(schedule?: Ctor, networkSchedule?: Ctor): void {
 		priority: 0,
 		params: [{ kind: "event" }, { kind: "resMut", ctor: WorldInspectorState }],
 	});
+	rovy.__observer(StartFrameRecordingObserver, {
+		event: StartFrameRecording,
+		priority: 0,
+		params: [{ kind: "event" }, { kind: "resMut", ctor: WorldInspectorRecorderState }],
+	});
+	rovy.__observer(StopFrameRecordingObserver, {
+		event: StopFrameRecording,
+		priority: 0,
+		params: [{ kind: "event" }, { kind: "resMut", ctor: WorldInspectorRecorderState }],
+	});
 	if (schedule !== undefined) {
+		rovy.__system(WorldInspectorFrameRecorderSystem, {
+			id: "rovy/world-inspector/WorldInspectorFrameRecorderSystem",
+			schedule,
+			before: [WorldInspectorRenderSystem],
+			params: [
+				{ kind: "world" },
+				{ kind: "resMut", ctor: WorldInspectorRecorderState },
+				{ kind: "res", ctor: ScheduleContext },
+			],
+		});
 		rovy.__system(WorldInspectorRenderSystem, {
 			id: "rovy/world-inspector/WorldInspectorRenderSystem",
 			schedule,
-			params: [{ kind: "world" }, { kind: "resMut", ctor: WorldInspectorState }],
+			params: [
+				{ kind: "world" },
+				{ kind: "resMut", ctor: WorldInspectorState },
+				{ kind: "resMut", ctor: WorldInspectorRecorderState },
+			],
 		});
 	}
 	if (networkSchedule !== undefined) {
@@ -302,6 +344,7 @@ function registerRuntime(schedule?: Ctor, networkSchedule?: Ctor): void {
 
 export class WorldInspectorPlugin implements Plugin {
 	private readonly state = new WorldInspectorState();
+	private readonly recorder = new WorldInspectorRecorderState();
 
 	constructor(private readonly options: WorldInspectorPluginOptions = {}) {
 		this.state.uiRoot = asRootNode(options.uiRoot);
@@ -317,10 +360,11 @@ export class WorldInspectorPlugin implements Plugin {
 			}).build(app);
 		}
 		app.insertResource(this.state);
+		app.insertResource(this.recorder);
 	}
 
-	render(world: World, state = this.state): void {
-		renderWorldInspector(world, state);
+	render(world: World, state = this.state, recorder = this.recorder): void {
+		renderWorldInspector(world, state, recorder);
 	}
 }
 
@@ -344,10 +388,21 @@ export class WorldInspectorServerPlugin implements Plugin {
 	}
 }
 
-export function renderWorldInspector(world: World, state: WorldInspectorState): void {
+export function renderWorldInspector(world: World, state: WorldInspectorState, recorder?: WorldInspectorRecorderState): void {
 	if (state.uiRoot === undefined) return;
 	rovyUi.start(state.uiRoot, () => {
-		if (state.windowOpen) worldInspector({ world, state });
+		if (state.windowOpen) worldInspector({ world, state, recorder });
+		if (recorder !== undefined) {
+			if (recorder.resultWindowOpen) recorderResult(recorder);
+			const openIndices = new Array<number>();
+			for (const idx of recorder.openDetailFrames) openIndices.push(idx);
+			for (const idx of openIndices) {
+				__scope("world-inspector:recorder-detail", () => {
+					useKey(tostring(idx));
+					recorderDetail(recorder, idx);
+				});
+			}
+		}
 	});
 }
 

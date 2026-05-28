@@ -21,6 +21,7 @@ import {
 	type WindowHandle,
 } from "@rovy/ui";
 import { matchesWorldInspectorQuery } from "../runtime/query";
+import { WorldInspectorRecorderState } from "../runtime/recorder";
 import {
 	targetChoices,
 	targetForKey,
@@ -31,10 +32,12 @@ import {
 	type WorldInspectorTarget,
 } from "../runtime/target";
 import { WorldInspectorState } from "../state";
+import { recorderPanel } from "./recorder-panel";
 
 export interface WorldInspectorOptions {
 	readonly world: World;
 	readonly state: WorldInspectorState;
+	readonly recorder?: WorldInspectorRecorderState;
 }
 
 function draftKey(targetKey: string, entity: number | undefined, componentId: string, fieldKey: string): string {
@@ -298,7 +301,7 @@ function renderEntityDetail(target: WorldInspectorTarget, state: WorldInspectorS
 
 /** @widget */
 export function worldInspector(options: WorldInspectorOptions): void {
-	const { world, state } = options;
+	const { world, state, recorder } = options;
 	const target = targetForState(world, state);
 	const handle: WindowHandle = window(
 		{
@@ -317,6 +320,10 @@ export function worldInspector(options: WorldInspectorOptions): void {
 			renderTargetPicker(state);
 			space(4);
 			renderEntityList(target, state);
+			if (recorder !== undefined) {
+				separator();
+				recorderPanel(recorder);
+			}
 		},
 	);
 

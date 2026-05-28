@@ -378,6 +378,7 @@ export class App {
 			components,
 			collectors: keep(reg.collectors),
 			resources: keep(reg.resources),
+			inspects: keep(reg.inspects),
 			events: keep(reg.events),
 			systems: keep(reg.systems),
 			observers: keep(reg.observers),

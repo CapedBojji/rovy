@@ -38,6 +38,7 @@ const DECORATORS = new Set([
 	"schedule",
 	"set",
 	"plugin",
+	"inspect",
 ]);
 
 type MonitorMethod = "onEnter" | "onExit" | "onChange";
@@ -530,6 +531,9 @@ function transformClass(
 			case "plugin":
 				afterStatements.push(regCall(rovy, "__plugin", [className, buildPluginMeta(state, node)]));
 				break;
+			case "inspect":
+				afterStatements.push(regCall(rovy, "__inspect", [className, buildInspectMeta(decorator, pluginBinding)].filter(isExpression)));
+				break;
 		}
 	}
 
@@ -652,7 +656,9 @@ function validateClass(state: TransformState, node: ts.ClassDeclaration, decorat
 		state.diagnostic(node, "@system/@observer/@monitor classes cannot be generic in v1");
 	}
 
-	const zeroArgDecorated = decorators.find((d) => d.name === "resource" || d.name === "collect" || d.name === "prefab");
+	const zeroArgDecorated = decorators.find(
+		(d) => d.name === "resource" || d.name === "collect" || d.name === "prefab" || d.name === "inspect",
+	);
 	if (zeroArgDecorated) {
 		const ctor = node.members.find(ts.isConstructorDeclaration);
 		for (const param of ctor?.parameters ?? []) {
@@ -821,6 +827,18 @@ function buildResourceMeta(
 	const properties = stripUndefinedProperties([
 		maybeProp("plugin", plugin?.expr),
 		collectorRefs.length > 0 ? prop("collectorRefs", arr(collectorRefs, true)) : undefined,
+	]);
+	return properties.length > 0 ? obj(properties, true) : undefined;
+}
+
+function buildInspectMeta(decorator: DecoratorInfo, plugin?: PluginBinding): ts.Expression | undefined {
+	const options = objectArg(decorator);
+	const depthExpr = propertyValue(options, "depth");
+	const excludeExpr = propertyValue(options, "exclude");
+	const properties = stripUndefinedProperties([
+		maybeProp("plugin", plugin?.expr),
+		depthExpr !== undefined ? prop("depth", depthExpr) : undefined,
+		excludeExpr !== undefined ? prop("exclude", excludeExpr) : undefined,
 	]);
 	return properties.length > 0 ? obj(properties, true) : undefined;
 }

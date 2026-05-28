@@ -16,6 +16,7 @@ import type {
 	ComponentReg,
 	Ctor,
 	EventReg,
+	InspectReg,
 	MonitorReg,
 	ObserverReg,
 	ParamDescriptor,
@@ -49,6 +50,7 @@ function createRegistry(): RovyRegistry {
 		components: [],
 		collectors: [],
 		resources: [],
+		inspects: [],
 		events: [],
 		systems: [],
 		observers: [],
@@ -110,6 +112,14 @@ export const rovy = {
 			plugin: meta?.plugin,
 			collectorRefs: meta?.collectorRefs,
 		} satisfies ResourceReg);
+	},
+	__inspect(ctor: Ctor, meta?: { plugin?: Ctor; depth?: number; exclude?: ReadonlyArray<string> }): void {
+		registry.inspects.push({
+			ctor,
+			plugin: meta?.plugin,
+			depth: meta?.depth,
+			exclude: meta?.exclude,
+		} satisfies InspectReg);
 	},
 	__event(ctor: Ctor, options?: { capacity?: number; label?: string; plugin?: Ctor }): void {
 		registry.events.push({
@@ -179,6 +189,7 @@ export const rovy = {
 		empty(registry.components);
 		empty(registry.collectors);
 		empty(registry.resources);
+		empty(registry.inspects);
 		empty(registry.events);
 		empty(registry.systems);
 		empty(registry.observers);
