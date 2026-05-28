@@ -198,11 +198,10 @@ function renderResourceField(
 ): void {
 	const key = resourceDraftKey(target.key, resource.resourceId, field.path);
 	const errorKey = resourceErrorKey(target.key, resource.resourceId, field.path);
-	const revisionKey = `${key}:revision`;
 	const upstream = field.valueText;
-	if (state.drafts.get(revisionKey) !== resource.revision) {
+	if (state.draftRevisions.get(key) !== resource.revision) {
 		state.drafts.set(key, upstream);
-		state.drafts.set(revisionKey, resource.revision);
+		state.draftRevisions.set(key, resource.revision);
 		state.setActionError(errorKey);
 	}
 	const displayValue = state.drafts.get(key) as string;
@@ -235,7 +234,7 @@ function renderResourceField(
 					});
 					if (result.ok) {
 						state.drafts.delete(key);
-						state.drafts.delete(revisionKey);
+						state.draftRevisions.delete(key);
 						state.setActionError(errorKey);
 					} else {
 						state.setActionError(errorKey, result.error);

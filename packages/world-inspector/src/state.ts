@@ -25,6 +25,7 @@ export class WorldInspectorState {
 	position?: Vector2;
 	size?: Vector2;
 	drafts = new Map<string, unknown>();
+	draftRevisions = new Map<string, number>();
 	actionErrors = new Map<string, string>();
 	uiRoot?: Node;
 	componentPicker = "";
@@ -64,6 +65,7 @@ export class WorldInspectorState {
 		this.componentPicker = "";
 		this.error = undefined;
 		this.drafts.clear();
+		this.draftRevisions.clear();
 		this.actionErrors.clear();
 	}
 
