@@ -2,6 +2,7 @@ import { widget, __useInstance, __useState, __useEffect } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim, udim2 } from "../primitives";
+import { isTopGuiTarget } from "./shared";
 
 export interface InputOptions {
 	text?: string;
@@ -87,10 +88,14 @@ export const input = widget((options: InputOptions = {}): InputHandle => {
 				0: create("UIPadding", {
 					PaddingLeft: udim(0, 4),
 					PaddingRight: udim(0, 4),
-				}),
-				Focused: () => {
-					setFocused(true);
-				},
+					}),
+					Focused: () => {
+						if (!isTopGuiTarget(ref.textBox)) {
+							ref.textBox.ReleaseFocus(false);
+							return;
+						}
+						setFocused(true);
+					},
 				FocusLost: (enterPressed: boolean) => {
 					setFocused(false);
 					if (enterPressed) setSubmitted(true);

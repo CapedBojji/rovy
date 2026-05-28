@@ -1,7 +1,8 @@
-import { widget, __scope, __useInstance, __useState } from "../runtime";
+import { widget, __scope, __useInstance, __useState, useHoverTarget } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim, udim2, v2 } from "../primitives";
+import { isTopGuiTarget } from "./shared";
 
 export interface CollapsingHeaderHandle {
 	open(): boolean;
@@ -14,6 +15,7 @@ export const collapsingHeader = widget((text: string, fn: () => void): Collapsin
 
 	const refs = __useInstance("collapsingHeader:instance", (ref) => {
 		const style = useStyle();
+		const targetRef = ref as unknown as { header: TextButton };
 		const outerFrame = create("Frame", {
 			[ref as never]: "outer",
 			BackgroundTransparency: 1,
@@ -61,16 +63,11 @@ export const collapsingHeader = widget((text: string, fn: () => void): Collapsin
 					Size: udim2(1, -20, 1, 0),
 					AnchorPoint: v2(0, 0.5),
 					Position: udim2(0, 18, 0.5, 0),
-				}),
-				MouseEnter: () => {
-					setHovered(true);
-				},
-				MouseLeave: () => {
-					setHovered(false);
-				},
-				Activated: () => {
-					setIsOpen((v) => !v);
-				},
+					}),
+					Activated: () => {
+						if (!isTopGuiTarget(targetRef.header)) return;
+						setIsOpen((v) => !v);
+					},
 			}),
 			2: create("Frame", {
 				[ref as never]: "content",
@@ -91,6 +88,8 @@ export const collapsingHeader = widget((text: string, fn: () => void): Collapsin
 		});
 		return [outerFrame, ref.content] as [Instance, Instance];
 	}) as { outer: Frame; header: TextButton; arrow: TextLabel; title: TextLabel; content: Frame };
+
+	useHoverTarget(refs.header, setHovered, `CollapsingHeader: ${text}`);
 
 	const style = useStyle();
 

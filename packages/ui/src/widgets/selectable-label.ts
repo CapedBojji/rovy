@@ -1,7 +1,8 @@
-import { widget, __useInstance, __useState } from "../runtime";
+import { widget, __useInstance, __useState, useHoverTarget } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim, udim2 } from "../primitives";
+import { isTopGuiTarget } from "./shared";
 
 export interface SelectableLabelOptions {
 	selected?: boolean;
@@ -19,6 +20,7 @@ export const selectableLabel = widget((text: string, options: SelectableLabelOpt
 
 	const refs = __useInstance("selectableLabel:instance", (ref) => {
 		const style = useStyle();
+		const targetRef = ref as unknown as { btn: TextButton };
 		return create("TextButton", {
 			[ref as never]: "btn",
 			BackgroundColor3: style.selectableColor,
@@ -35,19 +37,14 @@ export const selectableLabel = widget((text: string, options: SelectableLabelOpt
 				PaddingLeft: udim(0, 6),
 				PaddingRight: udim(0, 6),
 			}),
-			MouseEnter: () => {
-				setHovered(true);
-			},
-			MouseLeave: () => {
-				setHovered(false);
-			},
-			Activated: () => {
-				if (options.disabled !== true) {
+				Activated: () => {
+					if (options.disabled === true || !isTopGuiTarget(targetRef.btn)) return;
 					setClicked(true);
-				}
-			},
+				},
 		});
 	}) as { btn: TextButton };
+
+	useHoverTarget(refs.btn, setHovered, `SelectableLabel: ${text}`);
 
 	const style = useStyle();
 	const isSelected = options.selected ?? false;

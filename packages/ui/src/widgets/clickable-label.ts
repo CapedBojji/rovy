@@ -1,7 +1,8 @@
-import { widget, __useInstance, __useState } from "../runtime";
+import { widget, __useInstance, __useState, useHoverTarget } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim2 } from "../primitives";
+import { isTopGuiTarget } from "./shared";
 
 export interface ClickableLabelOptions {
 	textSize?: number;
@@ -31,6 +32,7 @@ export const clickableLabel = widget((text: string, options: ClickableLabelOptio
 
 	const refs = __useInstance("clickableLabel:instance", (ref) => {
 		const style = useStyle();
+		const targetRef = ref as unknown as { btn: TextButton };
 		return create("TextButton", {
 			[ref as never]: "btn",
 			BackgroundTransparency: 1,
@@ -41,18 +43,15 @@ export const clickableLabel = widget((text: string, options: ClickableLabelOptio
 			TextXAlignment: Enum.TextXAlignment.Left,
 			Size: udim2(1, 0, 0, style.itemHeight),
 			AutoButtonColor: false,
-			RichText: true,
-			MouseEnter: () => {
-				setHovered(true);
-			},
-			MouseLeave: () => {
-				setHovered(false);
-			},
-			Activated: () => {
-				setClicked(true);
-			},
+				RichText: true,
+				Activated: () => {
+					if (!isTopGuiTarget(targetRef.btn)) return;
+					setClicked(true);
+				},
 		});
 	}) as { btn: TextButton };
+
+	useHoverTarget(refs.btn, setHovered, `ClickableLabel: ${text}`);
 
 	const style = useStyle();
 	const baseColor = options.color ?? style.accentColor;

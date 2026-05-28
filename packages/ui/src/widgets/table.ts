@@ -3,6 +3,7 @@ import { useStyle } from "../style";
 import { create } from "../create";
 import { udim, udim2 } from "../primitives";
 import * as contexts from "../contexts";
+import { markHitTestPassThrough } from "./shared";
 
 export interface TableColumn {
 	width?: number;
@@ -125,6 +126,7 @@ const tableWidget = widget((options: TableOptions, fn: () => void): void => {
 	}) as { frame: Frame; border: UIStroke };
 
 	const style = useStyle();
+	markHitTestPassThrough(refs.frame);
 	const columns = normalizeColumns(options.columns);
 	const [storedAutoColumnWidths, setStoredAutoColumnWidths] = __useState("table:autoColumnWidths", () =>
 		normalizeAutoColumnWidths(columns),

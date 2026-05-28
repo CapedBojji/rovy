@@ -1,8 +1,8 @@
-import { widget, __useInstance, __useState } from "../runtime";
+import { widget, __useInstance, __useState, useHoverTarget } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim2 } from "../primitives";
-import { applyStrokeState, makeCorner, type InteractState } from "./shared";
+import { applyStrokeState, isTopGuiTarget, makeCorner, type InteractState } from "./shared";
 
 export interface ButtonOptions {
 	width?: number | UDim;
@@ -20,6 +20,7 @@ export const button = widget((text: string, options: ButtonOptions = {}): Button
 
 	const refs = __useInstance("button:instance", (ref) => {
 		const style = useStyle();
+		const targetRef = ref as unknown as { button: TextButton };
 		return create("TextButton", {
 			[ref as never]: "button",
 			BorderSizePixel: 0,
@@ -37,26 +38,24 @@ export const button = widget((text: string, options: ButtonOptions = {}): Button
 				Transparency: style.strokeInactiveTransparency,
 				Thickness: style.strokeThickness, ApplyStrokeMode: Enum.ApplyStrokeMode.Border,
 			}),
-			MouseEnter: () => {
-				setHovered(true);
-			},
-			MouseLeave: () => {
-				setHovered(false);
-				setPressing(false);
-			},
-			MouseButton1Down: () => {
-				print("[Button] MouseButton1Down:", text);
-				setPressing(true);
-			},
+				MouseButton1Down: () => {
+					if (!isTopGuiTarget(targetRef.button)) return;
+					setPressing(true);
+				},
 			MouseButton1Up: () => {
 				setPressing(false);
 			},
-			Activated: () => {
-				print("[Button] Activated:", text);
-				if (options.disabled !== true) setClicked(true);
-			},
+				Activated: () => {
+					if (options.disabled === true || !isTopGuiTarget(targetRef.button)) return;
+					setClicked(true);
+				},
 		});
 	}) as { button: TextButton; stroke: UIStroke };
+
+	useHoverTarget(refs.button, (value) => {
+		setHovered(value);
+		if (!value) setPressing(false);
+	}, `Button: ${text}`);
 
 	const btn = refs.button;
 	btn.Text = text;

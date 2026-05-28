@@ -4,6 +4,7 @@ import { udim, udim2, v2 } from "../primitives";
 import * as contexts from "../contexts";
 import type { TableState } from "./table";
 import type { RowState } from "./table-row";
+import { markHitTestPassThrough } from "./shared";
 
 export interface TableCellOptions {
 	column?: number;
@@ -92,6 +93,10 @@ const tableCellWidget = widget((options: TableCellOptions, fn: () => void): void
 		return [cellFrame, ref.content] as [Instance, Instance];
 	}) as { frame: Frame; background: Frame; leftDivider: Frame; content: Frame; layout: UIListLayout; padding: UIPadding; minSize: UISizeConstraint };
 
+	markHitTestPassThrough(refs.frame);
+	markHitTestPassThrough(refs.background);
+	markHitTestPassThrough(refs.leftDivider);
+	markHitTestPassThrough(refs.content);
 	refs.frame.Size = udim2(0, cellWidth, 0, 0);
 	refs.frame.AutomaticSize = Enum.AutomaticSize.Y;
 	refs.frame.ClipsDescendants = !isAuto;

@@ -67,6 +67,15 @@ return function(TS, t)
 		return nil
 	end
 
+	local function findFirstDescendant(instance, predicate)
+		if predicate(instance) then return instance end
+		for _, child in ipairs(instance:GetChildren()) do
+			local found = findFirstDescendant(child, predicate)
+			if found ~= nil then return found end
+		end
+		return nil
+	end
+
 	t.describe("@rovy/ui runtime", function()
 		t.it("returns default active style", function()
 			RovyUi.__reset()
@@ -310,6 +319,452 @@ return function(TS, t)
 			t.expect(handle1.frame).toBeDefined()
 			t.expect(handle2.frame).toBeDefined()
 			t.expect(handle3.frame).toBeDefined()
+		end)
+
+		t.it("marks floating UI surfaces active so clicks do not pass through", function()
+			RovyUi.__reset()
+			local gui = root()
+			local node = RovyUi.new(gui)
+
+			RovyUi.start(node, function()
+				RovyUi.window({ title = "Top" }, function()
+					RovyUi.childWindow("Child", function() end)
+					RovyUi.comboBox({ items = { "A", "B" } })
+					RovyUi.popup({ open = true }, function() end)
+					RovyUi.modal({ title = "Modal", open = true }, function() end)
+				end)
+			end)
+
+			local windowFrame = findFirstDescendant(gui, function(instance)
+				return instance.ClassName == "Frame" and instance:GetAttribute("EgooEWindow") == true
+			end)
+			t.expect(windowFrame).toBeDefined()
+			t.expect(windowFrame.Active).toBe(true)
+			t.expect(windowFrame.InputSink).toBe(_G.Enum.InputSink.All)
+			t.expect(windowFrame.ZIndex).toBe(100)
+
+				local windowContainer = findFirstDescendant(windowFrame, function(instance)
+					return instance.ClassName == "ScrollingFrame"
+				end)
+				t.expect(windowContainer).toBeDefined()
+				t.expect(windowContainer.Active).toBe(true)
+				t.expect(windowContainer.InputSink == _G.Enum.InputSink.All).toBe(false)
+				t.expect(windowContainer.ZIndex > windowFrame.ZIndex).toBeTruthy()
+
+				local dropdown = findFirstDescendant(gui, function(instance)
+					return instance.Name == "ComboDropdown"
+				end)
+				t.expect(dropdown).toBeDefined()
+				t.expect(dropdown.Active).toBe(true)
+				t.expect(dropdown.InputSink == _G.Enum.InputSink.All).toBe(false)
+				t.expect(dropdown.ZIndex).toBe(250)
+
+			local popupPanel = findFirstDescendant(gui, function(instance)
+				return instance.Name == "PopupPanel"
+			end)
+			t.expect(popupPanel).toBeDefined()
+			t.expect(popupPanel.ClassName).toBe("Frame")
+			t.expect(popupPanel.Active).toBe(true)
+			t.expect(popupPanel.InputSink).toBe(_G.Enum.InputSink.All)
+			t.expect(popupPanel.ZIndex).toBe(200)
+
+				local modalOverlay = findFirstDescendant(gui, function(instance)
+					return instance.Name == "ModalOverlay"
+				end)
+			t.expect(modalOverlay).toBeDefined()
+			t.expect(modalOverlay.ClassName).toBe("TextButton")
+			t.expect(modalOverlay.Active).toBe(true)
+			t.expect(modalOverlay.Selectable).toBe(false)
+			t.expect(modalOverlay.InputSink).toBe(_G.Enum.InputSink.All)
+
+				local modalDialog = findFirstDescendant(gui, function(instance)
+					return instance.Name == "ModalDialog"
+				end)
+			t.expect(modalDialog).toBeDefined()
+			t.expect(modalDialog.Active).toBe(true)
+			t.expect(modalDialog.InputSink).toBe(_G.Enum.InputSink.All)
+			t.expect(modalDialog.ZIndex > modalOverlay.ZIndex).toBeTruthy()
+		end)
+
+			t.it("keeps dragValue dragging after pointer leaves the control", function()
+				RovyUi.__reset()
+				local gui = root()
+			local node = RovyUi.new(gui)
+			local services = _G.__rovyTestServices
+			local value = 0
+
+			local function render()
+				RovyUi.start(node, function()
+					RovyUi.window({ title = "Drag" }, function()
+						value = RovyUi.dragValue({ min = 0, max = 100, step = 1, initial = 0, label = "Speed" })
+					end)
+				end)
+			end
+
+			local function input(userInputType, x)
+				return {
+					UserInputType = userInputType,
+					Position = { X = x, Y = 0, Z = 0 },
+				}
+			end
+
+			render()
+			local dragButton = findFirstDescendant(gui, function(instance)
+				return instance.ClassName == "TextButton" and instance.Text == "Speed: 0"
+			end)
+			t.expect(dragButton).toBeDefined()
+
+			dragButton.InputBegan:Fire(input(_G.Enum.UserInputType.MouseButton1, 0))
+			services.UserInputService.InputChanged:Fire(input(_G.Enum.UserInputType.MouseMovement, 20))
+			render()
+
+			t.expect(value).toBe(5)
+
+			services.UserInputService.InputEnded:Fire(input(_G.Enum.UserInputType.MouseButton1, 20))
+			services.UserInputService.InputChanged:Fire(input(_G.Enum.UserInputType.MouseMovement, 40))
+			render()
+
+				t.expect(value).toBe(5)
+			end)
+
+			t.it("does not apply hover while pointer drag is active", function()
+				RovyUi.__reset()
+				local services = _G.__rovyTestServices
+				local playerGui = _G.Instance.new("PlayerGui")
+				local gui = root()
+				gui.Parent = playerGui
+				local node = RovyUi.new(gui)
+
+				local function render()
+					RovyUi.start(node, function()
+						RovyUi.window({ title = "Drag Hover" }, function()
+							RovyUi.dragValue({ min = 0, max = 100, step = 1, initial = 0, label = "Speed" })
+						end)
+					end)
+				end
+
+				local function input(userInputType, x)
+					return {
+						UserInputType = userInputType,
+						Position = { X = x, Y = 0, Z = 0 },
+					}
+				end
+
+				render()
+				local dragButton = findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == "Speed: 0"
+				end)
+				t.expect(dragButton).toBeDefined()
+				local stroke = findChildByClass(dragButton, "UIStroke")
+				t.expect(stroke).toBeDefined()
+
+				services.UserInputService.MouseLocation = { X = 10, Y = 12 }
+				playerGui.__guiObjectsAtPosition = { dragButton }
+
+				dragButton.InputBegan:Fire(input(_G.Enum.UserInputType.MouseButton1, 0))
+				dragButton.MouseEnter:Fire()
+				render()
+				t.expect(stroke.Color).toBe(RovyUi.getActiveStyle().strokeInactiveColor)
+
+				services.UserInputService.InputChanged:Fire(input(_G.Enum.UserInputType.MouseMovement, 8))
+				services.UserInputService.InputEnded:Fire(input(_G.Enum.UserInputType.MouseButton1, 8))
+			end)
+
+				t.it("ignores hover for widgets behind a higher gui object", function()
+				RovyUi.__reset()
+			local playerGui = _G.Instance.new("PlayerGui")
+			local gui = root()
+			gui.Parent = playerGui
+			local node = RovyUi.new(gui)
+
+			local function render()
+				RovyUi.start(node, function()
+					RovyUi.window({ title = "Behind" }, function()
+						RovyUi.selectableLabel("Entity 1")
+					end)
+				end)
+			end
+
+			render()
+			local entityButton = findFirstDescendant(gui, function(instance)
+				return instance.ClassName == "TextButton" and instance.Text == "Entity 1"
+			end)
+			t.expect(entityButton).toBeDefined()
+
+				local topSink = _G.Instance.new("TextButton")
+				topSink.Name = "TopSink"
+				topSink.Parent = gui
+				_G.__rovyTestServices.UserInputService.MouseLocation = { X = 10, Y = 12 }
+				playerGui.__guiObjectsAtPosition = { topSink, entityButton }
+
+				entityButton.MouseEnter:Fire(10, 12)
+				render()
+				t.expect(entityButton.BackgroundTransparency).toBe(1)
+
+			local container = findFirstDescendant(gui, function(instance)
+				return instance.ClassName == "ScrollingFrame"
+			end)
+				t.expect(container).toBeDefined()
+
+				_G.__rovyTestServices.UserInputService.MouseLocation = { X = 10, Y = 12 }
+					playerGui.__guiObjectsAtPosition = { entityButton, container }
+					entityButton.MouseEnter:Fire(10, 12)
+				render()
+				t.expect(entityButton.BackgroundTransparency).toBe(0)
+			end)
+
+					t.it("uses current mouse location for hover hit testing", function()
+					RovyUi.__reset()
+					local services = _G.__rovyTestServices
+				local playerGui = _G.Instance.new("PlayerGui")
+			local gui = root()
+			gui.Parent = playerGui
+			local node = RovyUi.new(gui)
+
+			local function render()
+				RovyUi.start(node, function()
+					RovyUi.window({ title = "Hover" }, function()
+						RovyUi.button("Target")
+					end)
+				end)
+			end
+
+			render()
+				local targetButton = findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == "Target"
+				end)
+				t.expect(targetButton).toBeDefined()
+				local targetStroke = findChildByClass(targetButton, "UIStroke")
+				t.expect(targetStroke).toBeDefined()
+
+			local topSink = _G.Instance.new("TextButton")
+			topSink.Name = "TopSink"
+			topSink.Parent = gui
+			services.GuiService.GuiInset = { X = 0, Y = 36 }
+			services.UserInputService.MouseLocation = { X = 99, Y = 135 }
+			playerGui.__guiObjectsAtPositionByPosition = {
+				["10,12"] = { targetButton },
+				["99,99"] = { topSink, targetButton },
+				["99,135"] = { topSink, targetButton },
+			}
+
+						targetButton.MouseEnter:Fire(10, 12)
+						render()
+
+							t.expect(targetStroke.Color).toBe(RovyUi.getActiveStyle().strokeInactiveColor)
+							services.UserInputService.MouseLocation = { X = 10, Y = 48 }
+							targetButton.MouseMoved:Fire()
+							render()
+						t.expect(targetStroke.Color).toBe(RovyUi.getActiveStyle().strokeHoveredColor)
+						services.GuiService.GuiInset = { X = 0, Y = 0 }
+					end)
+
+			t.it("allows hover only when same-window controls are topmost", function()
+				RovyUi.__reset()
+				local playerGui = _G.Instance.new("PlayerGui")
+				local gui = root()
+				gui.Parent = playerGui
+				local node = RovyUi.new(gui)
+
+				local function render()
+					RovyUi.start(node, function()
+						RovyUi.window({ title = "Inspector" }, function()
+							RovyUi.button("Create entity")
+							RovyUi.comboBox({ items = { "Local Server", "Server" }, selected = "Local Server" })
+						end)
+					end)
+				end
+
+				render()
+				local windowFrame = findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "Frame" and instance:GetAttribute("EgooEWindow") == true
+				end)
+				t.expect(windowFrame).toBeDefined()
+
+				local windowContainer = findFirstDescendant(windowFrame, function(instance)
+					return instance.ClassName == "ScrollingFrame"
+				end)
+				t.expect(windowContainer).toBeDefined()
+				t.expect(windowContainer.InputSink == _G.Enum.InputSink.All).toBe(false)
+
+				local createButton = findFirstDescendant(windowFrame, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == "Create entity"
+				end)
+				t.expect(createButton).toBeDefined()
+					local createStroke = findChildByClass(createButton, "UIStroke")
+					t.expect(createStroke).toBeDefined()
+					createButton.AbsolutePosition = { X = 0, Y = 0 }
+					createButton.AbsoluteSize = { X = 100, Y = 24 }
+
+					local comboButton = findFirstDescendant(windowFrame, function(instance)
+						return instance.ClassName == "TextButton" and instance.Text == " Local Server"
+					end)
+					t.expect(comboButton).toBeDefined()
+					local comboStroke = findChildByClass(comboButton, "UIStroke")
+					t.expect(comboStroke).toBeDefined()
+					comboButton.AbsolutePosition = { X = 0, Y = 32 }
+					comboButton.AbsoluteSize = { X = 100, Y = 24 }
+
+						local services = _G.__rovyTestServices
+						services.UserInputService.MouseLocation = { X = 10, Y = 12 }
+							playerGui.__guiObjectsAtPosition = { windowContainer, createButton }
+							createButton.MouseEnter:Fire(10, 12)
+							render()
+							t.expect(createStroke.Color).toBe(RovyUi.getActiveStyle().strokeInactiveColor)
+							playerGui.__guiObjectsAtPosition = { createButton, windowContainer }
+							createButton.MouseMoved:Fire(10, 12)
+							render()
+							t.expect(createStroke.Color).toBe(RovyUi.getActiveStyle().strokeHoveredColor)
+
+					local comboArrow = findFirstDescendant(comboButton, function(instance)
+						return instance.ClassName == "TextLabel" and instance.Text == "▼"
+					end)
+					t.expect(comboArrow).toBeDefined()
+
+							services.UserInputService.MouseLocation = { X = 10, Y = 40 }
+							playerGui.__guiObjectsAtPosition = { comboArrow, comboButton }
+							createButton.MouseLeave:Fire()
+							comboButton.MouseEnter:Fire(10, 40)
+						render()
+					t.expect(comboStroke.Color).toBe(RovyUi.getActiveStyle().strokeHoveredColor)
+					t.expect(createStroke.Color).toBe(RovyUi.getActiveStyle().strokeInactiveColor)
+				end)
+
+				t.it("ignores clicks for widgets behind a higher gui object", function()
+					RovyUi.__reset()
+					local playerGui = _G.Instance.new("PlayerGui")
+					local gui = root()
+					gui.Parent = playerGui
+					local node = RovyUi.new(gui)
+					local buttonClicked = false
+					local labelClicked = false
+
+					local function render()
+						RovyUi.start(node, function()
+							RovyUi.window({ title = "Click Gate" }, function()
+								if RovyUi.button("Record").clicked() then buttonClicked = true end
+								if RovyUi.selectableLabel("Entity 1").clicked() then labelClicked = true end
+							end)
+						end)
+					end
+
+					render()
+					local recordButton = findFirstDescendant(gui, function(instance)
+						return instance.ClassName == "TextButton" and instance.Text == "Record"
+					end)
+					local entityButton = findFirstDescendant(gui, function(instance)
+						return instance.ClassName == "TextButton" and instance.Text == "Entity 1"
+					end)
+					t.expect(recordButton).toBeDefined()
+					t.expect(entityButton).toBeDefined()
+
+					local topSink = _G.Instance.new("TextButton")
+					topSink.Name = "TopSink"
+					topSink.Parent = gui
+					_G.__rovyTestServices.UserInputService.MouseLocation = { X = 10, Y = 12 }
+					playerGui.__guiObjectsAtPosition = { topSink, recordButton, entityButton }
+
+					recordButton.MouseButton1Down:Fire(10, 12)
+					recordButton.Activated:Fire()
+					entityButton.Activated:Fire()
+					render()
+					t.expect(buttonClicked).toBe(false)
+					t.expect(labelClicked).toBe(false)
+
+					playerGui.__guiObjectsAtPosition = { recordButton, topSink }
+					recordButton.MouseButton1Down:Fire(10, 12)
+					recordButton.Activated:Fire()
+					render()
+					t.expect(buttonClicked).toBe(true)
+				end)
+
+				t.it("lets widgets inside table structural frames receive hover and clicks", function()
+					RovyUi.__reset()
+					local services = _G.__rovyTestServices
+					local playerGui = _G.Instance.new("PlayerGui")
+					local gui = root()
+					gui.Parent = playerGui
+					local node = RovyUi.new(gui)
+					local clicked = false
+
+					local function render()
+						RovyUi.start(node, function()
+							RovyUi.window({ title = "Demo Table" }, function()
+								RovyUi.table({ columns = { { fill = true } }, rowHeight = 24, stripeRows = true }, function()
+									RovyUi.tableRow(function()
+										RovyUi.tableCell(function()
+											if RovyUi.button("Details").clicked() then clicked = true end
+										end)
+									end)
+								end)
+							end)
+						end)
+					end
+
+					render()
+					local detailsButton = findFirstDescendant(gui, function(instance)
+						return instance.ClassName == "TextButton" and instance.Text == "Details"
+					end)
+					t.expect(detailsButton).toBeDefined()
+					local detailsStroke = findChildByClass(detailsButton, "UIStroke")
+					t.expect(detailsStroke).toBeDefined()
+
+					local contentFrame = detailsButton.Parent
+					local cellFrame = contentFrame.Parent
+					t.expect(contentFrame:GetAttribute("RovyHitTestPassThrough")).toBe(true)
+					t.expect(cellFrame:GetAttribute("RovyHitTestPassThrough")).toBe(true)
+
+					local siblingSurface
+					for _, child in ipairs(cellFrame:GetChildren()) do
+						if child.ClassName == "Frame" and child ~= contentFrame then
+							siblingSurface = child
+							break
+						end
+					end
+					t.expect(siblingSurface).toBeDefined()
+					t.expect(siblingSurface:GetAttribute("RovyHitTestPassThrough")).toBe(true)
+
+					services.UserInputService.MouseLocation = { X = 10, Y = 12 }
+					playerGui.__guiObjectsAtPosition = { siblingSurface, contentFrame, detailsButton }
+
+					detailsButton.MouseEnter:Fire(10, 12)
+					render()
+					t.expect(detailsStroke.Color).toBe(RovyUi.getActiveStyle().strokeHoveredColor)
+
+					detailsButton.MouseButton1Down:Fire(10, 12)
+					detailsButton.Activated:Fire()
+					render()
+					t.expect(clicked).toBe(true)
+				end)
+
+				t.it("accepts TextButton mouse coordinate events", function()
+				RovyUi.__reset()
+				local playerGui = _G.Instance.new("PlayerGui")
+			local gui = root()
+			gui.Parent = playerGui
+			local node = RovyUi.new(gui)
+			local clicked = false
+
+			local function render()
+				RovyUi.start(node, function()
+					RovyUi.window({ title = "Button" }, function()
+						if RovyUi.button("Record").clicked() then clicked = true end
+					end)
+				end)
+			end
+
+			render()
+			local recordButton = findFirstDescendant(gui, function(instance)
+				return instance.ClassName == "TextButton" and instance.Text == "Record"
+			end)
+			t.expect(recordButton).toBeDefined()
+			playerGui.__guiObjectsAtPosition = { recordButton }
+
+			recordButton.MouseButton1Down:Fire(10, 12)
+			recordButton.Activated:Fire()
+			render()
+
+			t.expect(clicked).toBe(true)
 		end)
 
 	end)

@@ -1,9 +1,9 @@
-import { widget, __useInstance, __useState, useContext } from "../runtime";
+import { widget, __useInstance, __useState, useContext, useHoverTarget } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim2, v2 } from "../primitives";
 import * as contexts from "../contexts";
-import { applyStrokeState, makeCorner, type InteractState } from "./shared";
+import { applyStrokeState, isTopGuiTarget, makeCorner, type InteractState } from "./shared";
 
 export interface CheckboxOptions {
 	checked?: boolean;
@@ -31,6 +31,7 @@ export const checkbox = widget((text: string, options: CheckboxOptions = {}): Ch
 
 	const refs = __useInstance("checkbox:instance", (ref) => {
 		const style = useStyle();
+		const targetRef = ref as unknown as { box: TextButton };
 		const boxSize = style.itemHeight - 4;
 		return create("Frame", {
 			[ref as never]: "row",
@@ -55,19 +56,12 @@ export const checkbox = widget((text: string, options: CheckboxOptions = {}): Ch
 					Color: style.strokeInactiveColor,
 					Transparency: style.strokeInactiveTransparency,
 					Thickness: style.strokeThickness, ApplyStrokeMode: Enum.ApplyStrokeMode.Border,
-				}),
-				MouseEnter: () => {
-					setHovered(true);
-				},
-				MouseLeave: () => {
-					setHovered(false);
-				},
-				Activated: () => {
-					if (options.disabled !== true) {
+					}),
+					Activated: () => {
+						if (options.disabled === true || !isTopGuiTarget(targetRef.box)) return;
 						setClicked(true);
 						setChecked((c) => !c);
-					}
-				},
+					},
 			}),
 			1: create("TextLabel", {
 				[ref as never]: "label",
@@ -82,6 +76,8 @@ export const checkbox = widget((text: string, options: CheckboxOptions = {}): Ch
 			}),
 		});
 	}) as { row: Frame; box: TextButton; boxStroke: UIStroke; label: TextLabel };
+
+	useHoverTarget(refs.box, setHovered, `Checkbox: ${text}`);
 
 	const style = useStyle();
 	const isChecked = options.checked !== undefined ? options.checked : checked;

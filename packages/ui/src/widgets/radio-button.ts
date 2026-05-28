@@ -1,8 +1,8 @@
-import { widget, __useInstance, __useState } from "../runtime";
+import { widget, __useInstance, __useState, useHoverTarget } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim, udim2, v2 } from "../primitives";
-import { applyStrokeState, type InteractState } from "./shared";
+import { applyStrokeState, isTopGuiTarget, type InteractState } from "./shared";
 
 export interface RadioButtonOptions {
 	selected?: boolean;
@@ -20,6 +20,7 @@ export const radioButton = widget((text: string, options: RadioButtonOptions = {
 
 	const refs = __useInstance("radioButton:instance", (ref) => {
 		const style = useStyle();
+		const targetRef = ref as unknown as { circle: TextButton };
 		const circleSize = style.itemHeight - 6;
 		return create("Frame", {
 			[ref as never]: "row",
@@ -51,18 +52,11 @@ export const radioButton = widget((text: string, options: RadioButtonOptions = {
 					AnchorPoint: v2(0.5, 0.5),
 					Position: udim2(0.5, 0, 0.5, 0),
 					0: create("UICorner", { CornerRadius: udim(1, 0) }),
-				}),
-				MouseEnter: () => {
-					setHovered(true);
-				},
-				MouseLeave: () => {
-					setHovered(false);
-				},
-				Activated: () => {
-					if (options.disabled !== true) {
+					}),
+					Activated: () => {
+						if (options.disabled === true || !isTopGuiTarget(targetRef.circle)) return;
 						setClicked(true);
-					}
-				},
+					},
 			}),
 			1: create("TextLabel", {
 				[ref as never]: "label",
@@ -77,6 +71,8 @@ export const radioButton = widget((text: string, options: RadioButtonOptions = {
 			}),
 		});
 	}) as { row: Frame; circle: TextButton; stroke: UIStroke; dot: Frame; label: TextLabel };
+
+	useHoverTarget(refs.circle, setHovered, `RadioButton: ${text}`);
 
 	const style = useStyle();
 	const isSelected = options.selected ?? false;

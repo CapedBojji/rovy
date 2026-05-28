@@ -1,9 +1,9 @@
-import { widget, __useInstance, __useState, __useEffect, useRootInstance } from "../runtime";
+import { widget, __useInstance, __useState, __useEffect, useRootInstance, useHoverTarget } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim, udim2, v2 } from "../primitives";
 import { WINDOW_ATTRIBUTE } from "../windowConstants";
-import { makeCorner, makeShadow, makeStroke } from "./shared";
+import { isTopGuiTarget, makeCorner, makeShadow, makeStroke } from "./shared";
 
 export interface ComboBoxOptions {
 	items: string[];
@@ -85,6 +85,7 @@ export const comboBox = widget((options: ComboBoxOptions): ComboBoxHandle => {
 
 	const refs = __useInstance("comboBox:instance", (rawRef) => {
 		const style = useStyle();
+		const targetRef = rawRef as unknown as ComboBoxRefs;
 		return create("TextButton", {
 			[rawRef as never]: "comboBtn",
 			BackgroundColor3: style.widgetInactiveBgColor,
@@ -118,18 +119,15 @@ export const comboBox = widget((options: ComboBoxOptions): ComboBoxHandle => {
 				Size: udim2(0, 16, 1, 0),
 				Text: ARROW,
 				ZIndex: 2,
-			}),
-			MouseEnter: () => {
-				setHovered(true);
-			},
-			MouseLeave: () => {
-				setHovered(false);
-			},
-			Activated: () => {
-				setIsOpen((v) => !v);
-			},
+				}),
+				Activated: () => {
+					if (!isTopGuiTarget(targetRef.comboBtn)) return;
+					setIsOpen((v) => !v);
+				},
 		});
 	}) as unknown as ComboBoxRefs;
+
+	useHoverTarget(refs.comboBtn, setHovered, `ComboBox: ${selectedValue}`);
 
 	__useEffect("comboBox:dropdown", () => {
 		const rootGui = useRootInstance();
@@ -142,6 +140,7 @@ export const comboBox = widget((options: ComboBoxOptions): ComboBoxHandle => {
 		dropdown.BackgroundColor3 = style.popupBgColor;
 		dropdown.BackgroundTransparency = 0;
 		dropdown.BorderSizePixel = 0;
+		dropdown.Active = true;
 		dropdown.Size = udim2(0, 160, 0, 0);
 		dropdown.CanvasSize = udim2(0, 0, 0, 0);
 		dropdown.ScrollingEnabled = true;
@@ -344,17 +343,12 @@ export const comboBox = widget((options: ComboBoxOptions): ComboBoxHandle => {
 					itemPadding.PaddingRight = udim(0, 8);
 					itemPadding.Parent = itemBtn;
 
-					const capturedIndex = i;
-					const capturedItem = item;
-					itemBtn.MouseEnter.Connect(() => {
-						refs.hoveredItem = capturedIndex;
-					});
-					itemBtn.MouseLeave.Connect(() => {
-						if (refs.hoveredItem === capturedIndex) refs.hoveredItem = undefined;
-					});
-					itemBtn.Activated.Connect(() => {
-						setSelectedValue(capturedItem);
-						setSelectedIndex(capturedIndex);
+						const capturedIndex = i;
+						const capturedItem = item;
+						itemBtn.Activated.Connect(() => {
+							if (!isTopGuiTarget(itemBtn)) return;
+							setSelectedValue(capturedItem);
+							setSelectedIndex(capturedIndex);
 						setChanged(true);
 						setIsOpen(false);
 					});
@@ -363,10 +357,14 @@ export const comboBox = widget((options: ComboBoxOptions): ComboBoxHandle => {
 				}
 			}
 
-			for (const child of refs.dropdown.GetChildren()) {
-				if (child.IsA("TextButton")) {
-					const childIndex = child.LayoutOrder;
-					const isSelected = childIndex === selectedIndex;
+				for (const child of refs.dropdown.GetChildren()) {
+					if (child.IsA("TextButton")) {
+						const childIndex = child.LayoutOrder;
+							useHoverTarget(child as TextButton, (value) => {
+								if (value) refs.hoveredItem = childIndex;
+								else if (refs.hoveredItem === childIndex) refs.hoveredItem = undefined;
+							}, `ComboBox item: ${(child as TextButton).Text}`);
+						const isSelected = childIndex === selectedIndex;
 					const isHoveredItem = refs.hoveredItem === childIndex;
 					const isKeyFocused = refs.keyFocusIndex !== undefined && childIndex === refs.keyFocusIndex;
 					if (isSelected) {

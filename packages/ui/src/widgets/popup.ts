@@ -2,7 +2,7 @@ import { widget, __scope, __useInstance, __useEffect, useRootInstance } from "..
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim, udim2 } from "../primitives";
-import { makeCorner, makeShadow, makeStroke } from "./shared";
+import { makeCorner, makeShadow, makeStroke, markHitTestSurface } from "./shared";
 
 export interface PopupOptions {
 	open?: boolean;
@@ -45,9 +45,12 @@ export const popup = widget((options: PopupOptions, fn: () => void): void => {
 		panel.BorderSizePixel = 0;
 		panel.Size = udim2(0, MIN_WIDTH, 0, 0);
 		panel.AutomaticSize = Enum.AutomaticSize.Y;
-		panel.ZIndex = 200;
-		panel.Visible = false;
-		panel.Parent = rootGui;
+		panel.Active = true;
+		panel.InputSink = Enum.InputSink.All;
+			panel.ZIndex = 200;
+			panel.Visible = false;
+			markHitTestSurface(panel);
+			panel.Parent = rootGui;
 
 		makeCorner(style.menuCornerRadius).Parent = panel;
 		makeStroke(style).Parent = panel;
@@ -58,9 +61,10 @@ export const popup = widget((options: PopupOptions, fn: () => void): void => {
 		content.Name = "PopupContent";
 		content.BackgroundTransparency = 1;
 		content.Size = udim2(1, 0, 0, 0);
-		content.AutomaticSize = Enum.AutomaticSize.Y;
-		content.ZIndex = 200;
-		content.Parent = panel;
+			content.AutomaticSize = Enum.AutomaticSize.Y;
+			content.Active = true;
+			content.ZIndex = 201;
+			content.Parent = panel;
 
 		const listLayout = new Instance("UIListLayout");
 		listLayout.SortOrder = Enum.SortOrder.LayoutOrder;
@@ -74,15 +78,15 @@ export const popup = widget((options: PopupOptions, fn: () => void): void => {
 		padding.PaddingBottom = udim(0, 4);
 		padding.Parent = content;
 
-		refs.popupPanel = panel;
-		refs.popupContent = content;
+			refs.popupPanel = panel;
+			refs.popupContent = content;
 
-		return () => {
-			if (panel !== undefined && panel.Parent !== undefined) panel.Destroy();
-			refs.popupPanel = undefined;
-			refs.popupContent = undefined;
-		};
-	});
+			return () => {
+				if (panel !== undefined && panel.Parent !== undefined) panel.Destroy();
+				refs.popupPanel = undefined;
+				refs.popupContent = undefined;
+			};
+		});
 
 	if (refs.popupPanel !== undefined) {
 		refs.popupPanel.Visible = open;

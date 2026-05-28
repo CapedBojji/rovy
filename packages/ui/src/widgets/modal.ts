@@ -2,7 +2,7 @@ import { widget, __scope, __useInstance, __useState, __useEffect, useRootInstanc
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim, udim2, v2 } from "../primitives";
-import { makeCorner, makeShadow, makeStroke } from "./shared";
+import { bindDefaultCursor, isTopGuiTarget, makeCorner, makeShadow, makeStroke, markHitTestSurface, markInputSink } from "./shared";
 
 export interface ModalOptions {
 	title?: string;
@@ -15,7 +15,7 @@ export interface ModalHandle {
 
 interface ModalRefs {
 	placeholder: Frame;
-	overlay?: Frame;
+	overlay?: TextButton;
 	modalContent?: Frame;
 	closeBtn?: TextButton;
 }
@@ -45,15 +45,23 @@ export const modal = widget((options: string | ModalOptions, fn: () => void): Mo
 		const padY = style.windowPadding.Y;
 		const titleBarHeight = style.titleBarHeight;
 
-		const overlay = new Instance("Frame");
+		const overlay = new Instance("TextButton");
 		overlay.Name = "ModalOverlay";
 		overlay.BackgroundColor3 = style.modalOverlayColor;
 		overlay.BackgroundTransparency = style.modalOverlayTransparency;
 		overlay.BorderSizePixel = 0;
+		overlay.Text = "";
+		overlay.AutoButtonColor = false;
+		overlay.Selectable = false;
 		overlay.Size = udim2(1, 0, 1, 0);
-		overlay.ZIndex = 300;
-		overlay.Visible = false;
-		overlay.Parent = rootGui;
+		overlay.Active = true;
+			overlay.InputSink = Enum.InputSink.All;
+			overlay.ZIndex = 300;
+			overlay.Visible = false;
+			markHitTestSurface(overlay);
+			markInputSink(overlay);
+			bindDefaultCursor(overlay);
+			overlay.Parent = rootGui;
 
 		const dialog = new Instance("Frame");
 		dialog.Name = "ModalDialog";
@@ -64,6 +72,8 @@ export const modal = widget((options: string | ModalOptions, fn: () => void): Mo
 		dialog.Position = udim2(0.5, 0, 0.5, 0);
 		dialog.Size = udim2(0, DIALOG_WIDTH, 0, 0);
 		dialog.AutomaticSize = Enum.AutomaticSize.Y;
+		dialog.Active = true;
+		dialog.InputSink = Enum.InputSink.All;
 		dialog.ZIndex = 301;
 		dialog.Parent = overlay;
 
@@ -76,10 +86,11 @@ export const modal = widget((options: string | ModalOptions, fn: () => void): Mo
 		titleBar.Name = "TitleBar";
 		titleBar.BackgroundColor3 = style.titleBgColor;
 		titleBar.BackgroundTransparency = 0;
-		titleBar.BorderSizePixel = 0;
-		titleBar.Size = udim2(1, 0, 0, titleBarHeight);
-		titleBar.ZIndex = 302;
-		titleBar.Parent = dialog;
+			titleBar.BorderSizePixel = 0;
+			titleBar.Size = udim2(1, 0, 0, titleBarHeight);
+			titleBar.Active = true;
+			titleBar.ZIndex = 302;
+			titleBar.Parent = dialog;
 
 		const titleLabel = new Instance("TextLabel");
 		titleLabel.Name = "Title";
@@ -107,11 +118,12 @@ export const modal = widget((options: string | ModalOptions, fn: () => void): Mo
 		closeBtn.ZIndex = 303;
 		closeBtn.AutoButtonColor = false;
 		closeBtn.Visible = opts.closable === true;
-		closeBtn.Parent = titleBar;
-		const activatedSignal = (closeBtn as unknown as Record<string, RBXScriptSignal | undefined>).Activated;
-		activatedSignal?.Connect(() => {
-			setClosedSignal(true);
-		});
+				closeBtn.Parent = titleBar;
+				const activatedSignal = (closeBtn as unknown as Record<string, RBXScriptSignal | undefined>).Activated;
+				activatedSignal?.Connect(() => {
+					if (!isTopGuiTarget(closeBtn)) return;
+					setClosedSignal(true);
+				});
 		refs.closeBtn = closeBtn;
 
 		const content = new Instance("Frame");
@@ -120,9 +132,10 @@ export const modal = widget((options: string | ModalOptions, fn: () => void): Mo
 		content.BorderSizePixel = 0;
 		content.Size = udim2(1, 0, 0, 0);
 		content.AutomaticSize = Enum.AutomaticSize.Y;
-		content.Position = udim2(0, 0, 0, titleBarHeight);
-		content.ZIndex = 302;
-		content.Parent = dialog;
+			content.Position = udim2(0, 0, 0, titleBarHeight);
+			content.Active = true;
+			content.ZIndex = 302;
+			content.Parent = dialog;
 
 		const listLayout = new Instance("UIListLayout");
 		listLayout.SortOrder = Enum.SortOrder.LayoutOrder;
