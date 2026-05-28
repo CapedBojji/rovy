@@ -24,7 +24,6 @@ export class WorldInspectorState {
 	query = "";
 	position?: Vector2;
 	size?: Vector2;
-	drafts = new Map<string, unknown>();
 	actionErrors = new Map<string, string>();
 	uiRoot?: Node;
 	componentPicker = "";
@@ -35,6 +34,8 @@ export class WorldInspectorState {
 	snapshotIntervalSec = 0.5;
 	private requestId = 0;
 	private targetListQueued = false;
+	private readonly drafts = new Map<string, unknown>();
+	private readonly draftRevisions = new Map<string, number>();
 	private readonly snapshotQueue = new Array<{ requestId: string; targetKey: string }>();
 	private readonly editQueue = new Array<{ requestId: string; targetKey: string; edit: WorldInspectorEditDto }>();
 
@@ -63,8 +64,36 @@ export class WorldInspectorState {
 		this.query = "";
 		this.componentPicker = "";
 		this.error = undefined;
-		this.drafts.clear();
+		this.clearDrafts();
 		this.actionErrors.clear();
+	}
+
+	hasDraft(key: string): boolean {
+		return this.drafts.has(key);
+	}
+
+	getDraft(key: string): unknown {
+		return this.drafts.get(key);
+	}
+
+	getDraftRevision(key: string): number | undefined {
+		return this.draftRevisions.get(key);
+	}
+
+	setDraft(key: string, value: unknown, revision?: number): void {
+		this.drafts.set(key, value);
+		if (revision === undefined) this.draftRevisions.delete(key);
+		else this.draftRevisions.set(key, revision);
+	}
+
+	clearDraft(key: string): void {
+		this.drafts.delete(key);
+		this.draftRevisions.delete(key);
+	}
+
+	clearDrafts(): void {
+		this.drafts.clear();
+		this.draftRevisions.clear();
 	}
 
 	entityWindowKey(targetKey: string, entityId: number): string {

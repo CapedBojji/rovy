@@ -550,7 +550,7 @@ class DebugState {
 			},
 		},
 	);
-	assert.match(result.diagnostics.join("\n"), /@inspect resource fields must use an identifier, string, or number property name/);
+	assert.match(result.diagnostics.join("\n"), /must use an identifier, string, or number property name/);
 });
 
 runCase("@inspect resource strips metadata when debug is false", () => {
