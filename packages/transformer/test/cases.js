@@ -530,6 +530,29 @@ class DebugState {
 	assert.doesNotMatch(result.printed, /key: "callback"/);
 });
 
+runCase("@inspect resource emits diagnostic for unsupported field names", () => {
+	const result = compileFixture(
+		`
+${header}
+const dynamicKey = "computed-name";
+@inspect
+@resource
+class DebugState {
+	[dynamicKey] = 1;
+}
+`,
+		{
+			packageRovyBuild: {
+				current: "dev",
+				environments: {
+					dev: { debug: true },
+				},
+			},
+		},
+	);
+	assert.match(result.diagnostics.join("\n"), /@inspect resource fields must use an identifier, string, or number property name/);
+});
+
 runCase("@inspect resource strips metadata when debug is false", () => {
 	const result = compileFixture(
 		`
@@ -550,6 +573,20 @@ class DebugState {
 		},
 	);
 	assertNoDiagnostics(result, "inspect stripped");
+	assert.match(result.printed, /__resource\(DebugState, "src\/main@DebugState"\)/);
+	assert.doesNotMatch(result.printed, /inspect:/);
+});
+
+runCase("@inspect resource strips metadata with no debug environment", () => {
+	const result = compileFixture(`
+${header}
+@inspect
+@resource
+class DebugState {
+	tick = 0;
+}
+`);
+	assertNoDiagnostics(result, "inspect default stripped");
 	assert.match(result.printed, /__resource\(DebugState, "src\/main@DebugState"\)/);
 	assert.doesNotMatch(result.printed, /inspect:/);
 });
