@@ -1,8 +1,9 @@
-import { widget, __useInstance, __useState, __useEffect } from "../runtime";
+import { widget, __useInstance, __useState, __useEffect, useHoverTarget, usePointerDrag } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
 import { createConnect } from "../createConnect";
 import { udim, udim2 } from "../primitives";
+import { isTopGuiTarget } from "./shared";
 
 export interface DragValueOptions {
 	min?: number;
@@ -19,13 +20,16 @@ interface DragValueRefs {
 	textBox: TextBox;
 	textStroke: UIStroke;
 	connection?: RBXScriptConnection;
+	endConnection?: RBXScriptConnection;
 	lastX?: number;
 	startX?: number;
 	didDrag?: boolean;
+	pointerDown?: boolean;
 	skipCommit?: boolean;
 	currentValue?: number;
 	isEditing?: boolean;
 	editStartText?: string;
+	endPointerDrag?: () => void;
 }
 
 function tryGetService(name: string): Instance | undefined {
@@ -84,12 +88,34 @@ export const dragValue = widget((options: DragValueOptions = {}): number => {
 		const connectEvent = createConnect();
 		const UserInputService = tryGetService("UserInputService");
 		const style = useStyle();
+		const pointerDrag = usePointerDrag();
+		ref.endPointerDrag = pointerDrag.end;
 
 		ref.connection = undefined;
+		ref.endConnection = undefined;
 		ref.lastX = undefined;
 		ref.startX = undefined;
 		ref.didDrag = false;
+		ref.pointerDown = false;
 		ref.skipCommit = false;
+
+		const finishDrag = (): void => {
+			if (ref.pointerDown !== true) return;
+			ref.pointerDown = false;
+			pointerDrag.end();
+			setDragging(false);
+
+			if (ref.connection !== undefined) {
+				ref.connection.Disconnect();
+				ref.connection = undefined;
+			}
+			if (ref.endConnection !== undefined) {
+				ref.endConnection.Disconnect();
+				ref.endConnection = undefined;
+			}
+
+			if (ref.didDrag !== true) beginEdit(ref);
+		};
 
 		return create("Frame", {
 			[rawRef as never]: "frame",
@@ -112,22 +138,20 @@ export const dragValue = widget((options: DragValueOptions = {}): number => {
 					Transparency: style.strokeInactiveTransparency,
 					Thickness: style.strokeThickness, ApplyStrokeMode: Enum.ApplyStrokeMode.Border,
 				}),
-				MouseEnter: () => {
-					setHovered(true);
-				},
-				MouseLeave: () => {
-					setHovered(false);
-				},
-				InputBegan: (...args: ReadonlyArray<unknown>) => {
-					const inputObj = args[0] as InputObject;
-					if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
-					if (UserInputService === undefined) return;
+					InputBegan: (...args: ReadonlyArray<unknown>) => {
+						const inputObj = args[0] as InputObject;
+						if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
+						if (!isTopGuiTarget(ref.btn)) return;
+						if (UserInputService === undefined) return;
 
 					ref.startX = inputObj.Position.X;
 					ref.lastX = inputObj.Position.X;
 					ref.didDrag = false;
+					ref.pointerDown = true;
+					pointerDrag.begin();
 
 					if (ref.connection !== undefined) ref.connection.Disconnect();
+					if (ref.endConnection !== undefined) ref.endConnection.Disconnect();
 
 					ref.connection = connectEvent(UserInputService, "InputChanged", (...moveArgs: ReadonlyArray<unknown>) => {
 						const moveInput = moveArgs[0] as InputObject;
@@ -148,19 +172,16 @@ export const dragValue = widget((options: DragValueOptions = {}): number => {
 							return math.clamp(newVal, min, max);
 						});
 					});
+					ref.endConnection = connectEvent(UserInputService, "InputEnded", (...endArgs: ReadonlyArray<unknown>) => {
+						const endInput = endArgs[0] as InputObject;
+						if (endInput.UserInputType !== Enum.UserInputType.MouseButton1) return;
+						finishDrag();
+					});
 				},
 				InputEnded: (...args: ReadonlyArray<unknown>) => {
 					const inputObj = args[0] as InputObject;
 					if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
-
-					setDragging(false);
-
-					if (ref.connection !== undefined) {
-						ref.connection.Disconnect();
-						ref.connection = undefined;
-					}
-
-					if (ref.didDrag !== true) beginEdit(ref);
+					finishDrag();
 				},
 			}),
 			1: create("TextBox", {
@@ -207,11 +228,21 @@ export const dragValue = widget((options: DragValueOptions = {}): number => {
 		});
 	}) as unknown as DragValueRefs;
 
+	useHoverTarget(refs.btn, setHovered, `DragValue: ${options.label ?? "value"}`);
+
 	__useEffect("dragValue:effect", () => {
 		return () => {
+			if (refs.pointerDown === true) {
+				refs.pointerDown = false;
+				refs.endPointerDrag?.();
+			}
 			if (refs.connection !== undefined) {
 				refs.connection.Disconnect();
 				refs.connection = undefined;
+			}
+			if (refs.endConnection !== undefined) {
+				refs.endConnection.Disconnect();
+				refs.endConnection = undefined;
 			}
 		};
 	});

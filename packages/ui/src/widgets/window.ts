@@ -1,11 +1,21 @@
-import { widget, __scope, __useInstance, __useState, __useEffect, useRootInstance, provideContext } from "../runtime";
+import {
+	widget,
+	__scope,
+	__useInstance,
+	__useState,
+	__useEffect,
+	useRootInstance,
+	provideContext,
+	useHoverTarget,
+	usePointerDrag,
+} from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
 import { createConnect } from "../createConnect";
 import { c, udim, udim2, v2 } from "../primitives";
 import * as contexts from "../contexts";
 import { WINDOW_ATTRIBUTE } from "../windowConstants";
-import { makeCornerPerSide, makeShadow } from "./shared";
+import { isTopGuiTarget, makeCornerPerSide, makeShadow, markHitTestSurface } from "./shared";
 
 export interface WindowOptions {
 	title?: string;
@@ -40,6 +50,8 @@ interface WindowRefs {
 	dragStartPosition?: Vector3;
 	dragMoved?: boolean;
 	ignoreTitleClick?: boolean;
+	pointerDragging?: boolean;
+	endPointerDrag?: () => void;
 }
 
 const MIN_SIZE = v2(120, 80);
@@ -73,41 +85,59 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 	const refs = __useInstance("window:instance", (rawRef) => {
 		const ref = rawRef as unknown as WindowRefs;
 		const style = useStyle();
-		const connectEvent = createConnect();
-		const GuiService = tryGetService("GuiService") as GuiService | undefined;
-		const UserInputService = tryGetService("UserInputService") as UserInputService | undefined;
+			const connectEvent = createConnect();
+			const GuiService = tryGetService("GuiService") as GuiService | undefined;
+			const UserInputService = tryGetService("UserInputService") as UserInputService | undefined;
+			const pointerDrag = usePointerDrag();
 
 		ref.dragConnection = undefined;
 		ref.resizeConnection = undefined;
 		ref.lastTitleClickTime = 0;
-		ref.dragStartPosition = undefined;
-		ref.dragMoved = false;
-		ref.ignoreTitleClick = false;
+			ref.dragStartPosition = undefined;
+			ref.dragMoved = false;
+			ref.ignoreTitleClick = false;
+			ref.pointerDragging = false;
+			ref.endPointerDrag = pointerDrag.end;
+
+			const beginPointerDrag = (): void => {
+				if (ref.pointerDragging === true) return;
+				ref.pointerDragging = true;
+				pointerDrag.begin();
+			};
+
+			const endPointerDrag = (): void => {
+				if (ref.pointerDragging !== true) return;
+				ref.pointerDragging = false;
+				pointerDrag.end();
+			};
 
 		const initialSize = opts.size ?? v2(300, 400);
 		const titleBarHeight = style.titleBarHeight;
-		const contentHeight = initialSize.Y - titleBarHeight;
-		const padX = style.windowPadding.X;
-		const padY = style.windowPadding.Y;
+			const contentHeight = initialSize.Y - titleBarHeight;
+			const padX = style.windowPadding.X;
+			const padY = style.windowPadding.Y;
 
-		// LayoutOrder is set on inner title-bar children (1/2/3) intentionally;
-		// the returned root is assigned LayoutOrder by the runtime, never here.
-		create("Frame", {
-			[rawRef as never]: "frame",
+			// LayoutOrder is set on inner title-bar children (1/2/3) intentionally;
+			// the returned root is assigned LayoutOrder by the runtime, never here.
+			create("Frame", {
+				[rawRef as never]: "frame",
 			BackgroundColor3: style.windowBgColor,
 			BackgroundTransparency: style.windowBgTransparency,
 			BorderSizePixel: 0,
+			Active: true,
+			InputSink: Enum.InputSink.All,
+			ZIndex: 100,
 			Position: udim2(
 				0,
 				opts.position?.X ?? 60,
 				0,
 				opts.position?.Y ?? 60,
-			),
-			Size: udim2(0, initialSize.X, 0, initialSize.Y),
-			ClipsDescendants: false,
-			0: makeCornerPerSide({
-				tl: style.windowCornerRadius,
-				tr: style.windowCornerRadius,
+				),
+				Size: udim2(0, initialSize.X, 0, initialSize.Y),
+				ClipsDescendants: false,
+				0: makeCornerPerSide({
+					tl: style.windowCornerRadius,
+					tr: style.windowCornerRadius,
 				bl: style.windowCornerRadius,
 				br: style.windowCornerRadius,
 			}),
@@ -124,10 +154,11 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 				BackgroundTransparency: 0,
 				BorderSizePixel: 0,
 				Size: udim2(1, 0, 0, titleBarHeight),
-				Position: udim2(0, 0, 0, 0),
-				Text: "",
-				Active: true,
-				0: create("UIListLayout", {
+					Position: udim2(0, 0, 0, 0),
+					Text: "",
+					Active: true,
+					ZIndex: 101,
+					0: create("UIListLayout", {
 					FillDirection: Enum.FillDirection.Horizontal,
 					VerticalAlignment: Enum.VerticalAlignment.Center,
 					SortOrder: Enum.SortOrder.LayoutOrder,
@@ -153,6 +184,7 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 					TextYAlignment: Enum.TextYAlignment.Center,
 					Size: udim2(0, 0, 1, 0),
 					LayoutOrder: 1,
+					ZIndex: 102,
 					0: create("UIFlexItem", { FlexMode: Enum.UIFlexMode.Fill }),
 				}),
 				3: create("TextButton", {
@@ -162,18 +194,14 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 					TextColor3: style.weakTextColor,
 					TextSize: style.textSize + 2,
 					Size: udim2(0, 16, 0, 16),
-					Text: "−",
-					LayoutOrder: 2,
-					Visible: false,
-					MouseEnter: () => {
-						ref.minimize.TextColor3 = style.strongTextColor;
-					},
-					MouseLeave: () => {
-						ref.minimize.TextColor3 = style.weakTextColor;
-					},
-					Activated: () => {
-						setMinimized((prev) => !prev);
-					},
+						Text: "−",
+						LayoutOrder: 2,
+						Visible: false,
+						ZIndex: 102,
+							Activated: () => {
+								if (!isTopGuiTarget(ref.minimize)) return;
+								setMinimized((prev) => !prev);
+							},
 				}),
 				4: create("TextButton", {
 					[rawRef as never]: "close",
@@ -182,25 +210,25 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 					TextColor3: style.weakTextColor,
 					TextSize: style.textSize + 2,
 					Size: udim2(0, 16, 0, 16),
-					Text: "×",
-					LayoutOrder: 3,
-					Visible: opts.closable ?? false,
-					MouseEnter: () => {
-						ref.close.TextColor3 = style.strongTextColor;
-					},
-					MouseLeave: () => {
-						ref.close.TextColor3 = style.weakTextColor;
-					},
-					Activated: () => {
-						setClosed(true);
-						opts.onClose?.();
+						Text: "×",
+						LayoutOrder: 3,
+						Visible: opts.closable ?? false,
+						ZIndex: 102,
+							Activated: () => {
+								if (!isTopGuiTarget(ref.close)) return;
+								setClosed(true);
+								opts.onClose?.();
 					},
 				}),
-				InputBegan: (...args: ReadonlyArray<unknown>) => {
-					const clickInput = args[0] as InputObject;
-					if (clickInput.UserInputType !== Enum.UserInputType.MouseButton1) return;
+					InputBegan: (...args: ReadonlyArray<unknown>) => {
+							const clickInput = args[0] as InputObject;
+							if (clickInput.UserInputType !== Enum.UserInputType.MouseButton1) return;
+							if (!isTopGuiTarget(ref.titleBar)) {
+								ref.ignoreTitleClick = true;
+								return;
+							}
 
-					if (pointInside(ref.minimize, clickInput.Position) || pointInside(ref.close, clickInput.Position)) {
+							if (pointInside(ref.minimize, clickInput.Position) || pointInside(ref.close, clickInput.Position)) {
 						ref.ignoreTitleClick = true;
 						return;
 					}
@@ -209,10 +237,11 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 					ref.dragStartPosition = clickInput.Position;
 					ref.dragMoved = false;
 
-					if (ref.frame.GetAttribute("movable") !== true) return;
-					if (UserInputService === undefined) return;
+						if (ref.frame.GetAttribute("movable") !== true) return;
+						if (UserInputService === undefined) return;
+						beginPointerDrag();
 
-					let lastMousePosition = clickInput.Position;
+						let lastMousePosition = clickInput.Position;
 
 					const parent = ref.frame.Parent;
 					if (
@@ -252,12 +281,13 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 				},
 				InputEnded: (...args: ReadonlyArray<unknown>) => {
 					const inputObj = args[0] as InputObject;
-					if (ref.dragConnection !== undefined && inputObj.UserInputType === Enum.UserInputType.MouseButton1) {
-						ref.dragConnection.Disconnect();
-						ref.dragConnection = undefined;
-					}
+						if (ref.dragConnection !== undefined && inputObj.UserInputType === Enum.UserInputType.MouseButton1) {
+							ref.dragConnection.Disconnect();
+							ref.dragConnection = undefined;
+						}
+						endPointerDrag();
 
-					if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
+						if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
 
 					if (ref.ignoreTitleClick === true) {
 						ref.ignoreTitleClick = false;
@@ -286,9 +316,11 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 				BorderSizePixel: 0,
 				ScrollBarThickness: style.scrollbarSize,
 				ScrollBarImageColor3: style.scrollbarGrabColor,
-				VerticalScrollBarInset: Enum.ScrollBarInset.ScrollBar,
-				HorizontalScrollBarInset: Enum.ScrollBarInset.ScrollBar,
-				Position: udim2(0, 0, 0, titleBarHeight),
+					VerticalScrollBarInset: Enum.ScrollBarInset.ScrollBar,
+					HorizontalScrollBarInset: Enum.ScrollBarInset.ScrollBar,
+					Active: true,
+					ZIndex: 101,
+					Position: udim2(0, 0, 0, titleBarHeight),
 				Size: udim2(1, 0, 0, contentHeight),
 				CanvasSize: udim2(0, 0, 0, 0),
 				AutomaticCanvasSize: Enum.AutomaticSize.Y,
@@ -314,13 +346,15 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 				Position: udim2(1, 0, 1, 0),
 				Size: udim2(0, 16, 0, 16),
 				Rotation: 0,
-				ZIndex: 5,
-				InputBegan: (...args: ReadonlyArray<unknown>) => {
-					const clickInput = args[0] as InputObject;
-					if (clickInput.UserInputType !== Enum.UserInputType.MouseButton1) return;
-					if (UserInputService === undefined) return;
+				ZIndex: 102,
+					InputBegan: (...args: ReadonlyArray<unknown>) => {
+							const clickInput = args[0] as InputObject;
+							if (clickInput.UserInputType !== Enum.UserInputType.MouseButton1) return;
+							if (!isTopGuiTarget(ref.resizeGrip)) return;
+							if (UserInputService === undefined) return;
+						beginPointerDrag();
 
-					const initMousePos = clickInput.Position;
+						const initMousePos = clickInput.Position;
 					const initSize = ref.frame.AbsoluteSize;
 
 					ref.resizeConnection = connectEvent(UserInputService, "InputChanged", (...moveArgs: ReadonlyArray<unknown>) => {
@@ -339,16 +373,18 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 				},
 				InputEnded: (...args: ReadonlyArray<unknown>) => {
 					const inputObj = args[0] as InputObject;
-					if (ref.resizeConnection !== undefined && inputObj.UserInputType === Enum.UserInputType.MouseButton1) {
-						ref.resizeConnection.Disconnect();
-						ref.resizeConnection = undefined;
-					}
-				},
+						if (ref.resizeConnection !== undefined && inputObj.UserInputType === Enum.UserInputType.MouseButton1) {
+							ref.resizeConnection.Disconnect();
+							ref.resizeConnection = undefined;
+						}
+						endPointerDrag();
+					},
 			}),
 		});
 
-		return [ref.frame, ref.container] as [Instance, Instance];
-	}) as unknown as WindowRefs;
+			markHitTestSurface(ref.frame);
+			return [ref.frame, ref.container] as [Instance, Instance];
+		}) as unknown as WindowRefs;
 
 	__useEffect("window:effect", () => {
 		return () => {
@@ -356,12 +392,16 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 				refs.dragConnection.Disconnect();
 				refs.dragConnection = undefined;
 			}
-			if (refs.resizeConnection !== undefined) {
-				refs.resizeConnection.Disconnect();
-				refs.resizeConnection = undefined;
-			}
-		};
-	});
+				if (refs.resizeConnection !== undefined) {
+					refs.resizeConnection.Disconnect();
+					refs.resizeConnection = undefined;
+				}
+				if (refs.pointerDragging === true) {
+					refs.pointerDragging = false;
+					refs.endPointerDrag?.();
+				}
+			};
+		});
 
 	const movable = opts.movable !== undefined ? opts.movable : true;
 	const resizable = opts.resizable !== undefined ? opts.resizable : true;
@@ -369,7 +409,7 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 	const visible = opts.visible !== undefined ? opts.visible : true;
 
 	refs.frame.Visible = visible;
-	refs.titleBar.Active = movable || minimizable;
+	refs.titleBar.Active = true;
 	refs.frame.SetAttribute("movable", movable);
 	refs.frame.SetAttribute(WINDOW_ATTRIBUTE, true);
 	refs.minimize.Visible = minimizable;
@@ -377,7 +417,15 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 
 	refs.title.Text = opts.title ?? "";
 
-	const titleBarHeight = useStyle().titleBarHeight;
+		const style = useStyle();
+		useHoverTarget(refs.minimize, (value) => {
+			refs.minimize.TextColor3 = value ? style.strongTextColor : style.weakTextColor;
+		}, `Window minimize: ${opts.title ?? ""}`);
+		useHoverTarget(refs.close, (value) => {
+			refs.close.TextColor3 = value ? style.strongTextColor : style.weakTextColor;
+		}, `Window close: ${opts.title ?? ""}`);
+
+		const titleBarHeight = style.titleBarHeight;
 	if (minimized) {
 		refs.frame.Size = udim2(0, size.X, 0, titleBarHeight);
 		refs.container.Visible = false;

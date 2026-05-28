@@ -1,4 +1,4 @@
-import EgooE from "@rbxts/egooe";
+import RovyUi from "@rovy/ui";
 import { inspect, resource } from "@rovy/core";
 import type { Entity } from "@rovy/core";
 
@@ -52,6 +52,6 @@ export class HudState {
 @resource
 export class HudUiState {
 	gui?: ScreenGui;
-	node?: ReturnType<typeof EgooE.new>;
+	node?: ReturnType<typeof RovyUi.new>;
 	rendering = false;
 }

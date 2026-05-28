@@ -4,6 +4,7 @@ import { create } from "../create";
 import { udim, udim2, v2 } from "../primitives";
 import * as contexts from "../contexts";
 import type { TableState } from "./table";
+import { markHitTestPassThrough } from "./shared";
 
 export interface TableRowOptions {
 	header?: boolean;
@@ -63,6 +64,9 @@ const tableRowWidget = widget((options: TableRowOptions, fn: () => void): void =
 		});
 	}) as { frame: Frame; topDivider: Frame; content: Frame; minSize: UISizeConstraint };
 
+	markHitTestPassThrough(refs.frame);
+	markHitTestPassThrough(refs.topDivider);
+	markHitTestPassThrough(refs.content);
 	if (refs.minSize !== undefined) refs.minSize.MinSize = v2(0, tableState.rowHeight);
 	refs.topDivider.Visible = tableState.borders && rowIndex > 1;
 	refs.topDivider.BackgroundColor3 = tableState.borderColor;

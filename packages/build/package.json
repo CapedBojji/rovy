@@ -5,11 +5,12 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "rovy": "dist/index.js",
-    "rovy-build": "dist/index.js"
+    "rovy": "bin/rovy-build.js",
+    "rovy-build": "bin/rovy-build.js"
   },
   "license": "MIT",
   "files": [
+    "bin",
     "dist",
     "!**/*.tsbuildinfo"
   ],

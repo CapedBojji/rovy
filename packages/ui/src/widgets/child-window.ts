@@ -1,9 +1,9 @@
-import { widget, __scope, __useInstance, __useState, provideContext } from "../runtime";
+import { widget, __scope, __useInstance, __useState, provideContext, useHoverTarget } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim, udim2 } from "../primitives";
 import * as contexts from "../contexts";
-import { makeCornerPerSide } from "./shared";
+import { isTopGuiTarget, makeCornerPerSide } from "./shared";
 
 export interface ChildWindowOptions {
 	title?: string;
@@ -55,6 +55,9 @@ export const childWindow = widget((options: string | ChildWindowOptions, fn: () 
 			[rawRef as never]: "frame",
 			BackgroundTransparency: 1,
 			BorderSizePixel: 0,
+			Active: true,
+			InputSink: Enum.InputSink.All,
+			ZIndex: 1,
 			Size: udim2(1, 0, 0, titleBarHeight + contentHeight),
 			ClipsDescendants: false,
 			0: create("UIListLayout", {
@@ -67,10 +70,11 @@ export const childWindow = widget((options: string | ChildWindowOptions, fn: () 
 				BackgroundTransparency: 0,
 				BorderSizePixel: 0,
 				Size: udim2(1, 0, 0, titleBarHeight),
-				Text: "",
-				Active: true,
-				AutoButtonColor: false,
-				LayoutOrder: 1,
+					Text: "",
+					Active: true,
+					AutoButtonColor: false,
+					LayoutOrder: 1,
+				ZIndex: 2,
 				0: makeCornerPerSide({
 					tl: style.cornerRadius,
 					tr: style.cornerRadius,
@@ -97,6 +101,7 @@ export const childWindow = widget((options: string | ChildWindowOptions, fn: () 
 					TextYAlignment: Enum.TextYAlignment.Center,
 					Size: udim2(0, 0, 1, 0),
 					LayoutOrder: 1,
+					ZIndex: 3,
 					0: create("UIFlexItem", { FlexMode: Enum.UIFlexMode.Fill }),
 				}),
 				4: create("TextButton", {
@@ -108,30 +113,29 @@ export const childWindow = widget((options: string | ChildWindowOptions, fn: () 
 					Size: udim2(0, 16, 0, 16),
 					Text: "−",
 					LayoutOrder: 2,
-					Visible: false,
-					MouseEnter: () => {
-						ref.minimize.TextColor3 = style.strongTextColor;
-					},
-					MouseLeave: () => {
-						ref.minimize.TextColor3 = style.weakTextColor;
-					},
-					Activated: () => {
-						setMinimized((prev) => !prev);
-					},
-				}),
-				InputEnded: (...args: ReadonlyArray<unknown>) => {
-					const inputObj = args[0] as InputObject;
-					if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
-					if (!ref.minimize.Visible || pointInside(ref.minimize, inputObj.Position)) return;
-					setMinimized((prev) => !prev);
-				},
+						Visible: false,
+						ZIndex: 3,
+								Activated: () => {
+									if (!isTopGuiTarget(ref.minimize)) return;
+									setMinimized((prev) => !prev);
+								},
+					}),
+							InputEnded: (...args: ReadonlyArray<unknown>) => {
+								const inputObj = args[0] as InputObject;
+								if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
+								if (!ref.minimize.Visible || pointInside(ref.minimize, inputObj.Position)) return;
+							if (!isTopGuiTarget(ref.headerBar)) return;
+							setMinimized((prev) => !prev);
+						},
 			}),
 			2: create("ScrollingFrame", {
 				[rawRef as never]: "container",
 				BackgroundColor3: style.panelBgColor,
-				BackgroundTransparency: 0,
-				BorderSizePixel: 0,
-				ScrollBarThickness: style.scrollbarSize,
+					BackgroundTransparency: 0,
+					BorderSizePixel: 0,
+					Active: true,
+					ZIndex: 2,
+					ScrollBarThickness: style.scrollbarSize,
 				ScrollBarImageColor3: style.scrollbarGrabColor,
 				VerticalScrollBarInset: Enum.ScrollBarInset.ScrollBar,
 				HorizontalScrollBarInset: Enum.ScrollBarInset.ScrollBar,
@@ -161,10 +165,13 @@ export const childWindow = widget((options: string | ChildWindowOptions, fn: () 
 		return [ref.frame, ref.container] as [Instance, Instance];
 	}) as unknown as ChildWindowRefs;
 
-	const style = useStyle();
-	const titleBarHeight = style.titleBarHeight;
+		const style = useStyle();
+		const titleBarHeight = style.titleBarHeight;
+		useHoverTarget(refs.minimize, (value) => {
+			refs.minimize.TextColor3 = value ? style.strongTextColor : style.weakTextColor;
+		}, `ChildWindow minimize: ${opts.title ?? ""}`);
 
-	refs.title.Text = opts.title ?? "";
+		refs.title.Text = opts.title ?? "";
 	refs.minimize.Visible = minimizable;
 
 	if (minimized) {

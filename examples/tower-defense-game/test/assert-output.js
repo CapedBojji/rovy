@@ -33,6 +33,7 @@ const rovyChecks = [
 	["query registration", /:__query\(/],
 	["schedule registration", /:__schedule\(/],
 	["loadPaths Rojo lowering", /game:GetService\("ReplicatedStorage"\):WaitForChild\("TS"\)/],
+	["demo window usage", /demoWindow/],
 ];
 for (const [label, pattern] of rovyChecks) {
 	assert.match(output, pattern, `missing Rovy ${label}`);

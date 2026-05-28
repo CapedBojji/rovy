@@ -1,5 +1,5 @@
-import EgooE from "@rbxts/egooe";
 import { Res, ResMut, system } from "@rovy/core";
+import RovyUi, { demoWindow } from "@rovy/ui";
 import { HudState, HudUiState } from "../resources";
 import { ensureHudNode, Render, RenderSet } from "../state";
 
@@ -11,21 +11,22 @@ export class RenderHud {
 
 		hudUi.rendering = true;
 		try {
-			EgooE.start(node, () => {
-				EgooE.window(
+			RovyUi.start(node, () => {
+				demoWindow();
+				RovyUi.window(
 					{
 						title: "Tower Defense",
 						size: new Vector2(290, 220),
-						position: new Vector2(16, 16),
+						position: new Vector2(450, 16),
 					},
 					() => {
-						EgooE.label(`Tick: ${hud.serverTick}  Time: ${math.floor(hud.simTime)}`);
-						EgooE.label(`Active: ${hud.activeMonsters} monsters  ${hud.activeProjectiles} shots`);
-						EgooE.label(`Spawned: ${hud.monstersSpawned}  Killed: ${hud.monstersKilled}`);
-						EgooE.label(`Escaped: ${hud.monstersEscaped}  Damage events: ${hud.damageEvents}`);
-						EgooE.label(`Total leak damage: ${hud.totalLeakDamage}`);
-						EgooE.label(`Turret shots: ${hud.shotsFired}`);
-						EgooE.label(`Server saw client frame: ${hud.lastClientFrameSeenByServer}`);
+						RovyUi.label(`Tick: ${hud.serverTick}  Time: ${math.floor(hud.simTime)}`);
+						RovyUi.label(`Active: ${hud.activeMonsters} monsters  ${hud.activeProjectiles} shots`);
+						RovyUi.label(`Spawned: ${hud.monstersSpawned}  Killed: ${hud.monstersKilled}`);
+						RovyUi.label(`Escaped: ${hud.monstersEscaped}  Damage events: ${hud.damageEvents}`);
+						RovyUi.label(`Total leak damage: ${hud.totalLeakDamage}`);
+						RovyUi.label(`Turret shots: ${hud.shotsFired}`);
+						RovyUi.label(`Server saw client frame: ${hud.lastClientFrameSeenByServer}`);
 					},
 				);
 			});

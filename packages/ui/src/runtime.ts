@@ -1,4 +1,5 @@
 import { App, ParamDescriptor, resolveParams, type ResolveCtx } from "@rovy/core";
+import { HIT_TEST_PASS_THROUGH_ATTRIBUTE } from "./windowConstants";
 
 export interface WidgetMeta {
 	readonly id: string;
@@ -20,6 +21,7 @@ export interface Node {
 	children: Map<string, Node>;
 	generation: number;
 	eventCallback?: EventCallback;
+	pointer?: PointerState;
 }
 
 export interface ContinueHandle {
@@ -38,10 +40,24 @@ export type EventCallback = (
 ) => void;
 export type StateSetter<T> = (nextValue: T | ((previous: T) => T)) => void;
 export type EffectCleanup = () => void;
+export type HoverSetter = (hovered: boolean) => void;
 
 interface EffectSlot {
 	lastDependencies?: Array<unknown>;
 	cleanup?: EffectCleanup;
+}
+
+interface HoverTarget {
+	setHovered: HoverSetter;
+	generation: number;
+	enterConnection: RBXScriptConnection;
+	moveConnection: RBXScriptConnection;
+	leaveConnection: RBXScriptConnection;
+}
+
+interface PointerState {
+	hoverTargets: Map<GuiObject, HoverTarget>;
+	dragDepth: number;
 }
 
 export interface StackFrame {
@@ -81,6 +97,7 @@ export function newFrame(node: Node): StackFrame {
 }
 
 function destroyNode(node: Node): void {
+	destroyPointerState(node);
 	node.instance?.Destroy();
 	for (const [, effect] of node.effects) {
 		effect.cleanup?.();
@@ -91,6 +108,226 @@ function destroyNode(node: Node): void {
 	node.children.clear();
 	node.effects.clear();
 	node.states.clear();
+}
+
+function parentOf(instance: Instance): Instance | undefined {
+	return (instance as unknown as { Parent?: Instance }).Parent;
+}
+
+function containsInstance(root: Instance, candidate: Instance): boolean {
+	let current: Instance | undefined = candidate;
+	while (current !== undefined) {
+		if (current === root) return true;
+		current = parentOf(current);
+	}
+	return false;
+}
+
+function isHitTestPassThrough(instance: Instance): boolean {
+	const [ok, value] = pcall(() => instance.GetAttribute(HIT_TEST_PASS_THROUGH_ATTRIBUTE));
+	return ok && value === true;
+}
+
+function isPassThroughForTarget(blocker: Instance, target: Instance): boolean {
+	if (!isHitTestPassThrough(blocker)) return false;
+	if (containsInstance(blocker, target)) return true;
+
+	let current = parentOf(blocker);
+	while (current !== undefined) {
+		if (isHitTestPassThrough(current) && containsInstance(current, target)) return true;
+		current = parentOf(current);
+	}
+	return false;
+}
+
+function findPlayerGui(rootInstance: Instance | undefined): PlayerGui | undefined {
+	let current: Instance | undefined = rootInstance;
+	while (current !== undefined) {
+		if (current.IsA("PlayerGui")) return current as PlayerGui;
+		current = parentOf(current);
+	}
+
+	const [ok, players] = pcall(() => game.GetService("Players"));
+	if (!ok) return undefined;
+	const localPlayer = (players as Players).LocalPlayer;
+	if (localPlayer === undefined) return undefined;
+	const [guiOk, playerGui] = pcall(() => localPlayer.WaitForChild("PlayerGui"));
+	return guiOk ? (playerGui as PlayerGui) : undefined;
+}
+
+function safePropertyText(instance: Instance, key: string): string {
+	const object = instance as unknown as Record<string, unknown>;
+	const [ok, value] = pcall(() => object[key]);
+	return ok ? tostring(value) : "?";
+}
+
+function guiObjectLabel(object: GuiObject): string {
+	const [ok, fullName] = pcall(() => object.GetFullName());
+	const path = ok ? (fullName as string) : `${object.ClassName} "${object.Name}"`;
+	return `${path} class=${object.ClassName} name=${object.Name} z=${safePropertyText(object, "ZIndex")} visible=${safePropertyText(object, "Visible")} active=${safePropertyText(object, "Active")} inputSink=${safePropertyText(object, "InputSink")}`;
+}
+
+function vector2Label(position: Vector2): string {
+	return `${position.X},${position.Y}`;
+}
+
+function getGuiInsetTopLeft(): Vector2 {
+	const [serviceOk, service] = pcall(() => game.GetService("GuiService"));
+	if (!serviceOk) return new Vector2(0, 0);
+
+	const [insetOk, topLeft] = pcall(() => {
+		const [topLeftInset] = (service as GuiService).GetGuiInset();
+		return topLeftInset;
+	});
+	return insetOk ? (topLeft as Vector2) : new Vector2(0, 0);
+}
+
+function printHoverHitList(
+	guiObject: GuiObject,
+	objects: ReadonlyArray<GuiObject>,
+	topVisible: GuiObject | undefined,
+	allowed: boolean,
+	rawMouse: Vector2,
+	guiInset: Vector2,
+	hitPosition: Vector2,
+): void {
+	print(
+		`[rovy-ui hover] target=${guiObjectLabel(guiObject)} raw=${vector2Label(rawMouse)} inset=${vector2Label(guiInset)} hit=${vector2Label(hitPosition)} top=${topVisible !== undefined ? guiObjectLabel(topVisible) : "none"} allowed=${allowed} count=${objects.size()}`,
+	);
+	let index = 0;
+	for (const object of objects) {
+		index += 1;
+		const relation =
+			object === guiObject
+				? "target"
+				: containsInstance(guiObject, object)
+					? "child"
+					: isPassThroughForTarget(object, guiObject)
+						? "pass"
+						: containsInstance(object, guiObject)
+							? "ancestor"
+							: "-";
+		print(`[rovy-ui hover] [${index}] ${relation} ${guiObjectLabel(object)}`);
+	}
+}
+
+function isTopHoverTarget(rootNode: Node, guiObject: GuiObject): boolean {
+	const rootInstance = rootNode.instance;
+	const playerGui = findPlayerGui(rootInstance);
+	if (playerGui === undefined) {
+		print(`[rovy-ui hover] target=${guiObjectLabel(guiObject)} playerGui=missing allowed=false`);
+		return false;
+	}
+
+	const [inputOk, input] = pcall(() => game.GetService("UserInputService"));
+	if (!inputOk) {
+		print(`[rovy-ui hover] target=${guiObjectLabel(guiObject)} UserInputService=missing allowed=false`);
+		return false;
+	}
+	const [mouseOk, mousePosition] = pcall(() => (input as UserInputService).GetMouseLocation());
+	if (!mouseOk) {
+		print(`[rovy-ui hover] target=${guiObjectLabel(guiObject)} mouse=missing allowed=false`);
+		return false;
+	}
+	const guiInset = getGuiInsetTopLeft();
+	const hitPosition = new Vector2(mousePosition.X - guiInset.X, mousePosition.Y - guiInset.Y);
+
+	const [guiOk, objects] = pcall(() =>
+		playerGui.GetGuiObjectsAtPosition(hitPosition.X, hitPosition.Y),
+	);
+	if (!guiOk) {
+		print(
+			`[rovy-ui hover] target=${guiObjectLabel(guiObject)} raw=${vector2Label(mousePosition)} inset=${vector2Label(guiInset)} hit=${vector2Label(hitPosition)} GetGuiObjectsAtPosition=failed allowed=false`,
+		);
+		return false;
+	}
+
+	let topVisible: GuiObject | undefined;
+	for (const object of objects as ReadonlyArray<GuiObject>) {
+		if (!object.Visible) continue;
+		topVisible = object;
+		break;
+	}
+
+	const guiObjects = objects as ReadonlyArray<GuiObject>;
+	let allowed = false;
+	for (const object of guiObjects) {
+		if (!object.Visible) continue;
+		if (object === guiObject || containsInstance(guiObject, object)) {
+			allowed = true;
+			break;
+		}
+		if (isPassThroughForTarget(object, guiObject)) continue;
+		break;
+	}
+	printHoverHitList(guiObject, guiObjects, topVisible, allowed, mousePosition, guiInset, hitPosition);
+	return allowed;
+}
+
+function refreshHoverTarget(rootNode: Node, guiObject: GuiObject): void {
+	const pointer = rootNode.pointer;
+	if (pointer === undefined) return;
+	const target = pointer.hoverTargets.get(guiObject);
+	if (target === undefined) return;
+	target.setHovered(pointer.dragDepth === 0 && isTopHoverTarget(rootNode, guiObject));
+}
+
+function clearHoverTarget(rootNode: Node, guiObject: GuiObject): void {
+	const target = rootNode.pointer?.hoverTargets.get(guiObject);
+	if (target !== undefined) target.setHovered(false);
+}
+
+function disconnectHoverTarget(target: HoverTarget): void {
+	target.setHovered(false);
+	target.enterConnection.Disconnect();
+	target.moveConnection.Disconnect();
+	target.leaveConnection.Disconnect();
+}
+
+function clearAllHoverTargets(pointer: PointerState): void {
+	for (const [, target] of pointer.hoverTargets) target.setHovered(false);
+}
+
+function destroyPointerState(node: Node): void {
+	const pointer = node.pointer;
+	if (pointer === undefined) return;
+	for (const [, target] of pointer.hoverTargets) disconnectHoverTarget(target);
+	pointer.hoverTargets.clear();
+	node.pointer = undefined;
+}
+
+function isLiveInstance(instance: Instance): boolean {
+	const [ok, parent] = pcall(() => parentOf(instance));
+	return ok && parent !== undefined;
+}
+
+function ensurePointerState(rootNode: Node): PointerState {
+	if (rootNode.pointer !== undefined) return rootNode.pointer;
+
+	const pointer: PointerState = {
+		hoverTargets: new Map(),
+		dragDepth: 0,
+	};
+	rootNode.pointer = pointer;
+
+	return pointer;
+}
+
+function rootNode(): Node {
+	const root = stack[0]?.node;
+	assert(root !== undefined, "[rovy-ui] pointer helpers require an active frame");
+	return root;
+}
+
+function cleanupPointerTargets(rootNode: Node): void {
+	const pointer = rootNode.pointer;
+	if (pointer === undefined) return;
+	for (const [guiObject, target] of pointer.hoverTargets) {
+		if (target.generation !== rootNode.generation || !isLiveInstance(guiObject)) {
+			disconnectHoverTarget(target);
+			pointer.hoverTargets.delete(guiObject);
+		}
+	}
 }
 
 export function currentFrame(): StackFrame {
@@ -219,6 +456,7 @@ export function finishFrame(rootNode: Node): void {
 			rootNode.children.delete(key);
 		}
 	}
+	cleanupPointerTargets(rootNode);
 }
 
 export function start<TArgs extends Array<unknown>>(
@@ -351,6 +589,40 @@ export function useKey(key: string | number): void {
 
 export function useRootInstance(): Instance | undefined {
 	return stack[0]?.node.instance;
+}
+
+export function useHoverTarget(guiObject: GuiObject | undefined, setHovered: HoverSetter, _name?: string): void {
+	if (guiObject === undefined) return;
+	const root = rootNode();
+	const pointer = ensurePointerState(root);
+	const existing = pointer.hoverTargets.get(guiObject);
+	if (existing !== undefined) {
+		existing.setHovered = setHovered;
+		existing.generation = root.generation;
+		return;
+	}
+
+	pointer.hoverTargets.set(guiObject, {
+		setHovered,
+		generation: root.generation,
+		enterConnection: guiObject.MouseEnter.Connect(() => refreshHoverTarget(root, guiObject)),
+		moveConnection: guiObject.MouseMoved.Connect(() => refreshHoverTarget(root, guiObject)),
+		leaveConnection: guiObject.MouseLeave.Connect(() => clearHoverTarget(root, guiObject)),
+	});
+}
+
+export function usePointerDrag(): { begin(): void; end(): void } {
+	const root = rootNode();
+	const pointer = ensurePointerState(root);
+	return {
+		begin() {
+			pointer.dragDepth += 1;
+			clearAllHoverTargets(pointer);
+		},
+		end() {
+			pointer.dragDepth = math.max(0, pointer.dragDepth - 1);
+		},
+	};
 }
 
 export function setEventCallback(callback: EventCallback): void {

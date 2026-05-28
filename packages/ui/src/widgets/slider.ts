@@ -1,8 +1,9 @@
-import { widget, __useInstance, __useState, __useEffect } from "../runtime";
+import { widget, __useInstance, __useState, __useEffect, usePointerDrag } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
 import { createConnect } from "../createConnect";
 import { udim, udim2, v2 } from "../primitives";
+import { isTopGuiTarget } from "./shared";
 
 export interface SliderOptions {
 	min?: number;
@@ -33,6 +34,8 @@ interface SliderRefs {
 	isEditing?: boolean;
 	didDrag?: boolean;
 	skipCommit?: boolean;
+	pointerDragging?: boolean;
+	endPointerDrag?: () => void;
 }
 
 function tryGetService(name: string): Instance | undefined {
@@ -69,15 +72,31 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 		const connectEvent = createConnect();
 		const UserInputService = tryGetService("UserInputService");
 		const style = useStyle();
+		const pointerDrag = usePointerDrag();
 		const grabWidth = 12;
 		const grabHeight = 16;
 		const trackHeight = 10;
 
 		ref.connection = undefined;
 		ref.dragConnection = undefined;
+		ref.pointerDragging = false;
+		ref.endPointerDrag = pointerDrag.end;
+
+		const beginPointerDrag = (): void => {
+			if (ref.pointerDragging === true) return;
+			ref.pointerDragging = true;
+			pointerDrag.begin();
+		};
+
+		const endPointerDrag = (): void => {
+			if (ref.pointerDragging !== true) return;
+			ref.pointerDragging = false;
+			pointerDrag.end();
+		};
 
 		const startTrackDrag = (): void => {
 			if (UserInputService === undefined) return;
+			beginPointerDrag();
 			if (ref.connection !== undefined) ref.connection.Disconnect();
 			ref.connection = connectEvent(UserInputService, "InputChanged", (...args: ReadonlyArray<unknown>) => {
 				const moveInput = args[0] as InputObject;
@@ -91,6 +110,7 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 
 		const startValueDrag = (startInput: InputObject): void => {
 			if (UserInputService === undefined) return;
+			beginPointerDrag();
 			if (ref.dragConnection !== undefined) ref.dragConnection.Disconnect();
 			const curPct = ref.currentPercent ?? 0;
 			const curMin = ref.rangeMin ?? 0;
@@ -160,11 +180,12 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 						Thickness: style.strokeThickness,
 						ApplyStrokeMode: Enum.ApplyStrokeMode.Border,
 					}),
-					InputBegan: (...args: ReadonlyArray<unknown>) => {
-						const inputObj = args[0] as InputObject;
-						if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
-						startTrackDrag();
-					},
+						InputBegan: (...args: ReadonlyArray<unknown>) => {
+							const inputObj = args[0] as InputObject;
+							if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
+							if (!isTopGuiTarget(ref.grab)) return;
+							startTrackDrag();
+						},
 					InputEnded: (...args: ReadonlyArray<unknown>) => {
 						const inputObj = args[0] as InputObject;
 						if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
@@ -172,12 +193,14 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 							ref.connection.Disconnect();
 							ref.connection = undefined;
 						}
+						endPointerDrag();
 					},
 				}),
-				InputBegan: (...args: ReadonlyArray<unknown>) => {
-					const inputObj = args[0] as InputObject;
-					if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
-					const trackFrame = ref.track;
+					InputBegan: (...args: ReadonlyArray<unknown>) => {
+						const inputObj = args[0] as InputObject;
+						if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
+						if (!isTopGuiTarget(ref.track)) return;
+						const trackFrame = ref.track;
 					const trackWidth = trackFrame.AbsoluteSize.X;
 					const x = math.clamp(inputObj.Position.X - trackFrame.AbsolutePosition.X, 0, trackWidth);
 					setPercentageValue(x / trackWidth);
@@ -190,6 +213,7 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 						ref.connection.Disconnect();
 						ref.connection = undefined;
 					}
+					endPointerDrag();
 				},
 			}),
 			2: create("TextBox", {
@@ -220,10 +244,11 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 					PaddingLeft: udim(0, 4),
 					PaddingRight: udim(0, 4),
 				}),
-				InputBegan: (...args: ReadonlyArray<unknown>) => {
-					const inputObj = args[0] as InputObject;
-					if (inputObj.UserInputType === Enum.UserInputType.MouseButton1) {
-						if (!ref.valueBox.TextEditable) startValueDrag(inputObj);
+					InputBegan: (...args: ReadonlyArray<unknown>) => {
+						const inputObj = args[0] as InputObject;
+						if (inputObj.UserInputType === Enum.UserInputType.MouseButton1) {
+							if (!isTopGuiTarget(ref.valueBox)) return;
+							if (!ref.valueBox.TextEditable) startValueDrag(inputObj);
 					} else if (inputObj.KeyCode === Enum.KeyCode.Escape) {
 						ref.skipCommit = true;
 						setEditing(false);
@@ -237,16 +262,22 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 						ref.dragConnection.Disconnect();
 						ref.dragConnection = undefined;
 					}
-					if (ref.didDrag !== true) {
-						ref.valueBox.TextEditable = true;
+						endPointerDrag();
+						if (ref.didDrag !== true) {
+							if (!isTopGuiTarget(ref.valueBox)) return;
+							ref.valueBox.TextEditable = true;
 						setEditing(true);
 						ref.valueBox.CaptureFocus();
 						ref.valueBox.CursorPosition = ref.valueBox.Text.size() + 1;
 					}
 				},
-				Focused: () => {
-					setFocused(true);
-				},
+					Focused: () => {
+						if (!isTopGuiTarget(ref.valueBox)) {
+							ref.valueBox.ReleaseFocus(false);
+							return;
+						}
+						setFocused(true);
+					},
 				FocusLost: (...focusArgs: ReadonlyArray<unknown>) => {
 					setFocused(false);
 					const enterPressed = focusArgs[0] as boolean;
@@ -282,6 +313,10 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 			if (refs.dragConnection !== undefined) {
 				refs.dragConnection.Disconnect();
 				refs.dragConnection = undefined;
+			}
+			if (refs.pointerDragging === true) {
+				refs.pointerDragging = false;
+				refs.endPointerDrag?.();
 			}
 		};
 	});

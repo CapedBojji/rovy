@@ -1,7 +1,8 @@
-import { widget, __useInstance, __useState } from "../runtime";
+import { widget, __useInstance, __useState, useHoverTarget } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim, udim2, v2 } from "../primitives";
+import { isTopGuiTarget } from "./shared";
 
 export interface ToggleOptions {
 	on?: boolean;
@@ -24,6 +25,7 @@ export const toggle = widget((text: string, options: ToggleOptions = {}): Toggle
 
 	const refs = __useInstance("toggle:instance", (ref) => {
 		const style = useStyle();
+		const targetRef = ref as unknown as { track: TextButton };
 		return create("Frame", {
 			[ref as never]: "row",
 			BackgroundTransparency: 1,
@@ -48,19 +50,12 @@ export const toggle = widget((text: string, options: ToggleOptions = {}): Toggle
 					AnchorPoint: v2(0.5, 0.5),
 					Position: udim2(0, HANDLE_SIZE / 2 + 2, 0.5, 0),
 					0: create("UICorner", { CornerRadius: udim(1, 0) }),
-				}),
-				MouseEnter: () => {
-					setHovered(true);
-				},
-				MouseLeave: () => {
-					setHovered(false);
-				},
-				Activated: () => {
-					if (options.disabled !== true) {
+					}),
+					Activated: () => {
+						if (options.disabled === true || !isTopGuiTarget(targetRef.track)) return;
 						setClicked(true);
 						setIsOn((v) => !v);
-					}
-				},
+					},
 			}),
 			1: create("TextLabel", {
 				[ref as never]: "label",
@@ -75,6 +70,8 @@ export const toggle = widget((text: string, options: ToggleOptions = {}): Toggle
 			}),
 		});
 	}) as { row: Frame; track: TextButton; handle: Frame; label: TextLabel };
+
+	useHoverTarget(refs.track, setHovered, `Toggle: ${text}`);
 
 	const style = useStyle();
 	const currentOn = options.on !== undefined ? options.on : isOn;

@@ -1,6 +1,15 @@
 import { udim, udim2 } from "../primitives";
 import type { Style } from "../style";
 import { create } from "../create";
+import {
+	HIT_TEST_PASS_THROUGH_ATTRIBUTE,
+	HIT_TEST_SURFACE_ATTRIBUTE,
+	INPUT_SINK_ATTRIBUTE,
+} from "../windowConstants";
+
+const DEFAULT_CURSOR_ICON = "rbxasset://SystemCursors/Arrow";
+let defaultCursorHoldCount = 0;
+let defaultCursorConnection: RBXScriptConnection | undefined;
 
 export function textProps(text: string, style: Style): Record<string, unknown> {
 	return {
@@ -36,6 +45,170 @@ export function basicHandle(
 		},
 	};
 	return handle as Record<string, () => boolean>;
+}
+
+function setDefaultCursor(): void {
+	const [inputOk, input] = pcall(() => game.GetService("UserInputService"));
+	if (inputOk) (input as UserInputService).MouseIcon = DEFAULT_CURSOR_ICON;
+
+	const [playersOk, players] = pcall(() => game.GetService("Players"));
+	if (!playersOk) return;
+	const player = (players as Players).LocalPlayer;
+	if (player === undefined) return;
+	player.GetMouse().Icon = DEFAULT_CURSOR_ICON;
+}
+
+function ensureDefaultCursorLoop(): void {
+	if (defaultCursorConnection !== undefined) return;
+	const [runOk, runService] = pcall(() => game.GetService("RunService"));
+	if (!runOk) return;
+	defaultCursorConnection = (runService as RunService).RenderStepped.Connect(() => {
+		if (defaultCursorHoldCount <= 0) {
+			defaultCursorConnection?.Disconnect();
+			defaultCursorConnection = undefined;
+			defaultCursorHoldCount = 0;
+			return;
+		}
+		setDefaultCursor();
+	});
+}
+
+export function defaultCursorHandlers(): {
+	MouseEnter: () => void;
+	MouseMoved: () => void;
+	MouseLeave: () => void;
+} {
+	let hovering = false;
+	const enter = (): void => {
+		if (!hovering) {
+			hovering = true;
+			defaultCursorHoldCount += 1;
+			ensureDefaultCursorLoop();
+		}
+		setDefaultCursor();
+	};
+	const leave = (): void => {
+		if (!hovering) return;
+		hovering = false;
+		defaultCursorHoldCount = math.max(0, defaultCursorHoldCount - 1);
+	};
+	return {
+		MouseEnter: enter,
+		MouseMoved: () => {
+			if (hovering) setDefaultCursor();
+		},
+		MouseLeave: leave,
+	};
+}
+
+export function bindDefaultCursor(guiObject: GuiObject): void {
+	const handlers = defaultCursorHandlers();
+	guiObject.MouseEnter.Connect(handlers.MouseEnter);
+	guiObject.MouseMoved.Connect(handlers.MouseMoved);
+	guiObject.MouseLeave.Connect(handlers.MouseLeave);
+}
+
+function parentOf(instance: Instance): Instance | undefined {
+	return (instance as unknown as { Parent?: Instance }).Parent;
+}
+
+function containsGuiObject(root: Instance, candidate: Instance): boolean {
+	let current: Instance | undefined = candidate;
+	while (current !== undefined) {
+		if (current === root) return true;
+		current = parentOf(current);
+	}
+	return false;
+}
+
+function setBoolAttribute(instance: Instance, name: string): void {
+	pcall(() => instance.SetAttribute(name, true));
+}
+
+export function markHitTestSurface(guiObject: Instance): void {
+	setBoolAttribute(guiObject, HIT_TEST_SURFACE_ATTRIBUTE);
+}
+
+export function markHitTestPassThrough(guiObject: Instance): void {
+	setBoolAttribute(guiObject, HIT_TEST_PASS_THROUGH_ATTRIBUTE);
+}
+
+export function markInputSink(guiObject: Instance): void {
+	setBoolAttribute(guiObject, INPUT_SINK_ATTRIBUTE);
+}
+
+function isHitTestPassThrough(guiObject: Instance): boolean {
+	const [ok, value] = pcall(() => guiObject.GetAttribute(HIT_TEST_PASS_THROUGH_ATTRIBUTE));
+	return ok && value === true;
+}
+
+function isPassThroughForTarget(blocker: Instance, target: Instance): boolean {
+	if (!isHitTestPassThrough(blocker)) return false;
+	if (containsGuiObject(blocker, target)) return true;
+
+	let current = parentOf(blocker);
+	while (current !== undefined) {
+		if (isHitTestPassThrough(current) && containsGuiObject(current, target)) return true;
+		current = parentOf(current);
+	}
+	return false;
+}
+
+function findScreenGui(guiObject: Instance): ScreenGui | undefined {
+	let current: Instance | undefined = guiObject;
+	while (current !== undefined) {
+		if (current.IsA("ScreenGui")) return current as ScreenGui;
+		current = parentOf(current);
+	}
+	return undefined;
+}
+
+function inputPosition(inputOrX?: unknown, y?: unknown): Vector2 | undefined {
+	if (typeIs(inputOrX, "number") && typeIs(y, "number")) {
+		return new Vector2(inputOrX, y);
+	}
+
+	if (inputOrX !== undefined && !typeIs(inputOrX, "number")) {
+		const position = (inputOrX as { Position?: Vector3 }).Position;
+		if (position !== undefined) return new Vector2(position.X, position.Y);
+	}
+	const [inputOk, input] = pcall(() => game.GetService("UserInputService"));
+	if (!inputOk) return undefined;
+	const [mouseOk, location] = pcall(() => (input as UserInputService).GetMouseLocation());
+	if (!mouseOk) return undefined;
+
+	const [serviceOk, service] = pcall(() => game.GetService("GuiService"));
+	if (!serviceOk) return location;
+	const [insetOk, topLeft] = pcall(() => {
+		const [topLeftInset] = (service as GuiService).GetGuiInset();
+		return topLeftInset;
+	});
+	if (!insetOk) return location;
+	const guiInset = topLeft as Vector2;
+	return new Vector2(location.X - guiInset.X, location.Y - guiInset.Y);
+}
+
+function guiObjectsAt(guiObject: Instance, position: Vector2): ReadonlyArray<GuiObject> | undefined {
+	const screenGui = findScreenGui(guiObject);
+	const root = parentOf(screenGui ?? guiObject);
+	if (root === undefined || !root.IsA("PlayerGui")) return undefined;
+	const [ok, objects] = pcall(() => (root as PlayerGui).GetGuiObjectsAtPosition(position.X, position.Y));
+	return ok ? (objects as ReadonlyArray<GuiObject>) : undefined;
+}
+
+export function isTopGuiTarget(guiObject: Instance, inputOrX?: unknown, y?: unknown): boolean {
+	const position = inputPosition(inputOrX, y);
+	if (position === undefined) return true;
+	const objects = guiObjectsAt(guiObject, position);
+	if (objects === undefined) return true;
+
+	for (const object of objects) {
+		if (!object.Visible) continue;
+		if (object === guiObject || containsGuiObject(guiObject, object)) return true;
+		if (isPassThroughForTarget(object, guiObject)) continue;
+		return false;
+	}
+	return false;
 }
 
 // ---------------------------------------------------------------------------

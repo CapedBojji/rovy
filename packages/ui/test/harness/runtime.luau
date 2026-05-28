@@ -174,9 +174,23 @@ for _, r in roots do
 end
 
 local function signal()
+	local listeners = {}
 	return {
-		Connect = function(_self, _fn)
-			return { Disconnect = function() end }
+		Connect = function(_self, fn)
+			local listener = { connected = true, fn = fn }
+			table.insert(listeners, listener)
+			return {
+				Disconnect = function()
+					listener.connected = false
+				end,
+			}
+		end,
+		Fire = function(_self, ...)
+			for _, listener in ipairs(listeners) do
+				if listener.connected then
+					listener.fn(...)
+				end
+			end
 		end,
 	}
 end
@@ -190,11 +204,13 @@ local signalKeys = {
 	Heartbeat = true,
 	RenderStepped = true,
 	Stepped = true,
+	Activated = true,
 	MouseButton1Click = true,
 	MouseButton1Down = true,
 	MouseButton1Up = true,
 	MouseEnter = true,
 	MouseLeave = true,
+	MouseMoved = true,
 	InputBegan = true,
 	InputChanged = true,
 	InputEnded = true,
@@ -239,13 +255,14 @@ end
 function FakeInstance:IsA(className)
 	return self.ClassName == className or className == "Instance" or (className == "GuiObject" and self.__isGui)
 end
-function FakeInstance:Destroy()
-	self.Destroyed = true
-	for _, child in ipairs(self:GetChildren()) do
-		child:Destroy()
+	function FakeInstance:Destroy()
+		self.Destroyed = true
+		self.Parent = nil
+		for _, child in ipairs(self:GetChildren()) do
+			child:Destroy()
+		end
+		self.__children = {}
 	end
-	self.__children = {}
-end
 function FakeInstance:GetChildren()
 	local children = {}
 	for _, instance in ipairs(allInstances) do
@@ -266,6 +283,13 @@ function FakeInstance:FindFirstChildOfClass(className)
 		if child.ClassName == className then return child end
 	end
 	return nil
+end
+function FakeInstance:GetGuiObjectsAtPosition(x, y)
+	local byPosition = self.__guiObjectsAtPositionByPosition
+	if byPosition ~= nil then
+		return byPosition[tostring(x) .. "," .. tostring(y)] or {}
+	end
+	return self.__guiObjectsAtPosition or {}
 end
 function FakeInstance:SetAttribute(name, value)
 	self.__attributes[name] = value
@@ -291,6 +315,24 @@ local function newInstance(className)
 	return instance
 end
 
+local services = {
+	UserInputService = {
+		InputBegan = signal(),
+		InputChanged = signal(),
+		InputEnded = signal(),
+		MouseLocation = { X = 0, Y = 0 },
+		GetMouseLocation = function(self)
+			return self.MouseLocation
+		end,
+	},
+	GuiService = {
+		GuiInset = { X = 0, Y = 0 },
+		GetGuiInset = function(self)
+			return self.GuiInset, { X = 0, Y = 0 }
+		end,
+	},
+}
+
 local fakeGlobals = {
 	Color3 = {
 		fromRGB = function(r, g, b)
@@ -301,6 +343,17 @@ local fakeGlobals = {
 	UDim2 = { new = function(xs, xo, ys, yo) return { X = { Scale = xs, Offset = xo }, Y = { Scale = ys, Offset = yo } } end },
 	UDim = { new = function(scale, offset) return { Scale = scale, Offset = offset } end },
 	Instance = { new = newInstance },
+	game = {
+		GetService = function(selfOrName, maybeName)
+			local name = maybeName or selfOrName
+			local service = services[name]
+			if service == nil then
+				error("service not found: " .. tostring(name), 2)
+			end
+			return service
+		end,
+	},
+	__rovyTestServices = services,
 	Enum = setmetatable({}, {
 		__index = function(_, enumName)
 			return setmetatable({}, {
