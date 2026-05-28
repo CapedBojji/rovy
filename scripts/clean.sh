@@ -24,6 +24,7 @@ BUILD_DIRS=(
   "$ROOT/packages/ui/out"
   "$ROOT/packages/transformer/dist"
   "$ROOT/examples/plugin-example/out"
+  "$ROOT/examples/game-template/out"
   "$ROOT/examples/roblox-ts-game/out"
   "$ROOT/examples/roblox-ts-game/build"
   "$ROOT/examples/ui-inventory-game/out"

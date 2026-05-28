@@ -14,6 +14,10 @@ pnpm build:example      # build the roblox-ts game example
 pnpm dev:example        # build + watch
 pnpm open:example       # build + open in Studio
 
+pnpm build:template     # blank game template
+pnpm dev:template
+pnpm open:template
+
 pnpm build:ui-inventory # UI inventory example
 pnpm dev:ui-inventory
 pnpm open:ui-inventory
@@ -50,6 +54,15 @@ such as Blink output when enabled, then runs Rojo with the package's
 open Studio, and keep `rojo serve` / `rbxtsc -w` running.
 
 ## The examples
+
+### Game template — `examples/game-template`
+
+Package `@rovy/game-template`. A blank roblox-ts game template wired for Rovy
+bootstrap only. It includes empty client/server/shared folders with local agent
+rules, ESLint, a Zune smoke test, and a run-in-Roblox TestEZ workflow. Start here
+when you want project structure and tooling without inheriting gameplay code.
+
+Source: [`examples/game-template`](https://github.com/CapedBojji/rovy/tree/main/examples/game-template)
 
 ### roblox-ts game — `examples/roblox-ts-game`
 
