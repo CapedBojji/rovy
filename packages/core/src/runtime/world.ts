@@ -32,10 +32,10 @@ import {
 import type { ComponentInspection, Entity, RefCleanupOptions, RefOptions, ResourceInspection, World } from "../types";
 import type { LifecycleHub } from "./lifecycle";
 import { EntityRefStore } from "./ref";
+import { isResourceCloneByReference } from "./resource-clone";
 
 export interface ResourceTrackScope {
 	readonly baselines: Map<Ctor, object>;
-	readonly clones: Map<Ctor, object>;
 }
 
 /** Sentinel entity that holds every resource singleton as a jecs component. */
@@ -395,7 +395,7 @@ export class RovyWorld implements World {
 	}
 
 	beginResourceScope(): ResourceTrackScope {
-		return { baselines: new Map(), clones: new Map() };
+		return { baselines: new Map() };
 	}
 
 	resolveResourceForInjection<T extends object>(
@@ -409,23 +409,19 @@ export class RovyWorld implements World {
 			return raw;
 		}
 		const ctor = resource as unknown as Ctor;
-		const existing = scope.clones.get(ctor) as T | undefined;
-		if (existing !== undefined) return existing;
-		const baseline = cloneResourceValue(raw) as object;
-		const clone = cloneResourceValue(raw) as object;
-		scope.baselines.set(ctor, baseline);
-		scope.clones.set(ctor, clone);
-		return clone as T;
+		if (scope.baselines.get(ctor) === undefined) {
+			scope.baselines.set(ctor, cloneResourceValue(raw) as object);
+		}
+		return raw;
 	}
 
 	commitResourceScope(scope: ResourceTrackScope): void {
-		for (const [ctor, clone] of scope.clones) {
-			const baseline = scope.baselines.get(ctor);
-			if (baseline === undefined || inspectValuesEqual(baseline, clone)) continue;
+		for (const [ctor, baseline] of scope.baselines) {
+			const current = this.optResource(ctor as never);
+			if (current === undefined) continue;
 			const entry = this.resourceRegByCtor.get(ctor);
-			const paths = diffResourceValues(baseline, clone, entry?.inspect?.fields.map((field) => field.key) ?? []);
-			this.setResource(ctor, clone);
-			this.markResourceChanged(ctor, paths);
+			const paths = diffResourceValues(baseline, current, entry?.inspect?.fields.map((field) => field.key) ?? []);
+			if (paths.size() > 0) this.markResourceChanged(ctor, paths);
 		}
 	}
 
@@ -722,14 +718,18 @@ function ticksSince(store: Map<Entity, number> | undefined, lastRunTick: number)
 
 function cloneResourceValue(value: unknown, seen = new Map<object, object>()): unknown {
 	if (!typeIs(value, "table")) return value;
+	if (isResourceCloneByReference(value)) return value;
 	const source = value as object;
 	const existing = seen.get(source);
 	if (existing !== undefined) return existing;
-	const out = {} as Record<string | number, unknown>;
+	const outMap = new Map<unknown, unknown>();
+	const out = outMap as unknown as object;
 	seen.set(source, out);
 	for (const [key, child] of pairs(source as Record<never, unknown>)) {
-		const outKey = typeIs(key, "number") || typeIs(key, "string") ? key : tostring(key);
-		out[outKey] = cloneResourceValue(child, seen);
+		// Deep-clone table values while preserving key identity exactly. Leaves
+		// that are not tables (Instances, functions, Roblox value types, primitives)
+		// stay exact references/values.
+		outMap.set(key, cloneResourceValue(child, seen));
 	}
 	setmetatable(out, getmetatable(source) as never);
 	return out;
@@ -786,14 +786,14 @@ function diffValue(
 		out.push(path);
 		return;
 	}
-	const keys = new Map<string, true>();
-	for (const [key] of pairs(before as Record<never, unknown>)) keys.set(tostring(key), true);
-	for (const [key] of pairs(after as Record<never, unknown>)) keys.set(tostring(key), true);
+	const keys = new Map<unknown, true>();
+	for (const [key] of pairs(before as Record<never, unknown>)) keys.set(key, true);
+	for (const [key] of pairs(after as Record<never, unknown>)) keys.set(key, true);
 	for (const [key] of keys) {
 		diffValue(
-			findPathValue(before, key),
-			findPathValue(after, key),
-			[...path, key],
+			(before as Record<never, unknown>)[key as never],
+			(after as Record<never, unknown>)[key as never],
+			[...path, tostring(key)],
 			out,
 			depth + 1,
 		);

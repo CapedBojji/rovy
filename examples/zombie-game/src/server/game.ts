@@ -71,16 +71,15 @@ export function runZombieGameSmoke(): ZombieGameSmokeResult {
 	stepFixed(app);
 	setPlayerPosition(app, userId, arena.center);
 
-	const pause = app.world.resource(DevPauseState);
 	const waveBeforePause = app.world.resource(WaveState).waveNumber;
 	const intermissionBeforePause = app.world.resource(WaveState).intermissionRemaining;
-	pause.paused = true;
+	app.world.resource(DevPauseState).paused = true;
 	for (let i = 0; i < 8; i++) stepFixed(app);
 	const pausedWave = app.world.resource(WaveState);
 	const pauseFreezeVerified =
 		pausedWave.waveNumber === waveBeforePause &&
 		pausedWave.intermissionRemaining === intermissionBeforePause;
-	pause.paused = false;
+	app.world.resource(DevPauseState).paused = false;
 
 	let ticksRan = 0;
 	const stepN = (count: number) => {

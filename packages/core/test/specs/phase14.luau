@@ -120,6 +120,60 @@ return function(TS, t)
 			t.expect(constructed.resource).toBe(constructed.inbox)
 		end)
 
+		t.it("collector-backed resource fields keep identity through inspected resource snapshots", function()
+			rovy:__reset()
+			local seen = { inbox = nil, raw = nil, resourceWasRaw = nil, inboxWasRaw = nil, nestedWasRaw = nil }
+			local Inbox = collectClass(function(instance)
+				seen.inbox = instance
+			end)
+			local InboxRefs = class(function()
+				return { inbox = nil, nested = { count = 0 } }
+			end)
+			local Touch = sysClass(function(_, refs)
+				seen.resourceWasRaw = refs == seen.raw
+				seen.inboxWasRaw = refs.inbox == seen.raw.inbox
+				seen.nestedWasRaw = refs.nested == seen.raw.nested
+				refs.inbox:push("from-resource")
+				refs.nested.count += 1
+			end)
+
+			rovy:__collect(Inbox, "t/Inbox")
+			rovy:__resource(InboxRefs, "t/InboxRefs", {
+				collectorRefs = { { key = "inbox", ctor = Inbox } },
+				inspect = {
+					fields = {
+						{ key = "inbox", typeLabel = "table", validator = function()
+							return true
+						end },
+						{ key = "nested", typeLabel = "table", validator = function()
+							return true
+						end },
+					},
+				},
+			})
+			rovy:__schedule(Update, { runOnStart = false })
+			rovy:__system(Touch, {
+				id = "t/Touch",
+				schedule = Update,
+				params = { { kind = "resMut", ctor = InboxRefs } },
+			})
+
+			local app = App.new()
+			app:start()
+			seen.raw = app.world:resource(InboxRefs)
+			app:runSchedule(Update)
+
+			local live = app.world:resource(InboxRefs)
+			t.expect(seen.resourceWasRaw).toBe(true)
+			t.expect(seen.inboxWasRaw).toBe(true)
+			t.expect(seen.nestedWasRaw).toBe(true)
+			t.expect(live).toBe(seen.raw)
+			t.expect(live.inbox).toBe(seen.inbox)
+			t.expect(live.nested).toBe(seen.raw.nested)
+			t.expect(live.nested.count).toBe(1)
+			t.expect(#seen.inbox:drain()).toBe(1)
+		end)
+
 		t.it("collector queue survives schedule runs until author drains it", function()
 			rovy:__reset()
 			local seen = { inbox = nil, sizes = {} }

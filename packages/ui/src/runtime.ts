@@ -1,4 +1,4 @@
-import { App, ParamDescriptor, resolveParams, type ResolveCtx } from "@rovy/core";
+import { App, ParamDescriptor, markResourceCloneByReference, resolveParams, type ResolveCtx } from "@rovy/core";
 import { HIT_TEST_PASS_THROUGH_ATTRIBUTE } from "./windowConstants";
 
 export interface WidgetMeta {
@@ -356,7 +356,7 @@ export function provideContext<T>(context: Context<T>, value: T): void {
 }
 
 export function newRoot(rootInstance: Instance): Node {
-	return newNode(rootInstance);
+	return markResourceCloneByReference(newNode(rootInstance));
 }
 
 export { newRoot as new };
