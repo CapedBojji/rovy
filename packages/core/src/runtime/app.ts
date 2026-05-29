@@ -24,6 +24,7 @@ import { ScheduleContext } from "./schedule-context";
 import { Scheduler } from "./schedule";
 import { RovyWorld } from "./world";
 import { LifecycleHub, type LifecycleCallback, type LifecycleKind, type LifecycleUnsubscribe } from "./lifecycle";
+import { markResourceCloneByReference } from "./resource-clone";
 
 export class App {
 	readonly world = new RovyWorld();
@@ -255,7 +256,7 @@ export class App {
 				typeIs((instance as { drain?: unknown }).drain, "function"),
 				`[rovy] @collect '${entry.id}' must define drain() or extend Collector`,
 			);
-			this.collectors.set(entry.ctor, instance);
+			this.collectors.set(entry.ctor, markResourceCloneByReference(instance));
 		}
 
 		// 2c. prefabs → singleton app-owned entity builders

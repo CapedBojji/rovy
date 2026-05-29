@@ -16,27 +16,35 @@ export {
 export { WorldInspectorState } from "./state";
 export {
 	WorldInspectorRecorderState,
+	WorldInspectorPeerRecorderState,
 	WorldInspectorFrameRecorderSystem,
 	StartFrameRecordingObserver,
 	StopFrameRecordingObserver,
+	drainRecorderFrame,
+	registerRecorderListeners,
 	type RecorderPhase,
 	type RecorderConfig,
+	type RecordingControlQueueItem,
+	type WorldInspectorRecorderCollection,
 } from "./runtime/recorder";
 export {
+	countByKind,
 	formatTarget,
 	type ChangeEntry,
 	type ChangeKind,
 	type ChangeTarget,
 	type ComponentChangeTarget,
+	type EntityChangeTarget,
 	type FrameRecord,
+	type RelationChangeTarget,
 	type ResourceChangeTarget,
 } from "./runtime/recorder-snapshot";
 export { worldInspector } from "./widgets/world-inspector";
-export { recorderPanel } from "./widgets/recorder-panel";
-export { recorderResult } from "./widgets/recorder-result";
 export { recorderDetail } from "./widgets/recorder-detail";
+export { tableExplorer } from "./widgets/table-explorer";
 export * from "./remote/events";
 export * from "./runtime/component-names";
 export * from "./runtime/instance-expression";
 export * from "./runtime/query";
 export * from "./runtime/target";
+export * from "./runtime/value-tree";

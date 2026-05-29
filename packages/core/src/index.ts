@@ -62,6 +62,7 @@ export type {
 export { resolveParams } from "./runtime/resolve-param";
 export type { ResolveCtx, LocalStore } from "./runtime/resolve-param";
 export { registerAppExtension, runAppExtensions, resetAppExtensions } from "./runtime/extensions";
+export { markResourceCloneByReference, isResourceCloneByReference } from "./runtime/resource-clone";
 export type { Plugin } from "./runtime/plugin";
 
 // Frozen transformer↔runtime contract.

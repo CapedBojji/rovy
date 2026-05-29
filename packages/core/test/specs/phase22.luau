@@ -138,6 +138,47 @@ return function(TS, t)
 			t.expect(app.world:resource(Clock).tick).toBe(1)
 		end)
 
+		t.it("preserves object table keys while snapshotting inspected resources", function()
+			rovy:__reset()
+			local Update = class()
+			local Root = {}
+			local Hover = class(function(self)
+				self.hoverTargets = {
+					[Root] = { hovered = false },
+				}
+			end)
+			local MarkHovered = class()
+			function MarkHovered:run(_, hover)
+				local target = hover.hoverTargets[Root]
+				t.expect(target).never.toBeUndefined()
+				target.hovered = true
+			end
+
+			rovy:__schedule(Update, { runOnStart = false })
+			rovy:__resource(Hover, "t/Hover", {
+				inspect = {
+					fields = {
+						{ key = "hoverTargets", typeLabel = "table", validator = function()
+							return true
+						end },
+					},
+				},
+			})
+			rovy:__system(MarkHovered, {
+				id = "t/MarkHovered",
+				schedule = Update,
+				params = { { kind = "world" }, { kind = "resMut", ctor = Hover } },
+			})
+
+			local app = App.new()
+			app:start()
+			app:runSchedule(Update)
+
+			local target = app.world:resource(Hover).hoverTargets[Root]
+			t.expect(target).never.toBeUndefined()
+			t.expect(target.hovered).toBe(true)
+		end)
+
 		t.it("emits relation added changed and removed hooks", function()
 			rovy:__reset()
 			local Marker = class()

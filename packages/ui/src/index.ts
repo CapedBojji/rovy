@@ -57,6 +57,7 @@ import { collapsingHeader } from "./widgets/collapsing-header";
 import { uiTable as _table } from "./widgets/table";
 import { tableRow } from "./widgets/table-row";
 import { tableCell } from "./widgets/table-cell";
+import { tableExplorer } from "./widgets/table-explorer";
 import { demoWindow } from "./widgets/demo-window";
 import { errorWidget } from "./widgets/error";
 
@@ -93,6 +94,7 @@ export * from "./widgets/collapsing-header";
 export * from "./widgets/table";
 export * from "./widgets/table-row";
 export * from "./widgets/table-cell";
+export * from "./widgets/table-explorer";
 export * from "./widgets/demo-window";
 export * from "./widgets/error";
 
@@ -156,6 +158,7 @@ export const rovyUi = {
 	table: _table,
 	tableRow,
 	tableCell,
+	tableExplorer,
 	demoWindow,
 	error: errorWidget,
 };

@@ -27,7 +27,8 @@ const output = files.map((file) => fs.readFileSync(file, "utf8")).join("\n");
 const rovyChecks = [
 	["component registration", /:__component\(/],
 	["resource registration", /:__resource\(/],
-	["inspect registration", /:__inspect\(/],
+	["resource inspect metadata", /:__resource\([^)]*\{\s*inspect = \{/],
+	["editor metadata", /editor = \{/],
 	["system registration", /:__system\(/],
 	["monitor registration", /:__monitor\(/],
 	["query registration", /:__query\(/],

@@ -5,6 +5,7 @@ import type {
 	WorldInspectorSnapshotDto,
 	WorldInspectorTargetChoice,
 } from "../runtime/target";
+import type { FrameRecord, RecordingControlCommand } from "../runtime/recorder-snapshot";
 
 export class WorldInspectorTargetListRequest {
 	constructor(readonly requestId: string) {}
@@ -87,6 +88,64 @@ export class WorldInspectorPeerEditResponse {
 	) {}
 }
 
+export class RecordingControlRequest {
+	constructor(
+		readonly requestId: string,
+		readonly sessionId: string,
+		readonly targetKey: string,
+		readonly command: RecordingControlCommand,
+		readonly maxFrames: number,
+	) {}
+}
+
+export class RecordingControlResponse {
+	constructor(
+		readonly requestId: string,
+		readonly sessionId: string,
+		readonly targetKey: string,
+		readonly ok: boolean,
+		readonly command: RecordingControlCommand,
+		readonly message?: string,
+	) {}
+}
+
+export class RecordingFrame {
+	constructor(
+		readonly sessionId: string,
+		readonly targetKey: string,
+		readonly frame: FrameRecord,
+	) {}
+}
+
+export class PeerRecordingControlRequest {
+	constructor(
+		readonly requestId: string,
+		readonly sessionId: string,
+		readonly requesterUserId: number,
+		readonly command: RecordingControlCommand,
+		readonly maxFrames: number,
+	) {}
+}
+
+export class PeerRecordingControlResponse {
+	constructor(
+		readonly requestId: string,
+		readonly sessionId: string,
+		readonly requesterUserId: number,
+		readonly ok: boolean,
+		readonly command: RecordingControlCommand,
+		readonly message?: string,
+	) {}
+}
+
+export class PeerRecordingFrame {
+	constructor(
+		readonly sessionId: string,
+		readonly requesterUserId: number,
+		readonly frame: FrameRecord,
+	) {}
+}
+
 const registrations = [
 	{
 		ctor: WorldInspectorTargetListRequest,
@@ -157,6 +216,48 @@ const registrations = [
 		name: "WorldInspectorPeerEditResponse",
 		direction: "clientToServer" as const,
 		fields: ["requestId", "requesterUserId", "ok", "snapshot", "message", "spawnedEntityId"],
+	},
+	{
+		ctor: RecordingControlRequest,
+		id: "@rovy/world-inspector/RecordingControlRequest",
+		name: "RecordingControlRequest",
+		direction: "clientToServer" as const,
+		fields: ["requestId", "sessionId", "targetKey", "command", "maxFrames"],
+	},
+	{
+		ctor: RecordingControlResponse,
+		id: "@rovy/world-inspector/RecordingControlResponse",
+		name: "RecordingControlResponse",
+		direction: "serverToClient" as const,
+		fields: ["requestId", "sessionId", "targetKey", "ok", "command", "message"],
+	},
+	{
+		ctor: RecordingFrame,
+		id: "@rovy/world-inspector/RecordingFrame",
+		name: "RecordingFrame",
+		direction: "serverToClient" as const,
+		fields: ["sessionId", "targetKey", "frame"],
+	},
+	{
+		ctor: PeerRecordingControlRequest,
+		id: "@rovy/world-inspector/PeerRecordingControlRequest",
+		name: "PeerRecordingControlRequest",
+		direction: "serverToClient" as const,
+		fields: ["requestId", "sessionId", "requesterUserId", "command", "maxFrames"],
+	},
+	{
+		ctor: PeerRecordingControlResponse,
+		id: "@rovy/world-inspector/PeerRecordingControlResponse",
+		name: "PeerRecordingControlResponse",
+		direction: "clientToServer" as const,
+		fields: ["requestId", "sessionId", "requesterUserId", "ok", "command", "message"],
+	},
+	{
+		ctor: PeerRecordingFrame,
+		id: "@rovy/world-inspector/PeerRecordingFrame",
+		name: "PeerRecordingFrame",
+		direction: "clientToServer" as const,
+		fields: ["sessionId", "requesterUserId", "frame"],
 	},
 ];
 

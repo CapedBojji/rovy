@@ -12,7 +12,18 @@ export interface WorldInspectorEntityWindowState {
 	size?: Vector2;
 }
 
-export type WorldInspectorMainTab = "entities" | "resources";
+export type WorldInspectorMainTab = "entities" | "resources" | "frames";
+
+/** Identifies which value tree a table explorer window navigates. */
+export type WorldInspectorExplorerSource =
+	| { readonly kind: "resource"; readonly resourceId: string }
+	| { readonly kind: "frame"; readonly frameIndex: number; readonly entryIndex: number; readonly side: "old" | "new" };
+
+export interface WorldInspectorTableExplorerState {
+	readonly title: string;
+	readonly source: WorldInspectorExplorerSource;
+	path?: ReadonlyArray<string>;
+}
 
 export class WorldInspectorState {
 	visible = false;
@@ -22,6 +33,8 @@ export class WorldInspectorState {
 	selectedTargetKey = "local";
 	activeTab: WorldInspectorMainTab = "entities";
 	query = "";
+	resourceQuery = "";
+	tableExplorers = new Map<string, WorldInspectorTableExplorerState>();
 	position?: Vector2;
 	size?: Vector2;
 	actionErrors = new Map<string, string>();
@@ -62,10 +75,25 @@ export class WorldInspectorState {
 		this.selectedTargetKey = "local";
 		this.activeTab = "entities";
 		this.query = "";
+		this.resourceQuery = "";
+		this.tableExplorers.clear();
 		this.componentPicker = "";
 		this.error = undefined;
 		this.clearDrafts();
 		this.actionErrors.clear();
+	}
+
+	openTableExplorer(key: string, title: string, source: WorldInspectorExplorerSource, path: ReadonlyArray<string> = []): void {
+		const existing = this.tableExplorers.get(key);
+		if (existing !== undefined) {
+			existing.path = path;
+			return;
+		}
+		this.tableExplorers.set(key, { title, source, path });
+	}
+
+	closeTableExplorer(key: string): void {
+		this.tableExplorers.delete(key);
 	}
 
 	hasDraft(key: string): boolean {

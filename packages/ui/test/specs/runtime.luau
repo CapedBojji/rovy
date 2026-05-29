@@ -153,6 +153,35 @@ return function(TS, t)
 			t.expect(seen[3]).toBe("A:1")
 		end)
 
+		t.it("preserves object table keys in useState values across frames", function()
+			RovyUi.__reset()
+			local Root = {}
+			local stateTables = {}
+			local Widget = RovyUi.__widget(function()
+				local state = RovyUi.__useState("object-keyed", function()
+					return {
+						[Root] = { count = 0 },
+					}
+				end)
+				local values, setValues = state[1], state[2]
+				t.expect(values[Root]).never.toBeUndefined()
+				values[Root].count += 1
+				table.insert(stateTables, values)
+				setValues(values)
+			end, { id = "spec@ObjectState", name = "ObjectState" })
+			local node = RovyUi.new(root())
+
+			RovyUi.start(node, function()
+				RovyUi.__callWidget("call:state", Widget)
+			end)
+			RovyUi.start(node, function()
+				RovyUi.__callWidget("call:state", Widget)
+			end)
+
+			t.expect(stateTables[2]).toBe(stateTables[1])
+			t.expect(stateTables[2][Root].count).toBe(2)
+		end)
+
 		t.it("runs useEffect on dependency changes and cleans up stale effect", function()
 			RovyUi.__reset()
 			local runs = 0
@@ -178,6 +207,40 @@ return function(TS, t)
 			end)
 			t.expect(runs).toBe(2)
 			t.expect(cleanups).toBe(1)
+		end)
+
+		t.it("compares useEffect dependencies by original object identity", function()
+			RovyUi.__reset()
+			local Root = {}
+			local OtherRoot = {}
+			local runs = 0
+			local cleanups = 0
+			local seen = {}
+			local Widget = RovyUi.__widget(function(dep)
+				RovyUi.__useEffect("identity-effect", function()
+					runs += 1
+					table.insert(seen, dep)
+					return function()
+						cleanups += 1
+					end
+				end, dep)
+			end, { id = "spec@IdentityEffect", name = "IdentityEffect" })
+			local node = RovyUi.new(root())
+
+			RovyUi.start(node, function()
+				RovyUi.__callWidget("call:effect", Widget, Root)
+			end)
+			RovyUi.start(node, function()
+				RovyUi.__callWidget("call:effect", Widget, Root)
+			end)
+			RovyUi.start(node, function()
+				RovyUi.__callWidget("call:effect", Widget, OtherRoot)
+			end)
+
+			t.expect(runs).toBe(2)
+			t.expect(cleanups).toBe(1)
+			t.expect(seen[1]).toBe(Root)
+			t.expect(seen[2]).toBe(OtherRoot)
 		end)
 
 		t.it("creates instances and exposes widget catalog handles", function()

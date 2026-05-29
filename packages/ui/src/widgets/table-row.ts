@@ -67,6 +67,14 @@ const tableRowWidget = widget((options: TableRowOptions, fn: () => void): void =
 	markHitTestPassThrough(refs.frame);
 	markHitTestPassThrough(refs.topDivider);
 	markHitTestPassThrough(refs.content);
+	if (tableState.scrollX) {
+		// Size to the full content width so the table's scroll canvas can exceed the viewport.
+		refs.frame.Size = udim2(0, tableState.contentWidth, 0, 0);
+		refs.content.Size = udim2(0, tableState.contentWidth, 0, 0);
+	} else {
+		refs.frame.Size = udim2(1, 0, 0, 0);
+		refs.content.Size = udim2(1, 0, 0, 0);
+	}
 	if (refs.minSize !== undefined) refs.minSize.MinSize = v2(0, tableState.rowHeight);
 	refs.topDivider.Visible = tableState.borders && rowIndex > 1;
 	refs.topDivider.BackgroundColor3 = tableState.borderColor;
