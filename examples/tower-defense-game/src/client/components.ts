@@ -3,6 +3,7 @@ import { component } from "@rovy/core";
 @component
 export class ModelData {
 	constructor(
+		public name: string,
 		public size: Vector3,
 		public color: Color3,
 		public material: Enum.Material,
@@ -26,10 +27,13 @@ export class PreviousPosition {
 }
 
 @component
-export class ClientZombie {}
+export class ClientMonster {}
 
 @component
 export class ClientProjectile {}
+
+@component
+export class ClientTurret {}
 
 @component
 export class NetworkId {

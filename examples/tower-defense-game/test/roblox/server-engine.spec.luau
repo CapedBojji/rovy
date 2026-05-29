@@ -1,56 +1,64 @@
 return function()
 	local ReplicatedStorage = game:GetService("ReplicatedStorage")
 	local RunService = game:GetService("RunService")
-	local ServerScriptService = game:GetService("ServerScriptService")
 
-	describe("tower defense game real-engine path", function()
+	describe("tower defense real-engine path", function()
+		it("boots server smoke so lifecycle print plugin emits resource changes", function()
+			-- Zune cannot prove Studio output wiring; this intentionally drives server app in Roblox.
+			local TS = require(ReplicatedStorage:WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+			local gameModule = TS.import(script, game:GetService("ServerScriptService"), "TS", "game")
+			local result = gameModule.runTowerDefenseSmoke(1)
+			local lifecycleLines = gameModule.drainLifecyclePrintLines()
+
+			assert(result.started, "server app did not start")
+			assert(result.monstersSpawned >= 1, "expected monsters")
+			assert(result.snapshotCount >= 1, "expected snapshots")
+			assert(result.clientHeartbeatApplied, "expected client heartbeat")
+			assert(#lifecycleLines >= 1, "expected lifecycle print plugin output")
+			local sawResource = false
+			local sawComponent = false
+			for _, line in lifecycleLines do
+				if string.find(line, "%[rovy:lifecycle%] resource_changed") ~= nil then
+					sawResource = true
+				end
+				if string.find(line, "%[rovy:lifecycle%] component_") ~= nil then
+					sawComponent = true
+				end
+				assert(string.find(line, "value=table") == nil, "lifecycle print should not dump table values")
+			end
+			assert(sawResource, "expected resource_changed lifecycle print")
+			assert(sawComponent, "expected component lifecycle print")
+		end)
+
+		it("imports compiled shared ModuleScripts through real RuntimeLib path", function()
+			-- Zune cannot catch real Rojo tree / RuntimeLib placement.
+			local TS = require(ReplicatedStorage:WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+			local contracts = TS.import(script, ReplicatedStorage, "TS", "contracts")
+			local network = TS.import(script, ReplicatedStorage, "TS", "network")
+			local payload = contracts.ClientHeartbeatPayload.new(7, 0.25, 3)
+			local event = network.toClientHeartbeatNet(payload)
+
+			assert(event.clientFrame == 7, "client heartbeat frame did not round-trip")
+			assert(event.clientTime == 0.25, "client heartbeat time did not round-trip")
+			assert(event.lastSnapshotTick == 3, "client heartbeat snapshot tick did not round-trip")
+		end)
+
+		it("uses real Instance parenting and destroy semantics", function()
+			-- Zune cannot catch native Instance parent/child behavior.
+			local part = Instance.new("Part")
+			part.Name = "TowerDefenseProbe"
+			part.Anchored = true
+			part.Parent = game:GetService("Workspace")
+			assert(game:GetService("Workspace"):FindFirstChild("TowerDefenseProbe") == part, "workspace lookup failed")
+			part:Destroy()
+			assert(part.Parent == nil, "destroy did not detach part")
+		end)
+
 		it("uses real RunService signal connections", function()
 			-- Zune cannot catch native RBXScriptConnection shape.
 			local connection = RunService.Heartbeat:Connect(function() end)
 			assert(typeof(connection) == "RBXScriptConnection", "Heartbeat did not return RBXScriptConnection")
 			connection:Disconnect()
-		end)
-
-		it("uses real Instance character tree plumbing", function()
-			-- Zune cannot catch Roblox Instance parenting, IsA, or destroy semantics.
-			local character = Instance.new("Model")
-			local root = Instance.new("Part")
-			root.Name = "HumanoidRootPart"
-			root.Position = Vector3.new(4, 5, 6)
-			root.Parent = character
-			character.Parent = game:GetService("Workspace")
-
-			assert(character:FindFirstChild("HumanoidRootPart") == root, "root missing from character")
-			assert(root:IsA("BasePart"), "root is not BasePart")
-
-			character:Destroy()
-			assert(root.Parent == nil, "destroy did not detach root")
-		end)
-
-		it("imports compiled ModuleScripts through real RuntimeLib path", function()
-			-- Zune cannot catch real Rojo tree / RuntimeLib placement.
-			local TS = require(ReplicatedStorage:WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
-			local driver = TS.import(script, ServerScriptService, "TS", "test-driver")
-			assert(type(driver.runTowerRobloxDriverSmoke) == "function", "driver import failed")
-		end)
-
-		it("mock-drives server player, fire, defeat, and restart", function()
-			-- Zune already proves deterministic sim; Roblox here proves real Model/Part character input path.
-			local TS = require(ReplicatedStorage:WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
-			local driver = TS.import(script, ServerScriptService, "TS", "test-driver")
-			local result = driver.runTowerRobloxDriverSmoke()
-
-			assert(result.started, "app did not start")
-			assert(result.rootSynced, "real HumanoidRootPart position did not sync into ECS")
-			assert(result.zombiesSpawned >= 1, "expected zombie spawn")
-			assert(result.zombiesKilled >= 1, "expected projectile kill")
-			assert(result.shotsFired >= 1, "expected fire event")
-			assert(result.snapshotCount >= 1, "expected snapshot")
-			assert(result.defeatReached, "expected defeat")
-			assert(result.restartApplied, "expected restart")
-			assert(result.phase == "intermission", "expected intermission after restart")
-			assert(result.waveNumber == 0, "expected wave reset")
-			assert(result.playerHealth == 100, "expected player health reset")
 		end)
 	end)
 end

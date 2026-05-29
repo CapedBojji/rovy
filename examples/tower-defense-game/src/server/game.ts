@@ -1,151 +1,82 @@
-import { App, type Plugin } from "@rovy/core";
+import { App, LifecyclePrintPlugin, type Plugin } from "@rovy/core";
 import { WorldInspectorServerPlugin } from "@rovy/world-inspector";
-import {
-	FireWeaponRequestPayload,
-	INITIAL_INTERMISSION_SECONDS,
-	PLAYER_MAX_HEALTH,
-	RestartRequestPayload,
-	SERVER_FIXED_DELTA,
-	ZombieGameSmokeResult,
-} from "shared/contracts";
-import { toFireWeaponRequestNet, toRestartRequestNet } from "shared/network";
-import "./components";
-import "./collectors";
+import { ClientHeartbeatPayload, SERVER_FIXED_DELTA, TowerDefenseSmokeResult } from "shared/contracts";
+import { toClientHeartbeatNet } from "shared/network";
+import { Health, Lifetime, Position, Projectile, ShotProfile } from "./components";
+import "./events";
 import "./systems";
 
 export * from "./components";
-export * from "./state";
+export * from "./events";
 export * from "./resources";
-export {
-	enqueueSmokeCharacterAdded,
-	enqueueSmokeCharacterRemoving,
-	enqueueSmokePlayerAdded,
-	enqueueSmokePlayerRemoving,
-} from "./collectors";
-export { SnapshotState } from "./resources";
+export * from "./state";
 
-import {
-	enqueueSmokePlayerAdded,
-} from "./collectors";
-import { Health, Position } from "./components";
 import {
 	CleanupSet,
 	CombatSet,
 	IngressSet,
 	MovementSet,
-	RemoteIngressSet,
 	SnapshotSet,
+	SpawnSet,
 	Update,
-	WaveSet,
 } from "./state";
-import { ArenaState, DevPauseState, PlayerRegistry, ScoreState, SmokeStats, SnapshotState, WaveState } from "./resources";
+import { ClientSignalState, SnapshotState, TowerDefenseStats, TurretState } from "./resources";
+
+const lifecyclePrintLines = new Array<string>();
+
+export function drainLifecyclePrintLines(): ReadonlyArray<string> {
+	const lines = [...lifecyclePrintLines];
+	lifecyclePrintLines.clear();
+	return lines;
+}
 
 export function boot(): App {
 	const app = new App();
-	app.configureSets(Update, [IngressSet, RemoteIngressSet, WaveSet, MovementSet, CombatSet, CleanupSet, SnapshotSet]);
+	app.configureSets(Update, [IngressSet, SpawnSet, CombatSet, MovementSet, CleanupSet, SnapshotSet]);
 	app.addPlugin(new WorldInspectorServerPlugin({
 		schedule: Update,
 		access: () => true,
 	}) as unknown as Plugin);
+	app.addPlugin(new LifecyclePrintPlugin({
+		hooks: ["component_added", "component_changed", "component_removed", "entity_spawned", "entity_despawned", "resource_changed"],
+		components: [Health, Lifetime, Position, Projectile, ShotProfile],
+		resources: [ClientSignalState, TowerDefenseStats, TurretState],
+		printer: (line) => {
+			lifecyclePrintLines.push(line);
+			print(line);
+		},
+	}) as unknown as Plugin);
 	app.start();
 	return app;
-}
-
-export function setPlayerPosition(app: App, userId: number, position: Vector3): void {
-	const registry = app.world.resource(PlayerRegistry);
-	const entity = registry.entitiesByUserId.get(userId);
-	if (entity === undefined) return;
-	app.world.set(entity, Position, new Position(position));
 }
 
 export function stepFixed(app: App): void {
 	app.runSchedule(Update);
 }
 
-export function runTowerDefenseSmoke(): ZombieGameSmokeResult {
+export function runTowerDefenseSmoke(durationSeconds = 18): TowerDefenseSmokeResult {
 	const app = boot();
-	const userId = 1001;
-	const arena = app.world.resource(ArenaState);
-
-	enqueueSmokePlayerAdded(userId);
-	stepFixed(app);
-	setPlayerPosition(app, userId, arena.center);
-
-	const pause = app.world.resource(DevPauseState);
-	const waveBeforePause = app.world.resource(WaveState).waveNumber;
-	const intermissionBeforePause = app.world.resource(WaveState).intermissionRemaining;
-	pause.paused = true;
-	for (let i = 0; i < 8; i++) stepFixed(app);
-	const pausedWave = app.world.resource(WaveState);
-	const pauseFreezeVerified =
-		pausedWave.waveNumber === waveBeforePause &&
-		pausedWave.intermissionRemaining === intermissionBeforePause;
-	pause.paused = false;
-
 	let ticksRan = 0;
-	const stepN = (count: number) => {
-		for (let i = 0; i < count; i++) {
-			stepFixed(app);
-			ticksRan += 1;
-		}
-	};
 
-	const intermissionTicks = math.ceil(INITIAL_INTERMISSION_SECONDS / SERVER_FIXED_DELTA) + 4;
-	stepN(intermissionTicks);
-
-	for (let attempt = 0; attempt < 240; attempt++) {
-		const stats = app.world.resource(SmokeStats);
-		if (stats.zombiesKilled > 0) break;
-		app.commands.send(
-			toFireWeaponRequestNet(
-				new FireWeaponRequestPayload(userId, attempt, arena.center, new Vector3(1, 0, 0)),
-			),
-		);
-		stepN(8);
+	app.commands.send(toClientHeartbeatNet(new ClientHeartbeatPayload(7, 0.25, 3)));
+	for (let i = 0; i < math.ceil(durationSeconds / SERVER_FIXED_DELTA); i++) {
+		stepFixed(app);
+		ticksRan += 1;
 	}
 
-	const registry = app.world.resource(PlayerRegistry);
-	const playerEntity = registry.entitiesByUserId.get(userId)!;
-	for (let attempt = 0; attempt < 300; attempt++) {
-		const health = app.world.get(playerEntity, Health);
-		if (health !== undefined && health.current <= 0) break;
-		stepN(2);
-		const after = app.world.get(playerEntity, Health);
-		if (after !== undefined && after.current > 0) {
-			const nextHealth = math.max(0, after.current - 12);
-			app.world.set(playerEntity, Health, new Health(nextHealth, after.max));
-		}
-	}
-
-	stepN(2);
-	const defeatReached = app.world.resource(WaveState).phase === "defeat";
-	const scoreBeforeRestart = app.world.resource(ScoreState).score;
-	const bestComboBeforeRestart = app.world.resource(ScoreState).bestCombo;
-
-	app.commands.send(toRestartRequestNet(new RestartRequestPayload(0)));
-	stepN(2);
-
-	const wave = app.world.resource(WaveState);
-	const stats = app.world.resource(SmokeStats);
-	const score = app.world.resource(ScoreState);
+	const stats = app.world.resource(TowerDefenseStats);
 	const snap = app.world.resource(SnapshotState);
-	const playerHealth = app.world.get(playerEntity, Health);
-
+	const client = app.world.resource(ClientSignalState);
 	return {
 		started: app.isStarted(),
 		ticksRan,
-		waveNumber: wave.waveNumber,
-		phase: wave.phase,
-		zombiesSpawned: stats.zombiesSpawned,
-		zombiesKilled: stats.zombiesKilled,
+		monstersSpawned: stats.monstersSpawned,
+		monstersKilled: stats.monstersKilled,
+		monstersEscaped: stats.monstersEscaped,
+		damageEvents: stats.damageEvents,
 		shotsFired: stats.shotsFired,
-		playerHealth: playerHealth?.current ?? 0,
-		defeatReached,
-		restartApplied: stats.restartApplied,
 		snapshotCount: snap.snapshotCount,
-		pauseFreezeVerified,
-		score: scoreBeforeRestart,
-		bestCombo: bestComboBeforeRestart,
-		scoreResetVerified: score.score === 0 && score.kills === 0 && score.combo === 0 && score.bestCombo === 0,
+		maxActiveMonstersObserved: stats.maxActiveMonstersObserved,
+		clientHeartbeatApplied: client.heartbeatsReceived >= 1 && client.lastClientFrame === 7,
 	};
 }

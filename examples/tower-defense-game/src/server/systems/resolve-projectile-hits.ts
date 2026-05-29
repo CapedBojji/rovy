@@ -1,36 +1,35 @@
-import { Commands, Entity, Query, Res, With, system } from "@rovy/core";
-import { Damage, Health, Position, Projectile, Radius, Zombie } from "../components";
-import { DevPauseState } from "../resources";
+import { Commands, Entity, Query, With, system } from "@rovy/core";
+import { Damage, Health, Monster, Position, Projectile, ProjectileTarget, Radius, WireId } from "../components";
 import { CombatSet, Update } from "../state";
-import { TickCooldowns } from "./tick-cooldowns";
+import { TickTurret } from "./tick-turret";
 
-@system({ schedule: Update, set: CombatSet, after: [TickCooldowns] })
+@system({ schedule: Update, set: CombatSet, after: [TickTurret] })
 export class ResolveProjectileHits {
 	run(
 		commands: Commands,
-		pause: Res<DevPauseState>,
-		projectiles: Query<[Entity, Position, Radius, Damage], With<Projectile>>,
-		zombies: Query<[Entity, Position, Radius, Health], With<Zombie>>,
+		projectiles: Query<[Entity, Position, Radius, Damage, ProjectileTarget], With<Projectile>>,
+		monsters: Query<[Entity, WireId, Position, Radius, Health], With<Monster>>,
 	) {
-		if (pause.paused) return;
 		const consumed = new Set<Entity>();
-		projectiles.forEach((projEntity, projPos, projRadius, damage) => {
-			if (consumed.has(projEntity)) return;
-			let hitZombie: { entity: Entity; health: Health } | undefined;
-			let bestDist = math.huge;
-			zombies.forEach((zEntity, zPos, zRadius, zHealth) => {
-				if (zHealth.current <= 0) return;
-				const d = projPos.value.sub(zPos.value).Magnitude;
-				if (d <= projRadius.value + zRadius.value && d < bestDist) {
-					bestDist = d;
-					hitZombie = { entity: zEntity, health: zHealth };
+		projectiles.forEach((projectileEntity, projectilePos, projectileRadius, damage, target) => {
+			if (consumed.has(projectileEntity)) return;
+			if (damage.value <= 0) return;
+			let hit: { entity: Entity; health: Health } | undefined;
+			let bestDistance = math.huge;
+			monsters.forEach((monsterEntity, wire, monsterPos, monsterRadius, health) => {
+				if (wire.value !== target.wireId) return;
+				if (health.current <= 0) return;
+				const distance = projectilePos.value.sub(monsterPos.value).Magnitude;
+				if (distance <= projectileRadius.value + monsterRadius.value && distance < bestDistance) {
+					bestDistance = distance;
+					hit = { entity: monsterEntity, health };
 				}
 			});
-			if (hitZombie === undefined) return;
-			const nextHealth = math.max(0, hitZombie.health.current - damage.value);
-			commands.set(hitZombie.entity, Health, new Health(nextHealth, hitZombie.health.max));
-			commands.despawn(projEntity);
-			consumed.add(projEntity);
+			if (hit === undefined) return;
+			const nextHealth = math.max(0, hit.health.current - damage.value);
+			commands.set(hit.entity, Health, new Health(nextHealth, hit.health.max));
+			commands.despawn(projectileEntity);
+			consumed.add(projectileEntity);
 		});
 	}
 }

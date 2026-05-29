@@ -1,14 +1,14 @@
 import { App, type Plugin } from "@rovy/core";
 import { ToggleWorldInspector, WorldInspectorPlugin } from "@rovy/world-inspector";
-import "./collectors";
 import "./components";
 import "./monitors";
 import "./systems";
 
-export * from "./state";
+export * from "./components";
 export * from "./resources";
+export * from "./state";
 
-import { FrameSet, InputSet, Render, RenderSet, SnapshotSet } from "./state";
+import { FrameSet, ModelSet, NetworkSet, Render, RenderSet } from "./state";
 import { ClientClock, HudState } from "./resources";
 
 function createInspectorGui(): ScreenGui {
@@ -25,7 +25,7 @@ function createInspectorGui(): ScreenGui {
 
 export function boot(): App {
 	const app = new App();
-	app.configureSets(Render, [FrameSet, SnapshotSet, InputSet, RenderSet]);
+	app.configureSets(Render, [FrameSet, NetworkSet, ModelSet, RenderSet]);
 	app.addPlugin(new WorldInspectorPlugin({
 		uiRoot: createInspectorGui(),
 		renderSchedule: Render,

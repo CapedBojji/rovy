@@ -1,55 +1,10 @@
-/**
- * Server entry point. Boots the Rovy app, keeps the fixed-step heartbeat,
- * gives players the tool, and forwards finished snapshot bytes to clients.
- *
- * Player lifecycle and remote ingress now live inside collectors, so this
- * file stays thin and engine-facing.
- */
-
 import { App, rovy } from "@rovy/core";
-import { SERVER_FIXED_DELTA, ZombieGameSmokeResult } from "shared/contracts";
+import { SERVER_FIXED_DELTA, TowerDefenseSmokeResult } from "shared/contracts";
 
 function loadGameModule() {
 	const ss = game.GetService("ServerScriptService").WaitForChild("TS");
 	const module = ss.WaitForChild("game") as ModuleScript;
 	return require(module) as typeof import("server/game");
-}
-
-const TOOL_NAME = "Block Blaster";
-
-function ensureToolTemplate(): Tool {
-	const serverStorage = game.GetService("ServerStorage");
-	const existing = serverStorage.FindFirstChild(TOOL_NAME);
-	if (existing && existing.IsA("Tool")) return existing;
-
-	const tool = new Instance("Tool");
-	tool.Name = TOOL_NAME;
-	tool.RequiresHandle = true;
-	tool.CanBeDropped = false;
-
-	const handle = new Instance("Part");
-	handle.Name = "Handle";
-	handle.Size = new Vector3(0.8, 0.6, 1.6);
-	handle.Color = Color3.fromRGB(20, 20, 20);
-	handle.Material = Enum.Material.Metal;
-	handle.TopSurface = Enum.SurfaceType.Smooth;
-	handle.BottomSurface = Enum.SurfaceType.Smooth;
-	handle.Parent = tool;
-
-	tool.Parent = serverStorage;
-	return tool;
-}
-
-function giveToolTo(player: Player): void {
-	const template = ensureToolTemplate();
-	const backpack = player.FindFirstChildOfClass("Backpack");
-	if (backpack && !backpack.FindFirstChild(TOOL_NAME)) {
-		template.Clone().Parent = backpack;
-	}
-	const starter = player.FindFirstChild("StarterGear");
-	if (starter && !starter.FindFirstChild(TOOL_NAME)) {
-		template.Clone().Parent = starter;
-	}
 }
 
 interface ServerRuntime {
@@ -66,12 +21,7 @@ function bootRuntime(): ServerRuntime {
 }
 
 function attachEngineHooks({ app, game: gameMod }: ServerRuntime): void {
-	const Players = game.GetService("Players");
 	const RunService = game.GetService("RunService");
-
-	for (const player of Players.GetPlayers()) giveToolTo(player);
-	Players.PlayerAdded.Connect((player) => giveToolTo(player));
-
 	let accumulator = 0;
 	RunService.Heartbeat.Connect((dt) => {
 		accumulator += dt;
@@ -87,9 +37,9 @@ const [hasRunService] = pcall(() => game.GetService("RunService"));
 if (hasRunService) {
 	const runtime = bootRuntime();
 	attachEngineHooks(runtime);
-	print("[tower-defense-game] server runtime online");
+	print("[tower-defense] server runtime online");
 }
 
-export function runTowerDefenseSmoke(): ZombieGameSmokeResult {
+export function runTowerDefenseSmoke(): TowerDefenseSmokeResult {
 	return loadGameModule().runTowerDefenseSmoke();
 }

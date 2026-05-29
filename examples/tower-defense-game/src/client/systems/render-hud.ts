@@ -6,9 +6,7 @@ import { ensureHudNode, Render, RenderSet } from "../state";
 @system({ schedule: Render, set: RenderSet })
 export class RenderHud {
 	run(hud: Res<HudState>, hudUi: ResMut<HudUiState>) {
-		const ratio = hud.playerMaxHealth > 0 ? hud.playerHealth / hud.playerMaxHealth : 0;
 		const node = ensureHudNode(hudUi);
-
 		if (hudUi.rendering) return;
 
 		hudUi.rendering = true;
@@ -18,33 +16,17 @@ export class RenderHud {
 				RovyUi.window(
 					{
 						title: "Tower Defense",
-						size: new Vector2(260, 220),
-						position: new Vector2(16, 16),
+						size: new Vector2(290, 220),
+						position: new Vector2(450, 16),
 					},
 					() => {
-						RovyUi.label(`Phase: ${hud.phase}`);
-						RovyUi.label(`Wave: ${hud.waveNumber}`);
-						RovyUi.label(`Enemies: ${hud.enemiesRemaining}`);
-						RovyUi.label(`Score: ${hud.score}`);
-						RovyUi.label(`Kills: ${hud.kills}  Shots: ${hud.shotsFired}`);
-						RovyUi.label(`Combo: x${hud.combo}  Best: x${hud.bestCombo}`);
-						RovyUi.label(`Inspector pause: ${hud.paused ? "on" : "off"}`);
-						RovyUi.progressBar({
-							value: ratio,
-							label: `HP ${math.floor(hud.playerHealth)}/${hud.playerMaxHealth}`,
-						});
-						const pauseBtn = RovyUi.button(hud.paused ? "Resume (P)" : "Pause (P)");
-						if (pauseBtn.clicked()) {
-							hudUi.local.setPaused(!hud.paused);
-						}
-
-						if (hud.gameOver) {
-							RovyUi.label("You died.");
-							const restartBtn = RovyUi.button("Restart (R)");
-							if (restartBtn.clicked()) {
-								hudUi.local.restart();
-							}
-						}
+						RovyUi.label(`Tick: ${hud.serverTick}  Time: ${math.floor(hud.simTime)}`);
+						RovyUi.label(`Active: ${hud.activeMonsters} monsters  ${hud.activeProjectiles} shots`);
+						RovyUi.label(`Spawned: ${hud.monstersSpawned}  Killed: ${hud.monstersKilled}`);
+						RovyUi.label(`Escaped: ${hud.monstersEscaped}  Damage events: ${hud.damageEvents}`);
+						RovyUi.label(`Total leak damage: ${hud.totalLeakDamage}`);
+						RovyUi.label(`Turret shots: ${hud.shotsFired}`);
+						RovyUi.label(`Server saw client frame: ${hud.lastClientFrameSeenByServer}`);
 					},
 				);
 			});

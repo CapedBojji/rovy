@@ -23,15 +23,17 @@ assert.ok(fs.existsSync(outDir), "tower-defense-game out/ missing; run rbxtsc fi
 const files = walk(outDir);
 const output = files.map((file) => fs.readFileSync(file, "utf8")).join("\n");
 
-// Rovy transformer markers (component / collect / system / query registration).
+// Rovy transformer markers (component / resource / system / query registration).
 const rovyChecks = [
 	["component registration", /:__component\(/],
-	["collect registration", /:__collect\(/],
 	["resource registration", /:__resource\(/],
+	["editor metadata", /editor = \{/],
 	["system registration", /:__system\(/],
+	["monitor registration", /:__monitor\(/],
 	["query registration", /:__query\(/],
 	["schedule registration", /:__schedule\(/],
 	["loadPaths Rojo lowering", /game:GetService\("ReplicatedStorage"\):WaitForChild\("TS"\)/],
+	["demo window usage", /demoWindow/],
 ];
 for (const [label, pattern] of rovyChecks) {
 	assert.match(output, pattern, `missing Rovy ${label}`);
@@ -40,7 +42,7 @@ for (const [label, pattern] of rovyChecks) {
 // Rovy networking lowering must produce some recognisable artifact.
 // The example uses package-owned networking events for gameplay and inspector transport.
 assert.match(output, /__rovyNet|RovyNetworking|__netEvent/, "missing Rovy networking output");
-assert.doesNotMatch(output, /:__observer\(/, "zombie example should not emit observer registrations");
+assert.match(output, /:__observer\(/, "tower defense should emit observer registrations for damage events");
 
 // Macro / query lowering didn't leak diagnostics into the output.
 assert.doesNotMatch(output, /macro reached runtime untransformed/, "raw macro guard leaked into game output");

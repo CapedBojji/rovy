@@ -1,13 +1,14 @@
 import RovyUi from "@rovy/ui";
-import { $collectRef, resource } from "@rovy/core";
+import { inspect, resource } from "@rovy/core";
 import type { Entity } from "@rovy/core";
-import { PLAYER_MAX_HEALTH, WavePhase } from "shared/contracts";
-import { LocalClientCollect } from "./collectors";
 
+@inspect
 @resource
 export class ClientClock {
 	now = 0;
 	delta = 0;
+	frame = 0;
+	nextHeartbeatIn = 0;
 }
 
 @resource
@@ -17,24 +18,35 @@ export class RenderRegistry {
 
 @resource
 export class NetworkEntityMap {
-	zombies = new Map<number, Entity>();
+	monsters = new Map<number, Entity>();
 	projectiles = new Map<number, Entity>();
+	turret?: Entity;
 }
 
+@inspect
+@resource
+export class ClientPlaybackState {
+	lastSnapshotTick = 0;
+	snapshotsReceived = 0;
+	lastDamageEvents = 0;
+	lastClientHeartbeatFrame = 0;
+}
+
+@inspect
 @resource
 export class HudState {
-	phase: WavePhase = "intermission";
-	waveNumber = 0;
-	enemiesRemaining = 0;
-	score = 0;
-	kills = 0;
+	serverTick = 0;
+	simTime = 0;
+	monstersSpawned = 0;
+	monstersKilled = 0;
+	monstersEscaped = 0;
+	damageEvents = 0;
+	totalLeakDamage = 0;
 	shotsFired = 0;
-	combo = 0;
-	bestCombo = 0;
-	playerHealth = PLAYER_MAX_HEALTH;
-	playerMaxHealth = PLAYER_MAX_HEALTH;
-	gameOver = false;
-	paused = false;
+	activeMonsters = 0;
+	activeProjectiles = 0;
+	lastDamageAmount = 0;
+	lastClientFrameSeenByServer = 0;
 }
 
 @resource
@@ -42,12 +54,4 @@ export class HudUiState {
 	gui?: ScreenGui;
 	node?: ReturnType<typeof RovyUi.new>;
 	rendering = false;
-	readonly local: LocalClientCollect = $collectRef<LocalClientCollect>();
-}
-
-@resource
-export class LocalPlayerState {
-	character?: Model;
-	shotSequence = 0;
-	userId = 0;
 }
