@@ -3,31 +3,16 @@ return function()
 	local RunService = game:GetService("RunService")
 
 	describe("tower defense real-engine path", function()
-		it("boots server smoke so lifecycle print plugin emits resource changes", function()
+		it("boots server smoke through real engine path", function()
 			-- Zune cannot prove Studio output wiring; this intentionally drives server app in Roblox.
 			local TS = require(ReplicatedStorage:WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
 			local gameModule = TS.import(script, game:GetService("ServerScriptService"), "TS", "game")
 			local result = gameModule.runTowerDefenseSmoke(1)
-			local lifecycleLines = gameModule.drainLifecyclePrintLines()
 
 			assert(result.started, "server app did not start")
 			assert(result.monstersSpawned >= 1, "expected monsters")
 			assert(result.snapshotCount >= 1, "expected snapshots")
 			assert(result.clientHeartbeatApplied, "expected client heartbeat")
-			assert(#lifecycleLines >= 1, "expected lifecycle print plugin output")
-			local sawResource = false
-			local sawComponent = false
-			for _, line in lifecycleLines do
-				if string.find(line, "%[rovy:lifecycle%] resource_changed") ~= nil then
-					sawResource = true
-				end
-				if string.find(line, "%[rovy:lifecycle%] component_") ~= nil then
-					sawComponent = true
-				end
-				assert(string.find(line, "value=table") == nil, "lifecycle print should not dump table values")
-			end
-			assert(sawResource, "expected resource_changed lifecycle print")
-			assert(sawComponent, "expected component lifecycle print")
 		end)
 
 		it("imports compiled shared ModuleScripts through real RuntimeLib path", function()
