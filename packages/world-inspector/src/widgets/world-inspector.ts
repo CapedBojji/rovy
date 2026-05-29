@@ -29,8 +29,6 @@ import {
 	type WorldInspectorComponentDto,
 	type WorldInspectorFieldDto,
 	type WorldInspectorRegisteredComponentDto,
-	type WorldInspectorResourceDto,
-	type WorldInspectorResourceFieldDto,
 	type WorldInspectorTarget,
 } from "../runtime/target";
 import { type WorldInspectorValueNodeDto } from "../runtime/value-tree";
@@ -50,14 +48,6 @@ function draftKey(targetKey: string, entity: number | undefined, componentId: st
 
 function componentErrorKey(targetKey: string, entity: number, componentId: string): string {
 	return `component:${targetKey}:${tostring(entity)}:${componentId}`;
-}
-
-function resourceDraftKey(targetKey: string, resourceId: string, path: ReadonlyArray<string>): string {
-	return `resource:${targetKey}:${resourceId}:${path.join(".")}`;
-}
-
-function resourceErrorKey(targetKey: string, resourceId: string, path: ReadonlyArray<string>): string {
-	return `resource-error:${targetKey}:${resourceId}:${path.join(".")}`;
 }
 
 function addComponentErrorKey(targetKey: string, entity: number, componentId: string): string {
@@ -302,84 +292,6 @@ function resourceExplorerKey(resourceId: string): string {
 	return `res:${resourceId}`;
 }
 
-function renderResourceField(
-	target: WorldInspectorTarget,
-	state: WorldInspectorState,
-	resource: WorldInspectorResourceDto,
-	field: WorldInspectorResourceFieldDto,
-): void {
-	const key = resourceDraftKey(target.key, resource.resourceId, field.path);
-	const errorKey = resourceErrorKey(target.key, resource.resourceId, field.path);
-	const upstream = field.valueText;
-	if (state.getDraftRevision(key) !== resource.revision) {
-		state.setDraft(key, upstream, resource.revision);
-		state.setActionError(errorKey);
-	}
-	const displayValue = state.getDraft(key) as string;
-	tableRow(() => {
-		tableCell(() => {
-			const indent = string.rep("  ", field.depth);
-			label(`${indent}${field.key}`);
-		});
-		tableCell(() => {
-			if (!field.editable) {
-				label(upstream);
-				return;
-			}
-			const fieldInput = __scope("world-inspector:resource-field", () => {
-				useKey(key);
-				return input({ text: displayValue, placeholder: field.typeLabel });
-			});
-			if (fieldInput.changed() || fieldInput.submitted()) state.setDraft(key, fieldInput.value(), resource.revision);
-			row(() => {
-				if (button("Commit").clicked()) {
-					const result = target.apply({
-						kind: "setResource",
-						resourceId: resource.resourceId,
-						path: field.path,
-						field: {
-							key: field.key,
-							typeLabel: field.typeLabel,
-							valueText: state.getDraft(key) as string,
-						},
-					});
-					if (result.ok) {
-						state.clearDraft(key);
-						state.setActionError(errorKey);
-					} else {
-						state.setActionError(errorKey, result.error);
-					}
-				}
-			});
-			const scopedError = state.actionErrors.get(errorKey);
-			if (scopedError !== undefined) label(scopedError);
-		});
-	});
-}
-
-function renderResource(resource: WorldInspectorResourceDto, target: WorldInspectorTarget, state: WorldInspectorState): void {
-	collapsingHeader(resource.resourceName, () => {
-		label(resource.resourceId);
-		const key = resourceExplorerKey(resource.resourceId);
-		const open = state.tableExplorers.has(key);
-		row(() => {
-			if (button(open ? "Close table" : "Open table").clicked()) {
-				if (open) state.closeTableExplorer(key);
-				else state.openTableExplorer(key, resource.resourceName, { kind: "resource", resourceId: resource.resourceId });
-			}
-		});
-		uiTable({ columns: [{ width: 120 }, { fill: true }] }, () => {
-			for (const field of resource.fields) {
-				__scope("world-inspector:resource-row", () => {
-					useKey(`${resource.resourceId}:${field.path.join(".")}`);
-					renderResourceField(target, state, resource, field);
-				});
-			}
-		});
-		if (resource.fields.size() === 0) label("No inspectable fields.");
-	});
-}
-
 function renderResourceList(target: WorldInspectorTarget, state: WorldInspectorState): void {
 	const filterInput = input({ text: state.resourceQuery, placeholder: "filter by resource name" });
 	if (filterInput.changed() || filterInput.submitted()) state.resourceQuery = filterInput.value();
@@ -392,9 +304,15 @@ function renderResourceList(target: WorldInspectorTarget, state: WorldInspectorS
 		for (const resource of resources) {
 			if (query.size() > 0 && resource.resourceName.lower().find(query, 1, true)[0] === undefined) continue;
 			shown += 1;
+			const key = resourceExplorerKey(resource.resourceId);
+			const open = state.tableExplorers.has(key);
 			__scope("world-inspector:resource", () => {
 				useKey(resource.resourceId);
-				renderResource(resource, target, state);
+				const item = selectableLabel(`${resource.resourceName}  (${tostring(resource.valueTree.size())})`, { selected: open });
+				if (item.clicked()) {
+					if (open) state.closeTableExplorer(key);
+					else state.openTableExplorer(key, resource.resourceName, { kind: "resource", resourceId: resource.resourceId });
+				}
 			});
 		}
 		if (shown === 0) label("No resources match.");
