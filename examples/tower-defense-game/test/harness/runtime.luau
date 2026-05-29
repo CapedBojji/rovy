@@ -393,6 +393,7 @@ end
 
 ensureRoot("out")
 ensureRoot("node_modules/@rbxts")
+ensureRoot("node_modules/@flamework")
 ensureRepoRoot("packages/jecs")
 ensureRepoRoot("packages/core")
 ensureRepoRoot("packages/networking")
@@ -436,6 +437,9 @@ rbxtsInclude.children.node_modules = nodeModules
 local rbxtsScope = treeIndex(ROOT .. "/node_modules/@rbxts")
 assert(rbxtsScope, "rovy example harness: missing node_modules/@rbxts")
 nodeModules.children["@rbxts"] = rbxtsScope
+local flameworkScope = treeIndex(ROOT .. "/node_modules/@flamework")
+assert(flameworkScope, "rovy example harness: missing node_modules/@flamework")
+nodeModules.children["@flamework"] = flameworkScope
 local rovyScope = newNode(ROOT .. "/$services/ReplicatedStorage/rbxts_include/node_modules/@rovy")
 nodeModules.children["@rovy"] = rovyScope
 local rovyJecs = treeIndex(REPO .. "/packages/jecs")

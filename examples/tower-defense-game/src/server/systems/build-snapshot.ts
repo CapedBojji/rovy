@@ -1,44 +1,43 @@
 import { Query, Res, ResMut, With, system } from "@rovy/core";
 import { NetServer } from "@rovy/networking";
-import { TowerSnapshotPayload } from "shared/contracts";
-import { toTowerSnapshotNet } from "shared/network";
-import { Health, Monster, Position, Projectile, ShotProfile, WireId } from "../components";
-import { ClientSignalState, ServerClock, SnapshotState, TowerDefenseStats } from "../resources";
-import { pathProgress, SnapshotSet, tickSnapshotAccumulator, Update } from "../state";
+import { PLAYER_MAX_HEALTH, WorldSnapshotPayload } from "shared/contracts";
+import { toWorldSnapshotNet } from "shared/network";
+import { Health, PlayerUnit, Position, Projectile, WireId, Zombie } from "../components";
+import { DevPauseState, ScoreState, ServerClock, SmokeStats, SnapshotState, WaveState } from "../resources";
+import { SnapshotSet, tickSnapshotAccumulator, Update } from "../state";
 
 @system({ schedule: Update, set: SnapshotSet })
 export class BuildSnapshot {
 	run(
 		clock: Res<ServerClock>,
-		stats: Res<TowerDefenseStats>,
-		client: Res<ClientSignalState>,
+		wave: Res<WaveState>,
+		pause: Res<DevPauseState>,
+		score: Res<ScoreState>,
+		stats: Res<SmokeStats>,
 		snap: ResMut<SnapshotState>,
 		network: NetServer,
-		monsters: Query<[WireId, Position, Health, ShotProfile], With<Monster>>,
+		players: Query<[PlayerUnit, Position, Health]>,
+		zombies: Query<[WireId, Position, Health], With<Zombie>>,
 		projectiles: Query<[WireId, Position], With<Projectile>>,
 	) {
 		if (!tickSnapshotAccumulator(clock, snap)) return;
 
-		const monsterSnaps = new Array<{
-			id: number;
-			position: Vector3;
-			health: number;
-			maxHealth: number;
-			progress: number;
-			spawnIndex: number;
-			willBeHit: boolean;
-			shotTaken: boolean;
-		}>();
-		monsters.forEach((id, pos, health, shot) => {
-			monsterSnaps.push({
+		let playerHealth = 0;
+		let playerMax = PLAYER_MAX_HEALTH;
+		let playerPos = new Vector3();
+		players.forEach((_unit, pos, health) => {
+			playerHealth = health.current;
+			playerMax = health.max;
+			playerPos = pos.value;
+		});
+
+		const zombieSnaps = new Array<{ id: number; position: Vector3; health: number; maxHealth: number }>();
+		zombies.forEach((id, pos, health) => {
+			zombieSnaps.push({
 				id: id.value,
 				position: pos.value,
 				health: health.current,
 				maxHealth: health.max,
-				progress: pathProgress(pos.value.X),
-				spawnIndex: shot.spawnIndex,
-				willBeHit: shot.willBeHit,
-				shotTaken: shot.shotTaken,
 			});
 		});
 
@@ -47,26 +46,25 @@ export class BuildSnapshot {
 			projectileSnaps.push({ id: id.value, position: pos.value });
 		});
 
-		const payload = new TowerSnapshotPayload(
+		const payload = new WorldSnapshotPayload(
 			clock.tick,
-			clock.simTime,
-			"running",
-			stats.monstersSpawned,
-			stats.monstersKilled,
-			stats.monstersEscaped,
-			stats.damageEvents,
-			stats.totalLeakDamage,
-			stats.shotsFired,
-			monsterSnaps.size(),
-			projectileSnaps.size(),
-			stats.lastDamageTick,
-			stats.lastDamageAmount,
-			client.lastClientFrame,
-			monsterSnaps,
+			wave.phase,
+			wave.waveNumber,
+			wave.spawnRemaining + zombieSnaps.size(),
+			playerHealth,
+			playerMax,
+			playerPos,
+			zombieSnaps,
 			projectileSnaps,
+			pause.paused,
+			score.score,
+			score.kills,
+			stats.shotsFired,
+			score.combo,
+			score.bestCombo,
 		);
 
 		snap.snapshotCount += 1;
-		network.broadcast(toTowerSnapshotNet(payload));
+		network.broadcast(toWorldSnapshotNet(payload));
 	}
 }

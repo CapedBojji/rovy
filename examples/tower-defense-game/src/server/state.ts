@@ -1,20 +1,117 @@
-import { schedule, SystemSet } from "@rovy/core";
-import { PATH_END_X, PATH_LENGTH, PATH_START_X, SNAPSHOT_INTERVAL } from "shared/contracts";
-import { ServerClock, SnapshotState } from "./resources";
-import type { Res } from "@rovy/core";
+import { Entity, Query, Res, SystemSet, schedule } from "@rovy/core";
+import {
+	PLAYER_MAX_HEALTH,
+	PATH_END_X,
+	PATH_LENGTH,
+	PATH_START_X,
+	PATH_Y,
+	PATH_Z,
+	SHOT_ORIGIN_CLAMP_RADIUS,
+	SNAPSHOT_INTERVAL,
+	TOWER_POSITION,
+	ZOMBIE_BASE_HEALTH,
+	ZOMBIE_BASE_SPEED,
+	ZOMBIE_HEALTH_PER_WAVE,
+	ZOMBIE_MAX_SPEED_BONUS,
+	ZOMBIE_RADIUS,
+	ZOMBIE_SPEED_PER_WAVE,
+} from "shared/contracts";
+import { Health, PlayerUnit, Position } from "./components";
+import { ArenaState, ServerClock, SnapshotState } from "./resources";
 
 @schedule
 export class Update {}
 
 export class IngressSet extends SystemSet {}
-export class SpawnSet extends SystemSet {}
-export class CombatSet extends SystemSet {}
+export class RemoteIngressSet extends SystemSet {}
+export class WaveSet extends SystemSet {}
 export class MovementSet extends SystemSet {}
+export class CombatSet extends SystemSet {}
 export class CleanupSet extends SystemSet {}
 export class SnapshotSet extends SystemSet {}
 
-export function pathProgress(x: number): number {
-	return math.clamp((x - PATH_START_X) / PATH_LENGTH, 0, 1);
+export function zombieHealth(wave: number): number {
+	return ZOMBIE_BASE_HEALTH + math.max(0, wave - 1) * ZOMBIE_HEALTH_PER_WAVE;
+}
+
+export function zombieSpeed(wave: number): number {
+	const bonus = math.min(math.max(0, wave - 1) * ZOMBIE_SPEED_PER_WAVE, ZOMBIE_MAX_SPEED_BONUS);
+	return ZOMBIE_BASE_SPEED + bonus;
+}
+
+export function quotaForWave(wave: number): number {
+	return 5 + wave * 3;
+}
+
+export function pathPosition(progress: number): Vector3 {
+	const clamped = math.clamp(progress, 0, 1);
+	return new Vector3(PATH_START_X + PATH_LENGTH * clamped, PATH_Y, PATH_Z);
+}
+
+export function towerPosition(): Vector3 {
+	return TOWER_POSITION;
+}
+
+export function basePosition(_arena: ArenaState): Vector3 {
+	return pathPosition(1);
+}
+
+export function ringSpawnPosition(arena: ArenaState, index: number): Vector3 {
+	return pathPosition(0).add(new Vector3(0, 0, (index % 2 === 0 ? -1 : 1) * arena.zombieSpawnRadius));
+}
+
+export function horizontalDistance(a: Vector3, b: Vector3): number {
+	const dx = a.X - b.X;
+	const dz = a.Z - b.Z;
+	return math.sqrt(dx * dx + dz * dz);
+}
+
+export function horizontalDirection(from: Vector3, to: Vector3): Vector3 {
+	const dx = to.X - from.X;
+	const dz = to.Z - from.Z;
+	const len = math.sqrt(dx * dx + dz * dz);
+	if (len <= 1e-4) return new Vector3();
+	return new Vector3(dx / len, 0, dz / len);
+}
+
+export function safeNormalize(v: Vector3): Vector3 {
+	const m = v.Magnitude;
+	if (m <= 1e-4) return new Vector3(0, 0, -1);
+	return v.div(m);
+}
+
+export function clampShotOrigin(origin: Vector3, shooterPos: Vector3): Vector3 {
+	const delta = origin.sub(shooterPos);
+	const dist = delta.Magnitude;
+	if (dist <= SHOT_ORIGIN_CLAMP_RADIUS) return origin;
+	return shooterPos.add(delta.div(dist).mul(SHOT_ORIGIN_CLAMP_RADIUS));
+}
+
+export function nearestPlayer(
+	players: Query<[Entity, PlayerUnit, Position, Health]>,
+	from: Vector3,
+): { entity: Entity; position: Vector3 } | undefined {
+	let bestEntity: Entity | undefined;
+	let bestPos: Vector3 | undefined;
+	let bestDist = math.huge;
+	players.forEach((entity, _unit, pos, health) => {
+		if (health.current <= 0) return;
+		const d = horizontalDistance(pos.value, from);
+		if (d < bestDist) {
+			bestDist = d;
+			bestEntity = entity;
+			bestPos = pos.value;
+		}
+	});
+	if (bestEntity === undefined || bestPos === undefined) return undefined;
+	return { entity: bestEntity, position: bestPos };
+}
+
+export function resolveCharacterPosition(character: defined): Vector3 | undefined {
+	const model = character as Model;
+	const root = model.FindFirstChild("HumanoidRootPart");
+	if (root && root.IsA("BasePart")) return root.Position;
+	return undefined;
 }
 
 export function tickSnapshotAccumulator(clock: Res<ServerClock>, snap: SnapshotState): boolean {
@@ -24,4 +121,4 @@ export function tickSnapshotAccumulator(clock: Res<ServerClock>, snap: SnapshotS
 	return true;
 }
 
-export { PATH_END_X };
+export { PATH_END_X, PLAYER_MAX_HEALTH, ZOMBIE_RADIUS };

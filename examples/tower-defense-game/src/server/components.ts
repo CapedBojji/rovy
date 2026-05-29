@@ -1,10 +1,17 @@
 import { component } from "@rovy/core";
 
 @component
-export class Monster {}
+export class PlayerUnit {
+	constructor(public userId: number = 0) {}
+}
 
 @component
-export class Projectile {}
+export class Zombie {}
+
+@component
+export class Projectile {
+	constructor(public ownerUserId: number = 0) {}
+}
 
 @component
 export class Position {
@@ -35,26 +42,27 @@ export class MoveSpeed {
 }
 
 @component
+export class PathProgress {
+	constructor(public value: number = 0) {}
+}
+
+@component
+export class Lifetime {
+	constructor(public remaining: number = 0) {}
+}
+
+@component
 export class Damage {
 	constructor(public value: number = 0) {}
 }
 
 @component
-export class ShotProfile {
-	constructor(
-		public spawnIndex: number = 0,
-		public willBeHit: boolean = false,
-		public shotTaken: boolean = false,
-	) {}
+export class WeaponCooldown {
+	constructor(public remaining: number = 0) {}
 }
 
 @component
-export class ProjectileTarget {
-	constructor(public wireId: number = 0) {}
-}
-
-@component
-export class Lifetime {
+export class ContactCooldown {
 	constructor(public remaining: number = 0) {}
 }
 

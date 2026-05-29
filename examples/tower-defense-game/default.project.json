@@ -49,9 +49,9 @@
 				"$properties": {
 					"Anchored": true,
 					"Color": [
-						0.18,
-						0.2,
-						0.22
+						0.32,
+						0.32,
+						0.34
 					],
 					"Locked": true,
 					"Material": "Concrete",
@@ -75,9 +75,9 @@
 					"Duration": 0,
 					"Neutral": true,
 					"Position": [
-						-82,
+						0,
 						3,
-						-16
+						0
 					],
 					"Size": [
 						6,

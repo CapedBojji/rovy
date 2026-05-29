@@ -1,125 +1,111 @@
 import { Commands, Entity, EventReader, Res, ResMut, World, system } from "@rovy/core";
-import { fromTowerSnapshotNet, TowerSnapshotNet } from "shared/network";
+import { WorldSnapshotPayload } from "shared/contracts";
+import { WorldSnapshotNet, fromWorldSnapshotNet } from "shared/network";
+import { ClientClock, HudState, NetworkEntityMap } from "../resources";
 import {
-	ClientMonster,
+	Render,
+	SnapshotSet,
+	ZOMBIE_SIZE,
+	ZOMBIE_COLOR,
+	ZOMBIE_MATERIAL,
+	ZOMBIE_Y_OFFSET,
+	PROJECTILE_SIZE,
+	PROJECTILE_COLOR,
+	PROJECTILE_MATERIAL,
+	PROJECTILE_Y_OFFSET,
+} from "../state";
+import {
 	ClientPosition,
 	ClientProjectile,
-	ClientTurret,
+	ClientZombie,
 	ModelData,
 	NetworkId,
 	PreviousPosition,
 } from "../components";
-import { ClientClock, ClientPlaybackState, HudState, NetworkEntityMap } from "../resources";
-import {
-	MONSTER_HIT_COLOR,
-	MONSTER_MATERIAL,
-	MONSTER_MISS_COLOR,
-	MONSTER_SIZE,
-	MONSTER_Y_OFFSET,
-	ModelSet,
-	PROJECTILE_COLOR,
-	PROJECTILE_MATERIAL,
-	PROJECTILE_SIZE,
-	PROJECTILE_Y_OFFSET,
-	Render,
-	TURRET_COLOR,
-	TURRET_MATERIAL,
-	TURRET_RENDER_POSITION,
-	TURRET_SIZE,
-	TURRET_Y_OFFSET,
-} from "../state";
 
-function hasLiveEntity(world: World, entity: number | undefined, marker: typeof ClientMonster | typeof ClientProjectile): entity is number {
+function hasLiveEntity(world: World, entity: number | undefined, marker: typeof ClientZombie | typeof ClientProjectile): entity is number {
 	return entity !== undefined && world.has(entity as Entity, marker);
 }
 
-@system({ schedule: Render, set: ModelSet })
+@system({ schedule: Render, set: SnapshotSet })
 export class ApplySnapshotIngress {
 	run(
-		ingress: EventReader<TowerSnapshotNet>,
+		ingress: EventReader<WorldSnapshotNet>,
 		clock: Res<ClientClock>,
 		world: World,
 		commands: Commands,
 		nem: ResMut<NetworkEntityMap>,
-		playback: ResMut<ClientPlaybackState>,
 		hud: ResMut<HudState>,
 	) {
-		if (nem.turret === undefined || !world.has(nem.turret, ClientTurret)) {
-			const turret = world.spawn(
-				new ClientTurret(),
-				new NetworkId(0),
-				new ClientPosition(TURRET_RENDER_POSITION),
-				new ModelData("Turret", TURRET_SIZE, TURRET_COLOR, TURRET_MATERIAL, TURRET_Y_OFFSET),
-			);
-			nem.turret = turret;
-		}
-
 		ingress.forEach((event) => {
-			const snap = fromTowerSnapshotNet(event);
-			playback.lastSnapshotTick = snap.serverTick;
-			playback.snapshotsReceived += 1;
-			playback.lastDamageEvents = snap.damageEvents;
+			const snap = fromWorldSnapshotNet(event) as WorldSnapshotPayload;
 
-			hud.serverTick = snap.serverTick;
-			hud.simTime = snap.simTime;
-			hud.monstersSpawned = snap.monstersSpawned;
-			hud.monstersKilled = snap.monstersKilled;
-			hud.monstersEscaped = snap.monstersEscaped;
-			hud.damageEvents = snap.damageEvents;
-			hud.totalLeakDamage = snap.totalLeakDamage;
+			hud.phase = snap.phase;
+			hud.waveNumber = snap.waveNumber;
+			hud.enemiesRemaining = snap.enemiesRemaining;
+			hud.score = snap.score;
+			hud.kills = snap.kills;
 			hud.shotsFired = snap.shotsFired;
-			hud.activeMonsters = snap.activeMonsters;
-			hud.activeProjectiles = snap.activeProjectiles;
-			hud.lastDamageAmount = snap.lastDamageAmount;
-			hud.lastClientFrameSeenByServer = snap.lastClientFrame;
+			hud.combo = snap.combo;
+			hud.bestCombo = snap.bestCombo;
+			hud.playerHealth = snap.playerHealth;
+			hud.playerMaxHealth = snap.playerMaxHealth;
+			hud.gameOver = snap.phase === "defeat";
+			hud.paused = snap.paused;
 
-			const liveMonsters = new Set<number>();
-			for (const monster of snap.monsters) {
-				liveMonsters.add(monster.id);
-				const monsterColor = monster.willBeHit ? MONSTER_HIT_COLOR : MONSTER_MISS_COLOR;
-				const existing = nem.monsters.get(monster.id);
-				if (!hasLiveEntity(world, existing, ClientMonster)) {
-					if (existing !== undefined) nem.monsters.delete(monster.id);
+			const liveZombies = new Set<number>();
+			for (const z of snap.zombies) {
+				liveZombies.add(z.id);
+				const existing = nem.zombies.get(z.id);
+				if (!hasLiveEntity(world, existing, ClientZombie)) {
+					if (existing !== undefined) nem.zombies.delete(z.id);
 					const entity = world.spawn(
-						new ClientMonster(),
-						new NetworkId(monster.id),
-						new ClientPosition(monster.position),
-						new PreviousPosition(monster.position, clock.now),
-						new ModelData("Monster", MONSTER_SIZE, monsterColor, MONSTER_MATERIAL, MONSTER_Y_OFFSET),
+						new ClientZombie(),
+						new NetworkId(z.id),
+						new ClientPosition(z.position),
+						new PreviousPosition(z.position, clock.now),
+						new ModelData(ZOMBIE_SIZE, ZOMBIE_COLOR, ZOMBIE_MATERIAL, ZOMBIE_Y_OFFSET),
 					);
-					nem.monsters.set(monster.id, entity);
+					nem.zombies.set(z.id, entity);
 				} else {
 					const prev = world.get(existing, ClientPosition);
-					commands.set(existing, PreviousPosition, new PreviousPosition(prev !== undefined ? prev.value : monster.position, clock.now));
-					commands.set(existing, ClientPosition, new ClientPosition(monster.position));
-					commands.set(existing, ModelData, new ModelData("Monster", MONSTER_SIZE, monsterColor, MONSTER_MATERIAL, MONSTER_Y_OFFSET));
+					commands.set(
+						existing,
+						PreviousPosition,
+						new PreviousPosition(prev !== undefined ? prev.value : z.position, clock.now),
+					);
+					commands.set(existing, ClientPosition, new ClientPosition(z.position));
 				}
 			}
-			for (const [id, entity] of nem.monsters) {
-				if (!liveMonsters.has(id)) {
+			for (const [id, entity] of nem.zombies) {
+				if (!liveZombies.has(id)) {
 					commands.despawn(entity);
-					nem.monsters.delete(id);
+					nem.zombies.delete(id);
 				}
 			}
 
 			const liveProjectiles = new Set<number>();
-			for (const projectile of snap.projectiles) {
-				liveProjectiles.add(projectile.id);
-				const existing = nem.projectiles.get(projectile.id);
+			for (const p of snap.projectiles) {
+				liveProjectiles.add(p.id);
+				const existing = nem.projectiles.get(p.id);
 				if (!hasLiveEntity(world, existing, ClientProjectile)) {
-					if (existing !== undefined) nem.projectiles.delete(projectile.id);
+					if (existing !== undefined) nem.projectiles.delete(p.id);
 					const entity = world.spawn(
 						new ClientProjectile(),
-						new NetworkId(projectile.id),
-						new ClientPosition(projectile.position),
-						new PreviousPosition(projectile.position, clock.now),
-						new ModelData("Projectile", PROJECTILE_SIZE, PROJECTILE_COLOR, PROJECTILE_MATERIAL, PROJECTILE_Y_OFFSET),
+						new NetworkId(p.id),
+						new ClientPosition(p.position),
+						new PreviousPosition(p.position, clock.now),
+						new ModelData(PROJECTILE_SIZE, PROJECTILE_COLOR, PROJECTILE_MATERIAL, PROJECTILE_Y_OFFSET),
 					);
-					nem.projectiles.set(projectile.id, entity);
+					nem.projectiles.set(p.id, entity);
 				} else {
 					const prev = world.get(existing, ClientPosition);
-					commands.set(existing, PreviousPosition, new PreviousPosition(prev !== undefined ? prev.value : projectile.position, clock.now));
-					commands.set(existing, ClientPosition, new ClientPosition(projectile.position));
+					commands.set(
+						existing,
+						PreviousPosition,
+						new PreviousPosition(prev !== undefined ? prev.value : p.position, clock.now),
+					);
+					commands.set(existing, ClientPosition, new ClientPosition(p.position));
 				}
 			}
 			for (const [id, entity] of nem.projectiles) {

@@ -7,7 +7,12 @@ local core = TS.import(nil, TS.getModule(nil, "@rovy", "core").out)
 local rovy = core.rovy
 local App = core.App
 
-local function runClientSnapshotSmoke()
+-- The smoke loads main.server (which exports runTowerDefenseSmoke). The
+-- top-level engine attachment inside main.server is gated behind a pcall
+-- on game:GetService("RunService"); the test harness only stubs
+-- ReplicatedStorage / ServerScriptService / StarterPlayer, so the engine
+-- half is skipped and we drive the Rovy app deterministically here.
+local function runClientSnapshotSelfHealSmoke()
 	rovy:__reset()
 	rovy:loadPaths("src/shared", "src/client")
 	local clientGame = TS.loadPath("$services/StarterPlayer/StarterPlayerScripts/TS/game")
@@ -16,73 +21,68 @@ local function runClientSnapshotSmoke()
 	local sharedNetwork = TS.loadPath("out/shared/network")
 
 	local app = App.new()
-	app:configureSets(clientGame.Render, { clientGame.ModelSet })
+	app:configureSets(clientGame.Render, { clientGame.FrameSet, clientGame.SnapshotSet })
 	app:start()
 
-	local snapshot = sharedContracts.TowerSnapshotPayload.new(
-		12,
-		0.4,
-		"running",
-		3,
+	local snapshot = sharedContracts.WorldSnapshotPayload.new(
+		1,
+		"wave",
 		1,
 		1,
-		1,
-		1,
-		2,
-		1,
-		0,
-		12,
-		1,
-		99,
-		{
-			{
-				id = 77,
-				position = Vector3.new(-12, 3, 0),
-				health = 50,
-				maxHealth = 100,
-				progress = 0.42,
-				spawnIndex = 2,
-				willBeHit = true,
-				shotTaken = false,
-			},
-		},
-		{}
+		100,
+		100,
+		Vector3.new(),
+		{ { id = 77, position = Vector3.new(8, 0, 0), health = 60, maxHealth = 60 } },
+		{},
+		false
 	)
 
-	app.commands:send(sharedNetwork.toTowerSnapshotNet(snapshot))
+	app.commands:send(sharedNetwork.toWorldSnapshotNet(snapshot))
 	app:runSchedule(clientGame.Render)
 
-	local hud = app.world:resource(clientGame.HudState)
 	local nem = app.world:resource(clientGame.NetworkEntityMap)
-	local monsterEntity = nem.monsters[77]
+	local initialEntity = nem.zombies[77]
+	assert(initialEntity ~= nil, "expected first snapshot to spawn zombie")
+
+	app.world:despawn(initialEntity)
+	app.commands:send(sharedNetwork.toWorldSnapshotNet(snapshot))
+	app:runSchedule(clientGame.Render)
+
+	local recreatedEntity = nem.zombies[77]
+	assert(recreatedEntity ~= nil, "expected second snapshot to recreate zombie")
 
 	return {
-		damageEvents = hud.damageEvents,
-		lastClientFrameSeenByServer = hud.lastClientFrameSeenByServer,
-		monsterCreated = monsterEntity ~= nil and app.world:has(monsterEntity, clientComponents.ClientMonster),
+		initialEntityId = initialEntity,
+		recreatedEntityId = recreatedEntity,
+		recreated = recreatedEntity ~= initialEntity and app.world:has(recreatedEntity, clientComponents.ClientZombie),
 	}
 end
 
-local clientSmoke = runClientSnapshotSmoke()
+local clientSelfHeal = runClientSnapshotSelfHealSmoke()
 local main = TS.loadPath("out/server/main.server")
 local result = main.runTowerDefenseSmoke()
 
-testing.test("tower defense server sim", function()
+testing.test("tower defense smoke", function()
 	expect(result.started).toBe(true)
-	expect(result.ticksRan).toBeGreaterThanOrEqual(300)
-	expect(result.monstersSpawned).toBeGreaterThanOrEqual(5)
-	expect(result.shotsFired).toBeGreaterThan(0)
-	expect(result.snapshotCount).toBeGreaterThan(0)
-	expect(result.maxActiveMonstersObserved <= 3).toBe(true)
-	expect(result.monstersEscaped).toBeGreaterThan(0)
-	expect(result.damageEvents).toBeGreaterThan(0)
-	expect(result.clientHeartbeatApplied).toBe(true)
+	expect(result.ticksRan).toBeGreaterThanOrEqual(60)
+	expect(result.zombiesSpawned).toBeGreaterThanOrEqual(1)
+	expect(result.zombiesKilled).toBeGreaterThanOrEqual(1)
+	expect(result.shotsFired).toBeGreaterThanOrEqual(1)
+	expect(result.snapshotCount).toBeGreaterThanOrEqual(1)
+	expect(result.score).toBeGreaterThan(0)
+	expect(result.bestCombo).toBeGreaterThanOrEqual(1)
+	expect(result.scoreResetVerified).toBe(true)
+	expect(result.pauseFreezeVerified).toBe(true)
+	expect(result.playerHealth).toBe(100)
+	expect(result.defeatReached).toBe(true)
+	expect(result.restartApplied).toBe(true)
+	expect(result.waveNumber).toBe(0)
+	expect(result.phase).toBe("intermission")
 end)
 
-testing.test("tower defense client snapshot", function()
-	expect(clientSmoke.damageEvents).toBe(1)
-	expect(clientSmoke.lastClientFrameSeenByServer).toBe(99)
-	expect(clientSmoke.monsterCreated).toBe(true)
+testing.test("client snapshot recreates despawned zombie", function()
+	expect(clientSelfHeal.recreated).toBe(true)
+	expect(clientSelfHeal.recreatedEntityId).never.toBe(clientSelfHeal.initialEntityId)
 end)
 
 print("ok  tower-defense-game Luau smoke")
