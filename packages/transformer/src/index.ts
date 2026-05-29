@@ -421,7 +421,6 @@ function transformClass(
 
 	const stripped = removeRovyDecorators(state, sourceFile, node);
 	const isResource = decorators.some((d) => d.name === "resource");
-	const inspectDecorator = decorators.find((d) => d.name === "inspect");
 	const resourceCollectRefs = isResource ? collectRefBindings(state, sourceFile, stripped) : [];
 	const resourceReadyClass = isResource ? stripCollectRefInitializers(state, sourceFile, stripped) : stripped;
 	const transformedClass = ts.visitEachChild(resourceReadyClass, visitor, state.context);
@@ -451,7 +450,7 @@ function transformClass(
 			case "resource":
 				{
 					const args: ts.Expression[] = [className, str(classId)];
-					const inspect = inspectDecorator !== undefined && state.inspectResourcesEnabled()
+					const inspect = state.inspectResourcesEnabled()
 						? buildResourceInspectMeta(state, sourceFile, node)
 						: undefined;
 					const meta = buildResourceMeta(pluginBinding, resourceCollectRefs, inspect);
@@ -466,9 +465,8 @@ function transformClass(
 				}
 				break;
 			case "inspect":
-				if (isResource && state.inspectResourcesEnabled()) {
-					afterStatements.push(regCall(rovy, "__inspect", [className, buildInspectMeta(decorator, pluginBinding)].filter(isExpression)));
-				}
+				// Soft-deprecated no-op on @resource: debug inspect metadata is now emitted
+				// for every @resource via __resource. Non-resource use is rejected in validateClass.
 				break;
 			case "event":
 				afterStatements.push(regCall(rovy, "__event", [className, buildEventMeta(decorator.args[0], pluginBinding)].filter(isExpression)));
@@ -839,18 +837,6 @@ function buildResourceMeta(
 		maybeProp("plugin", plugin?.expr),
 		collectorRefs.length > 0 ? prop("collectorRefs", arr(collectorRefs, true)) : undefined,
 		maybeProp("inspect", inspect),
-	]);
-	return properties.length > 0 ? obj(properties, true) : undefined;
-}
-
-function buildInspectMeta(decorator: DecoratorInfo, plugin?: PluginBinding): ts.Expression | undefined {
-	const options = objectArg(decorator);
-	const depthExpr = propertyValue(options, "depth");
-	const excludeExpr = propertyValue(options, "exclude");
-	const properties = stripUndefinedProperties([
-		maybeProp("plugin", plugin?.expr),
-		depthExpr !== undefined ? prop("depth", depthExpr) : undefined,
-		excludeExpr !== undefined ? prop("exclude", excludeExpr) : undefined,
 	]);
 	return properties.length > 0 ? obj(properties, true) : undefined;
 }

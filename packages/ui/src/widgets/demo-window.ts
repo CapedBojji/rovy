@@ -25,10 +25,54 @@ import { childWindow } from "./child-window";
 import { uiTable } from "./table";
 import { tableRow } from "./table-row";
 import { tableCell } from "./table-cell";
+import { tableExplorer, type TableExplorerNode } from "./table-explorer";
 
 interface DemoEntryOptions {
 	height?: number;
 }
+
+const tableExplorerSample: ReadonlyArray<TableExplorerNode> = [
+	{
+		key: "player",
+		typeLabel: "table",
+		preview: "{4 keys}",
+		children: [
+			{ key: "name", typeLabel: "string", preview: "Aria" },
+			{ key: "level", typeLabel: "number", preview: "12" },
+			{ key: "alive", typeLabel: "boolean", preview: "true" },
+			{
+				key: "stats",
+				typeLabel: "table",
+				preview: "{3 keys}",
+				children: [
+					{ key: "health", typeLabel: "number", preview: "85" },
+					{ key: "mana", typeLabel: "number", preview: "40" },
+					{ key: "position", typeLabel: "Vector3", preview: "Vector3(10, 0, -4)" },
+				],
+			},
+		],
+	},
+	{
+		key: "inventory",
+		typeLabel: "table",
+		preview: "{2 keys}",
+		children: [
+			{ key: "gold", typeLabel: "number", preview: "999" },
+			{
+				key: "items",
+				typeLabel: "table",
+				preview: "{50 keys}",
+				truncated: true,
+				children: [
+					{ key: "sword", typeLabel: "string", preview: "Excalibur" },
+					{ key: "shield", typeLabel: "string", preview: "Aegis" },
+				],
+			},
+		],
+	},
+	{ key: "self", typeLabel: "table", preview: "{1 key}", cycle: true },
+	{ key: "version", typeLabel: "string", preview: "1.0.0" },
+];
 
 /** @widget */
 export const demoWindow = widget((): void => {
@@ -86,6 +130,7 @@ export const demoWindow = widget((): void => {
 	const [tableFeatureEnabled, setTableFeatureEnabled] = __useState("demo:tableFeatureEnabled", true);
 	const [tableActionCount, setTableActionCount] = __useState("demo:tableActionCount", 0);
 	const [tableTuning, setTableTuning] = __useState("demo:tableTuning", 25);
+	const [tableExplorerDemoOpen, setTableExplorerDemoOpen] = __useState("demo:tableExplorerDemoOpen", false);
 
 	const renderDemoEntry = (
 		title: string,
@@ -477,6 +522,14 @@ export const demoWindow = widget((): void => {
 								},
 								{ height: 150 },
 							);
+							renderDemoEntry(
+								"Table Explorer Demo",
+								tableExplorerDemoOpen,
+								setTableExplorerDemoOpen,
+								() => {
+									label("Navigable value-tree explorer. Open to launch.");
+								},
+							);
 						});
 					},
 				);
@@ -798,6 +851,16 @@ export const demoWindow = widget((): void => {
 
 		if (tableDemoWindow.closed()) {
 			setTableDemoOpen(false);
+		}
+	}
+
+	if (tableExplorerDemoOpen) {
+		const explorerHandle = tableExplorer(tableExplorerSample, {
+			title: "Table Explorer Demo",
+			onClose: () => setTableExplorerDemoOpen(false),
+		});
+		if (explorerHandle.closed()) {
+			setTableExplorerDemoOpen(false);
 		}
 	}
 }, "@rovy/ui/demoWindow");

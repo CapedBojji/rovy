@@ -23,6 +23,8 @@ export interface TableOptions {
 	stripeColumnColor?: Color3;
 	stripeRowTransparency?: number;
 	stripeColumnTransparency?: number;
+	/** Keep columns at their natural width and scroll horizontally when the table is narrower than its content. */
+	scrollX?: boolean;
 }
 
 export interface TableState {
@@ -46,6 +48,8 @@ export interface TableState {
 	borderColor: Color3;
 	borderTransparency: number;
 	rowIndex: number;
+	scrollX: boolean;
+	contentWidth: number;
 }
 
 function normalizeColumns(columns?: TableColumn[]): TableColumn[] {
@@ -101,9 +105,61 @@ function computeColumnWidths(totalWidth: number, columns: TableColumn[], autoCol
 	return widths;
 }
 
+/** Smallest total width the table can occupy before columns must scroll instead of shrink. */
+function columnMinTotal(columns: TableColumn[], autoColumnWidths: number[]): number {
+	let total = 0;
+	for (let index = 0; index < columns.size(); index++) {
+		const column = columns[index];
+		if (column.auto === true) {
+			total += math.max(autoColumnWidths[index] ?? 0, column.minWidth ?? 0);
+		} else if (column.fill === true || (column.width ?? 0) <= 0) {
+			total += column.minWidth ?? 0;
+		} else {
+			total += column.width ?? 0;
+		}
+	}
+	return total;
+}
+
+function sumWidths(widths: number[]): number {
+	let total = 0;
+	for (const width of widths) total += width;
+	return total;
+}
+
 const tableWidget = widget((options: TableOptions, fn: () => void): void => {
+	const scrollX = options.scrollX ?? false;
 	const refs = __useInstance("table:instance", (ref) => {
 		const style = useStyle();
+		const border = create("UIStroke", {
+			[ref as never]: "border",
+			Color: style.tableBorderColor,
+			Transparency: style.tableBorderTransparency,
+			Thickness: 1,
+			Enabled: false,
+		});
+		const layout = create("UIListLayout", {
+			SortOrder: Enum.SortOrder.LayoutOrder,
+			Padding: udim(0, 0),
+		});
+		if (scrollX) {
+			return create("ScrollingFrame", {
+				[ref as never]: "frame",
+				BackgroundTransparency: 1,
+				BorderSizePixel: 0,
+				Size: udim2(1, 0, 0, 0),
+				AutomaticSize: Enum.AutomaticSize.Y,
+				ClipsDescendants: true,
+				ScrollingDirection: Enum.ScrollingDirection.X,
+				ScrollBarThickness: style.scrollbarSize,
+				ScrollBarImageColor3: style.scrollbarGrabColor,
+				HorizontalScrollBarInset: Enum.ScrollBarInset.ScrollBar,
+				CanvasSize: udim2(0, 0, 0, 0),
+				AutomaticCanvasSize: Enum.AutomaticSize.X,
+				0: border,
+				1: layout,
+			});
+		}
 		return create("Frame", {
 			[ref as never]: "frame",
 			BackgroundTransparency: 1,
@@ -111,19 +167,10 @@ const tableWidget = widget((options: TableOptions, fn: () => void): void => {
 			Size: udim2(1, 0, 0, 0),
 			AutomaticSize: Enum.AutomaticSize.Y,
 			ClipsDescendants: true,
-			0: create("UIStroke", {
-				[ref as never]: "border",
-				Color: style.tableBorderColor,
-				Transparency: style.tableBorderTransparency,
-				Thickness: 1,
-				Enabled: false,
-			}),
-			1: create("UIListLayout", {
-				SortOrder: Enum.SortOrder.LayoutOrder,
-				Padding: udim(0, 0),
-			}),
+			0: border,
+			1: layout,
 		});
-	}) as { frame: Frame; border: UIStroke };
+	}) as { frame: GuiObject; border: UIStroke };
 
 	const style = useStyle();
 	markHitTestPassThrough(refs.frame);
@@ -140,9 +187,12 @@ const tableWidget = widget((options: TableOptions, fn: () => void): void => {
 	}
 	if (absoluteWidth <= 0) absoluteWidth = 300;
 
+	const layoutWidth = scrollX ? math.max(absoluteWidth, columnMinTotal(columns, autoColumnWidths)) : absoluteWidth;
+	const columnWidths = computeColumnWidths(layoutWidth, columns, autoColumnWidths);
+
 	const tableState: TableState = {
 		columns,
-		columnWidths: computeColumnWidths(absoluteWidth, columns, autoColumnWidths),
+		columnWidths,
 		autoColumnWidths,
 		measuredAutoColumnWidths: copyWidths(autoColumnWidths),
 		setAutoColumnWidth: (columnIndex: number, width: number): void => {
@@ -171,6 +221,8 @@ const tableWidget = widget((options: TableOptions, fn: () => void): void => {
 		borderColor: style.tableBorderColor,
 		borderTransparency: style.tableBorderTransparency,
 		rowIndex: 0,
+		scrollX,
+		contentWidth: sumWidths(columnWidths),
 	};
 
 	refs.border.Enabled = tableState.borders;

@@ -25,10 +25,8 @@ import {
 	StopFrameRecordingObserver,
 	WorldInspectorFrameRecorderSystem,
 	WorldInspectorRecorderState,
+	registerRecorderListeners,
 } from "./recorder";
-import { recorderDetail } from "../widgets/recorder-detail";
-import { recorderResult } from "../widgets/recorder-result";
-import { __scope, useKey } from "@rovy/ui";
 import {
 	WorldInspectorEditRequest,
 	WorldInspectorEditResponse,
@@ -361,6 +359,7 @@ export class WorldInspectorPlugin implements Plugin {
 		}
 		app.insertResource(this.state);
 		app.insertResource(this.recorder);
+		registerRecorderListeners(app, this.recorder);
 	}
 
 	render(world: World, state = this.state, recorder = this.recorder): void {
@@ -392,17 +391,6 @@ export function renderWorldInspector(world: World, state: WorldInspectorState, r
 	if (state.uiRoot === undefined) return;
 	rovyUi.start(state.uiRoot, () => {
 		if (state.windowOpen) worldInspector({ world, state, recorder });
-		if (recorder !== undefined) {
-			if (recorder.resultWindowOpen) recorderResult(recorder);
-			const openIndices = new Array<number>();
-			for (const idx of recorder.openDetailFrames) openIndices.push(idx);
-			for (const idx of openIndices) {
-				__scope("world-inspector:recorder-detail", () => {
-					useKey(tostring(idx));
-					recorderDetail(recorder, idx);
-				});
-			}
-		}
 	});
 }
 

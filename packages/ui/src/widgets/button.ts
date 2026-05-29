@@ -1,7 +1,8 @@
-import { widget, __useInstance, __useState, useHoverTarget } from "../runtime";
+import { widget, __useInstance, __useState, useContext, useHoverTarget } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
-import { udim2 } from "../primitives";
+import { udim, udim2 } from "../primitives";
+import * as contexts from "../contexts";
 import { applyStrokeState, isTopGuiTarget, makeCorner, type InteractState } from "./shared";
 
 export interface ButtonOptions {
@@ -32,6 +33,10 @@ export const button = widget((text: string, options: ButtonOptions = {}): Button
 			BackgroundTransparency: 0,
 			AutoButtonColor: false,
 			0: makeCorner(style.cornerRadius),
+			2: create("UIPadding", {
+				PaddingLeft: udim(0, 8),
+				PaddingRight: udim(0, 8),
+			}),
 			1: create("UIStroke", {
 				[ref as never]: "stroke",
 				Color: style.strokeInactiveColor,
@@ -89,11 +94,20 @@ export const button = widget((text: string, options: ButtonOptions = {}): Button
 
 	if (options.width !== undefined) {
 		const w = options.width;
+		btn.AutomaticSize = Enum.AutomaticSize.None;
 		if (typeIs(w, "number")) {
 			btn.Size = udim2(0, w, 0, style.itemHeight);
 		} else {
 			btn.Size = udim2(w.Scale, w.Offset, 0, style.itemHeight);
 		}
+	} else if (useContext(contexts.scrollX) === true) {
+		// In a horizontal-scroll container, size to content so buttons keep a
+		// natural width and overflow into the scroll region instead of shrinking.
+		btn.AutomaticSize = Enum.AutomaticSize.X;
+		btn.Size = udim2(0, 0, 0, style.itemHeight);
+	} else {
+		btn.AutomaticSize = Enum.AutomaticSize.None;
+		btn.Size = udim2(1, 0, 0, style.itemHeight);
 	}
 
 	return {

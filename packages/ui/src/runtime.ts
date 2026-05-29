@@ -155,22 +155,6 @@ function findPlayerGui(rootInstance: Instance | undefined): PlayerGui | undefine
 	return guiOk ? (playerGui as PlayerGui) : undefined;
 }
 
-function safePropertyText(instance: Instance, key: string): string {
-	const object = instance as unknown as Record<string, unknown>;
-	const [ok, value] = pcall(() => object[key]);
-	return ok ? tostring(value) : "?";
-}
-
-function guiObjectLabel(object: GuiObject): string {
-	const [ok, fullName] = pcall(() => object.GetFullName());
-	const path = ok ? (fullName as string) : `${object.ClassName} "${object.Name}"`;
-	return `${path} class=${object.ClassName} name=${object.Name} z=${safePropertyText(object, "ZIndex")} visible=${safePropertyText(object, "Visible")} active=${safePropertyText(object, "Active")} inputSink=${safePropertyText(object, "InputSink")}`;
-}
-
-function vector2Label(position: Vector2): string {
-	return `${position.X},${position.Y}`;
-}
-
 function getGuiInsetTopLeft(): Vector2 {
 	const [serviceOk, service] = pcall(() => game.GetService("GuiService"));
 	if (!serviceOk) return new Vector2(0, 0);
@@ -182,72 +166,22 @@ function getGuiInsetTopLeft(): Vector2 {
 	return insetOk ? (topLeft as Vector2) : new Vector2(0, 0);
 }
 
-function printHoverHitList(
-	guiObject: GuiObject,
-	objects: ReadonlyArray<GuiObject>,
-	topVisible: GuiObject | undefined,
-	allowed: boolean,
-	rawMouse: Vector2,
-	guiInset: Vector2,
-	hitPosition: Vector2,
-): void {
-	print(
-		`[rovy-ui hover] target=${guiObjectLabel(guiObject)} raw=${vector2Label(rawMouse)} inset=${vector2Label(guiInset)} hit=${vector2Label(hitPosition)} top=${topVisible !== undefined ? guiObjectLabel(topVisible) : "none"} allowed=${allowed} count=${objects.size()}`,
-	);
-	let index = 0;
-	for (const object of objects) {
-		index += 1;
-		const relation =
-			object === guiObject
-				? "target"
-				: containsInstance(guiObject, object)
-					? "child"
-					: isPassThroughForTarget(object, guiObject)
-						? "pass"
-						: containsInstance(object, guiObject)
-							? "ancestor"
-							: "-";
-		print(`[rovy-ui hover] [${index}] ${relation} ${guiObjectLabel(object)}`);
-	}
-}
-
 function isTopHoverTarget(rootNode: Node, guiObject: GuiObject): boolean {
 	const rootInstance = rootNode.instance;
 	const playerGui = findPlayerGui(rootInstance);
-	if (playerGui === undefined) {
-		print(`[rovy-ui hover] target=${guiObjectLabel(guiObject)} playerGui=missing allowed=false`);
-		return false;
-	}
+	if (playerGui === undefined) return false;
 
 	const [inputOk, input] = pcall(() => game.GetService("UserInputService"));
-	if (!inputOk) {
-		print(`[rovy-ui hover] target=${guiObjectLabel(guiObject)} UserInputService=missing allowed=false`);
-		return false;
-	}
+	if (!inputOk) return false;
 	const [mouseOk, mousePosition] = pcall(() => (input as UserInputService).GetMouseLocation());
-	if (!mouseOk) {
-		print(`[rovy-ui hover] target=${guiObjectLabel(guiObject)} mouse=missing allowed=false`);
-		return false;
-	}
+	if (!mouseOk) return false;
 	const guiInset = getGuiInsetTopLeft();
 	const hitPosition = new Vector2(mousePosition.X - guiInset.X, mousePosition.Y - guiInset.Y);
 
 	const [guiOk, objects] = pcall(() =>
 		playerGui.GetGuiObjectsAtPosition(hitPosition.X, hitPosition.Y),
 	);
-	if (!guiOk) {
-		print(
-			`[rovy-ui hover] target=${guiObjectLabel(guiObject)} raw=${vector2Label(mousePosition)} inset=${vector2Label(guiInset)} hit=${vector2Label(hitPosition)} GetGuiObjectsAtPosition=failed allowed=false`,
-		);
-		return false;
-	}
-
-	let topVisible: GuiObject | undefined;
-	for (const object of objects as ReadonlyArray<GuiObject>) {
-		if (!object.Visible) continue;
-		topVisible = object;
-		break;
-	}
+	if (!guiOk) return false;
 
 	const guiObjects = objects as ReadonlyArray<GuiObject>;
 	let allowed = false;
@@ -260,7 +194,6 @@ function isTopHoverTarget(rootNode: Node, guiObject: GuiObject): boolean {
 		if (isPassThroughForTarget(object, guiObject)) continue;
 		break;
 	}
-	printHoverHitList(guiObject, guiObjects, topVisible, allowed, mousePosition, guiInset, hitPosition);
 	return allowed;
 }
 

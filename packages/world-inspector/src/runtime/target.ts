@@ -1,6 +1,7 @@
 import type { ComponentInspection, ComponentReg, Entity, ResourceInspection, ResourceReg, World } from "@rovy/core";
 import { buildComponentChoices, componentShortName } from "./component-names";
 import { resolveInstanceExpression } from "./instance-expression";
+import { buildValueTreeRows, valueToText, valueTypeLabel, type WorldInspectorValueNodeDto } from "./value-tree";
 import type { WorldInspectorState } from "../state";
 
 export type WorldInspectorTargetKind = "local" | "server" | "player";
@@ -38,6 +39,7 @@ export interface WorldInspectorResourceDto {
 	readonly resourceId: string;
 	readonly resourceName: string;
 	readonly fields: ReadonlyArray<WorldInspectorResourceFieldDto>;
+	readonly valueTree: ReadonlyArray<WorldInspectorValueNodeDto>;
 	readonly revision: number;
 	readonly changedPaths: ReadonlyArray<ReadonlyArray<string>>;
 }
@@ -277,35 +279,6 @@ function isInstanceTypeLabel(typeLabel: string): boolean {
 	);
 }
 
-function valueToText(value: unknown): string {
-	if (value === undefined) return "";
-	if (typeIs(value, "string")) return value;
-	if (typeIs(value, "number") || typeIs(value, "boolean")) return tostring(value);
-	if (typeIs(value, "Instance")) return value.GetFullName();
-	if (typeIs(value, "Vector2")) return `Vector2(${tostring(value.X)}, ${tostring(value.Y)})`;
-	if (typeIs(value, "Vector3")) return `Vector3(${tostring(value.X)}, ${tostring(value.Y)}, ${tostring(value.Z)})`;
-	if (typeIs(value, "UDim")) return `UDim(${tostring(value.Scale)}, ${tostring(value.Offset)})`;
-	if (typeIs(value, "UDim2")) {
-		return `UDim2(${tostring(value.X.Scale)}, ${tostring(value.X.Offset)}, ${tostring(value.Y.Scale)}, ${tostring(value.Y.Offset)})`;
-	}
-	if (typeIs(value, "Color3")) return `Color3(${tostring(value.R)}, ${tostring(value.G)}, ${tostring(value.B)})`;
-	if (typeIs(value, "CFrame")) {
-		const [x, y, z, r00, r01, r02, r10, r11, r12, r20, r21, r22] = value.GetComponents();
-		return `CFrame(${tostring(x)}, ${tostring(y)}, ${tostring(z)}, ${tostring(r00)}, ${tostring(r01)}, ${tostring(r02)}, ${tostring(r10)}, ${tostring(r11)}, ${tostring(r12)}, ${tostring(r20)}, ${tostring(r21)}, ${tostring(r22)})`;
-	}
-	return tostring(value);
-}
-
-function valueTypeLabel(value: unknown): string {
-	if (value === undefined) return "unknown";
-	if (typeIs(value, "string")) return "string";
-	if (typeIs(value, "number")) return "number";
-	if (typeIs(value, "boolean")) return "boolean";
-	if (typeIs(value, "Instance")) return "Instance";
-	const label = typeOf(value);
-	return label !== undefined ? label : "unknown";
-}
-
 function isEditableTypeLabel(typeLabel: string): boolean {
 	const lowered = typeLabel.lower();
 	return (
@@ -393,6 +366,7 @@ function resourceToDto(resource: ResourceInspection): WorldInspectorResourceDto 
 		resourceId: resource.id,
 		resourceName: resource.name,
 		fields: resourceFieldsToDto(resource),
+		valueTree: buildValueTreeRows(resource.value),
 		revision: resource.revision,
 		changedPaths: resource.changedPaths,
 	};

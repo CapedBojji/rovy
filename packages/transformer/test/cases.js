@@ -528,6 +528,69 @@ class DebugState {
 	assert.doesNotMatch(result.printed, /key: "hidden"/);
 	assert.doesNotMatch(result.printed, /key: "shared"/);
 	assert.doesNotMatch(result.printed, /key: "callback"/);
+	// @inspect is a soft-deprecated no-op: metadata flows through __resource, never __inspect.
+	assert.doesNotMatch(result.printed, /__inspect\(/);
+});
+
+runCase("@resource without @inspect emits debug metadata", () => {
+	const result = compileFixture(
+		`
+${header}
+@resource
+class DebugState {
+	public tick = 0;
+	name = "ready";
+	private secret = 1;
+}
+`,
+		{
+			packageRovyBuild: {
+				current: "dev",
+				environments: {
+					dev: { debug: true },
+				},
+			},
+		},
+	);
+	assertNoDiagnostics(result, "resource metadata without inspect");
+	assert.match(result.printed, /__resource\(DebugState, "src\/main@DebugState", \{ inspect: \{ fields: \[/);
+	assert.match(result.printed, /\{ key: "tick", typeLabel: "number", validator: \(\) => true \}/);
+	assert.match(result.printed, /\{ key: "name", typeLabel: "string", validator: \(\) => true \}/);
+	assert.doesNotMatch(result.printed, /key: "secret"/);
+	assert.doesNotMatch(result.printed, /__inspect\(/);
+});
+
+runCase("@inspect on resource compiles identically to no decorator", () => {
+	const build = {
+		packageRovyBuild: {
+			current: "dev",
+			environments: { dev: { debug: true } },
+		},
+	};
+	const withInspect = compileFixture(
+		`
+${header}
+@inspect
+@resource
+class DebugState {
+	tick = 0;
+}
+`,
+		build,
+	);
+	const without = compileFixture(
+		`
+${header}
+@resource
+class DebugState {
+	tick = 0;
+}
+`,
+		build,
+	);
+	assertNoDiagnostics(withInspect, "with @inspect");
+	assertNoDiagnostics(without, "without @inspect");
+	assert.equal(withInspect.printed, without.printed);
 });
 
 runCase("@inspect resource emits diagnostic for unsupported field names", () => {

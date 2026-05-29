@@ -1,16 +1,7 @@
-import { rovy, RovyWorld, ScheduleContext, type Ctor, type Entity, type StableId, type World } from "@rovy/core";
+import { rovy, RovyWorld, ScheduleContext, type App, type Ctor, type Entity, type LifecycleRecord, type StableId, type World } from "@rovy/core";
 import { StartFrameRecording, StopFrameRecording } from "../events";
-
-type JecsEntity = Entity;
-import {
-	deepClone,
-	diffSnapshots,
-	INSPECT_DEPTH,
-	snapshotEqual,
-	valueToText,
-	type ChangeEntry,
-	type FrameRecord,
-} from "./recorder-snapshot";
+import { buildValueTree, type WorldInspectorValueNodeDto } from "./value-tree";
+import { countByKind, type ChangeEntry, type FrameRecord } from "./recorder-snapshot";
 
 export type RecorderPhase = "idle" | "recording" | "stopped";
 
@@ -29,9 +20,10 @@ export class WorldInspectorRecorderState {
 	head = 0;
 	count = 0;
 	startFrame = 0;
-	lastSampledTick = -1;
-	componentShadow = new Map<JecsEntity, Map<Entity, unknown>>();
-	resourceShadow = new Map<Ctor, unknown>();
+	/** change entries appended by lifecycle listeners since the last drain */
+	pending = new Array<ChangeEntry>();
+	/** target key → last seen value tree, so changes can report an old value */
+	shadow = new Map<string, WorldInspectorValueNodeDto>();
 	pendingCommand?: "start" | "stop";
 	resultWindowOpen = false;
 	page = 0;
@@ -81,160 +73,201 @@ export class WorldInspectorRecorderState {
 		this.clearBuffer();
 		this.maxFramesDraft = tostring(clamped);
 	}
+
+	/** Append a normalized change; called by lifecycle listeners while recording. */
+	append(entry: ChangeEntry): void {
+		this.pending.push(entry);
+	}
 }
 
-function componentName(id: StableId): string {
-	const pathParts = id.split("/");
-	const tail = pathParts[pathParts.size() - 1] ?? id;
-	const scopeParts = tail.split("@");
-	return scopeParts[scopeParts.size() - 1] ?? tail;
+function componentKey(id: StableId, entity: Entity): string {
+	return `c:${id}#${tostring(entity)}`;
 }
 
-function resourceIdFor(ctor: Ctor): StableId {
-	for (const reg of rovy.registry.resources) {
-		if (reg.ctor === ctor) return reg.id;
+function resourceKey(id: StableId): string {
+	return `r:${id}`;
+}
+
+function relationKey(name: string, source: Entity, target: Entity): string {
+	return `p:${name}#${tostring(source)}->${tostring(target)}`;
+}
+
+function relationDisplayName(ctor: Ctor): string {
+	for (const reg of rovy.registry.components) {
+		if (reg.ctor === ctor) {
+			const parts = reg.id.split("/");
+			return parts[parts.size() - 1] ?? reg.id;
+		}
 	}
 	return tostring(ctor);
 }
 
-function snapshotAllShadow(world: RovyWorld, state: WorldInspectorRecorderState): void {
-	state.componentShadow = new Map();
-	for (const comp of world.inspectRegisteredComponents()) {
-		const id = world.componentId(comp.ctor);
-		const shadow = new Map<Entity, unknown>();
-		for (const e of world.entitiesWith(comp.ctor)) {
-			const cur = world.get(e, comp.ctor);
-			shadow.set(e, deepClone(cur, INSPECT_DEPTH));
-		}
-		state.componentShadow.set(id, shadow);
-	}
-	state.resourceShadow = new Map();
-	for (const reg of rovy.registry.inspects) {
-		const cur = world.optResource(reg.ctor);
-		if (cur === undefined) continue;
-		const depth = reg.depth ?? INSPECT_DEPTH;
-		state.resourceShadow.set(reg.ctor, deepClone(cur, depth));
-	}
+function joinPaths(paths: ReadonlyArray<ReadonlyArray<string>> | undefined): string {
+	if (paths === undefined || paths.size() === 0) return "";
+	const dotted = new Array<string>();
+	for (const path of paths) dotted.push(path.join("."));
+	return dotted.join(", ");
 }
 
-function drainCommand(world: RovyWorld, state: WorldInspectorRecorderState): void {
+/**
+ * Register lifecycle listeners that feed the recorder's pending buffer.
+ * Listeners stay live for the app, but only append while phase === "recording".
+ * Old values come from an incremental per-target shadow (no world polling).
+ */
+export function registerRecorderListeners(app: App, recorder: WorldInspectorRecorderState): void {
+	app.on_entity_spawned((record: LifecycleRecord) => {
+		if (recorder.phase !== "recording" || record.entity === undefined) return;
+		recorder.append({ tick: record.tick, kind: "add", target: { kind: "entity", entity: record.entity } });
+	});
+
+	app.on_entity_despawned((record: LifecycleRecord) => {
+		if (recorder.phase !== "recording" || record.entity === undefined) return;
+		recorder.append({ tick: record.tick, kind: "remove", target: { kind: "entity", entity: record.entity } });
+	});
+
+	app.on_component_added((record: LifecycleRecord) => {
+		if (recorder.phase !== "recording" || record.entity === undefined || record.id === undefined) return;
+		const name = record.name ?? record.id;
+		const newTree = buildValueTree(record.value, { rootKey: name });
+		recorder.shadow.set(componentKey(record.id, record.entity), newTree);
+		recorder.append({
+			tick: record.tick,
+			kind: "add",
+			target: { kind: "component", entity: record.entity, componentId: record.id, componentName: name },
+			newTree,
+		});
+	});
+
+	app.on_component_changed((record: LifecycleRecord) => {
+		if (recorder.phase !== "recording" || record.entity === undefined || record.id === undefined) return;
+		const name = record.name ?? record.id;
+		const key = componentKey(record.id, record.entity);
+		const oldTree = recorder.shadow.get(key);
+		const newTree = buildValueTree(record.value, { rootKey: name });
+		recorder.shadow.set(key, newTree);
+		recorder.append({
+			tick: record.tick,
+			kind: "change",
+			target: { kind: "component", entity: record.entity, componentId: record.id, componentName: name },
+			oldTree,
+			newTree,
+		});
+	});
+
+	app.on_component_removed((record: LifecycleRecord) => {
+		if (recorder.phase !== "recording" || record.entity === undefined || record.id === undefined) return;
+		const name = record.name ?? record.id;
+		const key = componentKey(record.id, record.entity);
+		const oldTree = recorder.shadow.get(key) ?? buildValueTree(record.oldValue, { rootKey: name });
+		recorder.shadow.delete(key);
+		recorder.append({
+			tick: record.tick,
+			kind: "remove",
+			target: { kind: "component", entity: record.entity, componentId: record.id, componentName: name },
+			oldTree,
+		});
+	});
+
+	app.on_resource_changed((record: LifecycleRecord) => {
+		if (recorder.phase !== "recording" || record.id === undefined) return;
+		const name = record.name ?? record.id;
+		const key = resourceKey(record.id);
+		const oldTree = recorder.shadow.get(key);
+		const newTree = buildValueTree(record.value, { rootKey: name });
+		recorder.shadow.set(key, newTree);
+		recorder.append({
+			tick: record.tick,
+			kind: "change",
+			target: { kind: "resource", resourceId: record.id, resourceName: name, path: joinPaths(record.paths) },
+			oldTree,
+			newTree,
+		});
+	});
+
+	app.on_relation_added((record: LifecycleRecord) => {
+		if (recorder.phase !== "recording" || record.entity === undefined || record.target === undefined || record.relation === undefined) return;
+		const name = relationDisplayName(record.relation);
+		const newTree = record.data !== undefined ? buildValueTree(record.data, { rootKey: name }) : undefined;
+		if (newTree !== undefined) recorder.shadow.set(relationKey(name, record.entity, record.target), newTree);
+		recorder.append({
+			tick: record.tick,
+			kind: "add",
+			target: { kind: "relation", entity: record.entity, target: record.target, relationName: name },
+			newTree,
+		});
+	});
+
+	app.on_relation_changed((record: LifecycleRecord) => {
+		if (recorder.phase !== "recording" || record.entity === undefined || record.target === undefined || record.relation === undefined) return;
+		const name = relationDisplayName(record.relation);
+		const key = relationKey(name, record.entity, record.target);
+		const oldTree = recorder.shadow.get(key);
+		const newTree = record.data !== undefined ? buildValueTree(record.data, { rootKey: name }) : undefined;
+		if (newTree !== undefined) recorder.shadow.set(key, newTree);
+		recorder.append({
+			tick: record.tick,
+			kind: "change",
+			target: { kind: "relation", entity: record.entity, target: record.target, relationName: name },
+			oldTree,
+			newTree,
+		});
+	});
+
+	app.on_relation_removed((record: LifecycleRecord) => {
+		if (recorder.phase !== "recording" || record.entity === undefined || record.target === undefined || record.relation === undefined) return;
+		const name = relationDisplayName(record.relation);
+		const key = relationKey(name, record.entity, record.target);
+		const oldTree = recorder.shadow.get(key) ?? (record.oldValue !== undefined ? buildValueTree(record.oldValue, { rootKey: name }) : undefined);
+		recorder.shadow.delete(key);
+		recorder.append({
+			tick: record.tick,
+			kind: "remove",
+			target: { kind: "relation", entity: record.entity, target: record.target, relationName: name },
+			oldTree,
+		});
+	});
+}
+
+function drainCommand(state: WorldInspectorRecorderState, frame: number): void {
 	const command = state.pendingCommand;
 	state.pendingCommand = undefined;
 	if (command === "start") {
 		state.clearBuffer();
 		state.applyMaxFramesDraft();
-		snapshotAllShadow(world, state);
-		state.lastSampledTick = world.changeTick;
-		const ctx = world.optResource(ScheduleContext);
-		state.startFrame = ctx?.frame ?? 0;
+		state.shadow.clear();
+		state.pending = [];
+		state.startFrame = frame;
 		state.phase = "recording";
 	} else if (command === "stop") {
 		state.phase = "stopped";
 		state.resultWindowOpen = true;
-		state.componentShadow = new Map();
-		state.resourceShadow = new Map();
+		state.shadow.clear();
+		state.pending = [];
 	}
 }
 
-function recordFrame(world: RovyWorld, state: WorldInspectorRecorderState, frame: number): void {
-	const tick = world.changeTick;
-	const entries = new Array<ChangeEntry>();
-	const nextComponentShadow = new Map<JecsEntity, Map<Entity, unknown>>();
-
-	for (const comp of world.inspectRegisteredComponents()) {
-		const id = world.componentId(comp.ctor);
-		const priorShadow = state.componentShadow.get(id) ?? new Map<Entity, unknown>();
-		const touched = world.changedSince(id, state.lastSampledTick);
-		const removedRecs = world.removedRecordsSince(id, state.lastSampledTick);
-		if (touched.size() === 0 && removedRecs.size() === 0) {
-			nextComponentShadow.set(id, priorShadow);
-			continue;
-		}
-		const nextShadow = new Map<Entity, unknown>();
-		const seen = new Set<Entity>();
-		const name = componentName(comp.id);
-		for (const e of world.entitiesWith(comp.ctor)) {
-			seen.add(e);
-			const cur = world.get(e, comp.ctor);
-			const clone = deepClone(cur, INSPECT_DEPTH);
-			nextShadow.set(e, clone);
-			const prior = priorShadow.get(e);
-			if (prior === undefined && !priorShadow.has(e)) {
-				entries.push({
-					tick,
-					kind: "add",
-					target: { kind: "component", entity: e, componentId: comp.id, componentName: name },
-					newText: valueToText(cur),
-				});
-			} else if (!snapshotEqual(prior, clone)) {
-				entries.push({
-					tick,
-					kind: "change",
-					target: { kind: "component", entity: e, componentId: comp.id, componentName: name },
-					oldText: valueToText(prior),
-					newText: valueToText(cur),
-				});
-			}
-		}
-		for (const [e, oldClone] of priorShadow) {
-			if (seen.has(e)) continue;
-			entries.push({
-				tick,
-				kind: "remove",
-				target: { kind: "component", entity: e, componentId: comp.id, componentName: name },
-				oldText: valueToText(oldClone),
-			});
-		}
-		nextComponentShadow.set(id, nextShadow);
-	}
-	state.componentShadow = nextComponentShadow;
-
-	const nextResourceShadow = new Map<Ctor, unknown>();
-	for (const reg of rovy.registry.inspects) {
-		const cur = world.optResource(reg.ctor);
-		const depth = reg.depth ?? INSPECT_DEPTH;
-		const prior = state.resourceShadow.get(reg.ctor);
-		const cloneOrUndef = cur === undefined ? undefined : deepClone(cur, depth);
-		if (cur === undefined && prior === undefined) continue;
-		const resourceId = resourceIdFor(reg.ctor);
-		diffSnapshots(
-			prior,
-			cloneOrUndef,
-			"",
-			entries,
-			tick,
-			(path) => ({ kind: "resource", resourceId, path }),
-			depth,
-			reg.exclude,
-		);
-		if (cloneOrUndef !== undefined) nextResourceShadow.set(reg.ctor, cloneOrUndef);
-	}
-	state.resourceShadow = nextResourceShadow;
-
-	let componentChanges = 0;
-	let resourceChanges = 0;
-	for (const entry of entries) {
-		if (entry.target.kind === "component") componentChanges += 1;
-		else resourceChanges += 1;
-	}
-
-	state.pushFrame({
-		frame,
-		relativeIndex: frame - state.startFrame,
-		tick,
-		componentChanges,
-		resourceChanges,
-		entries,
-	});
-	state.lastSampledTick = tick;
-}
-
+/** Drains pending lifecycle entries into one FrameRecord per render tick. */
 export class WorldInspectorFrameRecorderSystem {
 	run(worldArg: World, state: WorldInspectorRecorderState, ctx: ScheduleContext): void {
 		const world = worldArg as unknown as RovyWorld;
-		if (state.pendingCommand !== undefined) drainCommand(world, state);
-		if (state.phase !== "recording") return;
-		recordFrame(world, state, ctx.frame);
+		if (state.pendingCommand !== undefined) drainCommand(state, ctx.frame);
+		if (state.phase !== "recording") {
+			state.pending = [];
+			return;
+		}
+		const entries = state.pending;
+		state.pending = [];
+		const counts = countByKind(entries);
+		state.pushFrame({
+			frame: ctx.frame,
+			relativeIndex: ctx.frame - state.startFrame,
+			tick: world.changeTick,
+			entityChanges: counts.entity,
+			componentChanges: counts.component,
+			resourceChanges: counts.resource,
+			relationChanges: counts.relation,
+			entries,
+		});
 	}
 }
 
