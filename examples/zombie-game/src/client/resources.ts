@@ -1,4 +1,4 @@
-import EgooE from "@rbxts/egooe";
+import RovyUi from "@rovy/ui";
 import { $collectRef, resource } from "@rovy/core";
 import type { Entity } from "@rovy/core";
 import { PLAYER_MAX_HEALTH, WavePhase } from "shared/contracts";
@@ -40,7 +40,7 @@ export class HudState {
 @resource
 export class HudUiState {
 	gui?: ScreenGui;
-	node?: ReturnType<typeof EgooE.new>;
+	node?: ReturnType<typeof RovyUi.new>;
 	rendering = false;
 	readonly local: LocalClientCollect = $collectRef<LocalClientCollect>();
 }

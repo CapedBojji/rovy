@@ -1,4 +1,4 @@
-import EgooE from "@rbxts/egooe";
+import RovyUi from "@rovy/ui";
 import { SystemSet, schedule } from "@rovy/core";
 import { SNAPSHOT_INTERVAL } from "shared/contracts";
 import { HudUiState, RenderRegistry } from "./resources";
@@ -30,7 +30,7 @@ export function ensureRootFolder(reg: RenderRegistry): Folder {
 	return folder;
 }
 
-export function ensureHudNode(hudUi: HudUiState): ReturnType<typeof EgooE.new> {
+export function ensureHudNode(hudUi: HudUiState): ReturnType<typeof RovyUi.new> {
 	if (hudUi.node !== undefined && hudUi.gui?.Parent !== undefined) return hudUi.node;
 
 	const Players = game.GetService("Players");
@@ -42,7 +42,7 @@ export function ensureHudNode(hudUi: HudUiState): ReturnType<typeof EgooE.new> {
 	gui.Parent = playerGui;
 
 	hudUi.gui = gui;
-	hudUi.node = EgooE.new(gui);
+	hudUi.node = RovyUi.new(gui);
 	return hudUi.node;
 }
 

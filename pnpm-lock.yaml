@@ -149,12 +149,6 @@ importers:
       '@rbxts/better-janitor':
         specifier: ^0.4.0
         version: 0.4.0
-      '@rbxts/egooe':
-        specifier: 0.1.7
-        version: 0.1.7
-      '@rbxts/iris':
-        specifier: 2.3.1-ts.1
-        version: 2.3.1-ts.1
       '@rbxts/maid':
         specifier: ^1.1.0
         version: 1.1.0
@@ -289,12 +283,6 @@ importers:
       '@rbxts/better-janitor':
         specifier: ^0.4.0
         version: 0.4.0
-      '@rbxts/egooe':
-        specifier: 0.1.7
-        version: 0.1.7
-      '@rbxts/iris':
-        specifier: 2.3.1-ts.1
-        version: 2.3.1-ts.1
       '@rbxts/maid':
         specifier: ^1.1.0
         version: 1.1.0
@@ -992,14 +980,8 @@ packages:
   '@rbxts/compiler-types@3.0.0-types.0':
     resolution: {integrity: sha512-VGOHJPoL7+56NTatMGqQj3K7xWuzEV+aP4QD5vZiHu+bcff3kiTmtoadaF6NkJrmwfFAvbsd4Dg764ZjWNceag==}
 
-  '@rbxts/egooe@0.1.7':
-    resolution: {integrity: sha512-C0krosLgW5Ya/TCU40PXRR467flOWOYvKM+nChFJtJ47n+lA9xZG0B9tkVkWXRUtReeQaBwSvBI0ngrxyyZdpQ==}
-
   '@rbxts/emittery@3.16.0-ts.1':
     resolution: {integrity: sha512-eqfRdvvN6sdoeboXsN7glTWboZCzMiK+MSd6rz/hnvwZqo73xmrsKyqtT+C1iFg5tpKqwqF0KhNfrrtPml+ZRA==}
-
-  '@rbxts/iris@2.3.1-ts.1':
-    resolution: {integrity: sha512-L/lja+ugKNH3ywdz5c8omXUS34L9oGKlul3yVifzTfQVJS4ryePU/hS6IdMaSbIwNda+qEOehXbSxglF9qxa/A==}
 
   '@rbxts/jest-globals@3.16.0-ts.1':
     resolution: {integrity: sha512-DXTgUbSgK7evchCI0sMKam1EzY2aTTlpaSQEMFs4ng5rNYIRCRS90w8t/b01WxGeXipZTMwfqB2PG4yPbmkzcg==}
@@ -2843,13 +2825,9 @@ snapshots:
 
   '@rbxts/compiler-types@3.0.0-types.0': {}
 
-  '@rbxts/egooe@0.1.7': {}
-
   '@rbxts/emittery@3.16.0-ts.1':
     dependencies:
       '@rbxts-js/emittery': 3.16.0-ts.1
-
-  '@rbxts/iris@2.3.1-ts.1': {}
 
   '@rbxts/jest-globals@3.16.0-ts.1':
     dependencies:
