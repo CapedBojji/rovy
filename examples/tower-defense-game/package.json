@@ -76,6 +76,10 @@
 		"generateBlink": true,
 		"environments": {
 			"dev": {
+				"debug": true,
+				"editor": {
+					"runtimeTypeChecks": false
+				},
 				"rojo": "default.project.json",
 				"boundaries": {
 					"server": [

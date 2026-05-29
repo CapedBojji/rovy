@@ -16,12 +16,16 @@ export {
 export { WorldInspectorState } from "./state";
 export {
 	WorldInspectorRecorderState,
+	WorldInspectorPeerRecorderState,
 	WorldInspectorFrameRecorderSystem,
 	StartFrameRecordingObserver,
 	StopFrameRecordingObserver,
+	drainRecorderFrame,
 	registerRecorderListeners,
 	type RecorderPhase,
 	type RecorderConfig,
+	type RecordingControlQueueItem,
+	type WorldInspectorRecorderCollection,
 } from "./runtime/recorder";
 export {
 	countByKind,

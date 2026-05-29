@@ -24,10 +24,18 @@ import {
 	StartFrameRecordingObserver,
 	StopFrameRecordingObserver,
 	WorldInspectorFrameRecorderSystem,
+	WorldInspectorPeerRecorderState,
 	WorldInspectorRecorderState,
+	drainRecorderFrame,
 	registerRecorderListeners,
 } from "./recorder";
 import {
+	PeerRecordingControlRequest,
+	PeerRecordingControlResponse,
+	PeerRecordingFrame,
+	RecordingControlRequest,
+	RecordingControlResponse,
+	RecordingFrame,
 	WorldInspectorEditRequest,
 	WorldInspectorEditResponse,
 	WorldInspectorPeerEditRequest,
@@ -97,7 +105,7 @@ class WorldInspectorRenderSystem {
 }
 
 class WorldInspectorClientNetworkSystem {
-	run(state: WorldInspectorState, client: NetClient): void {
+	run(state: WorldInspectorState, recorder: WorldInspectorRecorderState, client: NetClient): void {
 		const targetListRequest = state.consumeTargetListRequest();
 		if (targetListRequest !== undefined) client.trigger(new WorldInspectorTargetListRequest(targetListRequest));
 		if (state.visible && state.selectedTargetKey !== "local") {
@@ -112,6 +120,9 @@ class WorldInspectorClientNetworkSystem {
 		}
 		for (const request of state.consumeEditRequests()) {
 			client.trigger(new WorldInspectorEditRequest(request.requestId, request.targetKey, request.edit));
+		}
+		for (const request of recorder.consumeRemoteControlRequests()) {
+			client.trigger(new RecordingControlRequest(request.requestId, request.sessionId, request.targetKey, request.command, request.maxFrames));
 		}
 	}
 }
@@ -132,6 +143,18 @@ class WorldInspectorEditResponseObserver {
 	run(event: WorldInspectorEditResponse, state: WorldInspectorState): void {
 		state.receiveSnapshot(event.snapshot, event.message);
 		if (event.spawnedEntityId !== undefined) state.openEntityWindow(event.targetKey, event.spawnedEntityId);
+	}
+}
+
+class RecordingControlResponseObserver {
+	run(event: RecordingControlResponse, recorder: WorldInspectorRecorderState): void {
+		recorder.receiveRemoteControlResponse(event.sessionId, event.targetKey, event.ok, event.command, event.message);
+	}
+}
+
+class RecordingFrameObserver {
+	run(event: RecordingFrame, recorder: WorldInspectorRecorderState): void {
+		recorder.receiveRemoteFrame(event.sessionId, event.targetKey, event.frame);
 	}
 }
 
@@ -157,13 +180,57 @@ class WorldInspectorPeerEditRequestObserver {
 	}
 }
 
+class PeerRecordingControlRequestObserver {
+	run(event: PeerRecordingControlRequest, recorder: WorldInspectorPeerRecorderState, client: NetClient, ctx: ScheduleContext): void {
+		if (event.command === "start") {
+			recorder.startSession(event.sessionId, event.requesterUserId, event.maxFrames, ctx.frame);
+			client.trigger(new PeerRecordingControlResponse(event.requestId, event.sessionId, event.requesterUserId, true, event.command));
+			return;
+		}
+		const ok = recorder.stopSession(event.sessionId, event.requesterUserId);
+		client.trigger(new PeerRecordingControlResponse(event.requestId, event.sessionId, event.requesterUserId, ok, event.command, ok ? undefined : "not recording"));
+	}
+}
+
+class WorldInspectorPeerRecordingStreamSystem {
+	run(world: World, recorder: WorldInspectorPeerRecorderState, client: NetClient, ctx: ScheduleContext): void {
+		for (const [, session] of recorder.sessions) {
+			const frame = drainRecorderFrame(world, session.recorder, ctx);
+			if (frame !== undefined) client.trigger(new PeerRecordingFrame(session.sessionId, session.requesterUserId, frame));
+		}
+	}
+}
+
 export class WorldInspectorServerState {
 	readonly pendingPeer = new Map<string, { requester: Player; target: Player; targetKey: string; action: "view" | "edit" }>();
+	readonly serverRecorders = new Map<string, { requester: Player; recorder: WorldInspectorRecorderState }>();
+	readonly peerRecorders = new Map<string, { requester: Player; target: Player; targetKey: string }>();
 
 	constructor(readonly access?: (ctx: WorldInspectorAccessContext) => boolean) {}
 
 	can(ctx: WorldInspectorAccessContext): boolean {
 		return this.access?.(ctx) === true;
+	}
+
+	startServerRecording(requester: Player, sessionId: string, maxFrames: number, frame: number): void {
+		const recorder = new WorldInspectorRecorderState();
+		recorder.startHostRecording("server", sessionId, maxFrames, frame);
+		this.serverRecorders.set(recordingSessionKey(requester.UserId, sessionId), { requester, recorder });
+	}
+
+	stopServerRecording(requester: Player, sessionId: string): boolean {
+		const key = recordingSessionKey(requester.UserId, sessionId);
+		const session = this.serverRecorders.get(key);
+		if (session === undefined) return false;
+		session.recorder.stopHostRecording();
+		this.serverRecorders.delete(key);
+		return true;
+	}
+
+	forEachRecordingRecorder(callback: (recorder: WorldInspectorRecorderState) => void): void {
+		for (const [, session] of this.serverRecorders) {
+			if (session.recorder.phase === "recording") callback(session.recorder);
+		}
 	}
 }
 
@@ -259,6 +326,68 @@ class WorldInspectorPeerEditResponseObserver {
 	}
 }
 
+class RecordingControlRequestObserver {
+	run(event: RecordingControlRequest, server: NetServer, netContext: NetEventContext, state: WorldInspectorServerState, ctx: ScheduleContext): void {
+		const requester = netContext.senderOf(event);
+		if (requester === undefined) return;
+		const resolved = resolveRemoteTarget(event.targetKey);
+		if (resolved.kind === "server") {
+			if (!state.can({ requester, action: "view", targetKind: "server" })) {
+				server.trigger(requester, new RecordingControlResponse(event.requestId, event.sessionId, event.targetKey, false, event.command, "access denied"));
+				return;
+			}
+			if (event.command === "start") {
+				state.startServerRecording(requester, event.sessionId, event.maxFrames, ctx.frame);
+			} else {
+				state.stopServerRecording(requester, event.sessionId);
+			}
+			server.trigger(requester, new RecordingControlResponse(event.requestId, event.sessionId, event.targetKey, true, event.command));
+			return;
+		}
+
+		const targetPlayer = findPlayerByUserId(resolved.userId);
+		if (targetPlayer === undefined || !state.can({ requester, action: "view", targetKind: "player", targetPlayer })) {
+			server.trigger(requester, new RecordingControlResponse(event.requestId, event.sessionId, event.targetKey, false, event.command, "access denied"));
+			return;
+		}
+		const key = recordingSessionKey(requester.UserId, event.sessionId);
+		if (event.command === "start") {
+			state.peerRecorders.set(key, { requester, target: targetPlayer, targetKey: event.targetKey });
+		}
+		server.trigger(targetPlayer, new PeerRecordingControlRequest(event.requestId, event.sessionId, requester.UserId, event.command, event.maxFrames));
+	}
+}
+
+class PeerRecordingControlResponseObserver {
+	run(event: PeerRecordingControlResponse, server: NetServer, netContext: NetEventContext, state: WorldInspectorServerState): void {
+		const sender = netContext.senderOf(event);
+		const key = recordingSessionKey(event.requesterUserId, event.sessionId);
+		const session = state.peerRecorders.get(key);
+		if (sender === undefined || session === undefined || !samePlayer(sender, session.target)) return;
+		server.trigger(session.requester, new RecordingControlResponse(event.requestId, event.sessionId, session.targetKey, event.ok, event.command, event.message));
+		if (event.command === "stop" || !event.ok) state.peerRecorders.delete(key);
+	}
+}
+
+class PeerRecordingFrameObserver {
+	run(event: PeerRecordingFrame, server: NetServer, netContext: NetEventContext, state: WorldInspectorServerState): void {
+		const sender = netContext.senderOf(event);
+		const session = state.peerRecorders.get(recordingSessionKey(event.requesterUserId, event.sessionId));
+		if (sender === undefined || session === undefined || !samePlayer(sender, session.target)) return;
+		server.trigger(session.requester, new RecordingFrame(event.sessionId, session.targetKey, event.frame));
+	}
+}
+
+class WorldInspectorServerRecordingStreamSystem {
+	run(world: World, state: WorldInspectorServerState, server: NetServer, ctx: ScheduleContext): void {
+		for (const [sessionKey, session] of state.serverRecorders) {
+			const frame = drainRecorderFrame(world, session.recorder, ctx);
+			if (frame !== undefined) server.trigger(session.requester, new RecordingFrame(session.recorder.sessionId, session.recorder.targetKey, frame));
+			if (session.recorder.phase === "stopped") state.serverRecorders.delete(sessionKey);
+		}
+	}
+}
+
 function asRootNode(root: Instance | Node | undefined): Node | undefined {
 	if (root === undefined) return undefined;
 	if (typeOf(root) === "Instance") return rovyUi.new(root as Instance);
@@ -277,6 +406,7 @@ function asRootNode(root: Instance | Node | undefined): Node | undefined {
 function registerRuntime(schedule?: Ctor, networkSchedule?: Ctor): void {
 	rovy.__resource(WorldInspectorState, "rovy/world-inspector/WorldInspectorState");
 	rovy.__resource(WorldInspectorRecorderState, "rovy/world-inspector/WorldInspectorRecorderState");
+	rovy.__resource(WorldInspectorPeerRecorderState, "rovy/world-inspector/WorldInspectorPeerRecorderState");
 	rovy.__event(ShowWorldInspector);
 	rovy.__event(HideWorldInspector);
 	rovy.__event(ToggleWorldInspector);
@@ -334,7 +464,22 @@ function registerRuntime(schedule?: Ctor, networkSchedule?: Ctor): void {
 			id: "rovy/world-inspector/WorldInspectorClientNetworkSystem",
 			schedule: networkSchedule,
 			set: NetFlushSet,
-			params: [{ kind: "resMut", ctor: WorldInspectorState }, { kind: "external", id: NET_CLIENT_PARAM }],
+			params: [
+				{ kind: "resMut", ctor: WorldInspectorState },
+				{ kind: "resMut", ctor: WorldInspectorRecorderState },
+				{ kind: "external", id: NET_CLIENT_PARAM },
+			],
+		});
+		rovy.__system(WorldInspectorPeerRecordingStreamSystem, {
+			id: "rovy/world-inspector/WorldInspectorPeerRecordingStreamSystem",
+			schedule: networkSchedule,
+			set: NetFlushSet,
+			params: [
+				{ kind: "world" },
+				{ kind: "resMut", ctor: WorldInspectorPeerRecorderState },
+				{ kind: "external", id: NET_CLIENT_PARAM },
+				{ kind: "res", ctor: ScheduleContext },
+			],
 		});
 		registerClientObservers();
 	}
@@ -343,6 +488,7 @@ function registerRuntime(schedule?: Ctor, networkSchedule?: Ctor): void {
 export class WorldInspectorPlugin implements Plugin {
 	private readonly state = new WorldInspectorState();
 	private readonly recorder = new WorldInspectorRecorderState();
+	private readonly peerRecorder = new WorldInspectorPeerRecorderState();
 
 	constructor(private readonly options: WorldInspectorPluginOptions = {}) {
 		this.state.uiRoot = asRootNode(options.uiRoot);
@@ -359,6 +505,10 @@ export class WorldInspectorPlugin implements Plugin {
 		}
 		app.insertResource(this.state);
 		app.insertResource(this.recorder);
+		if (this.options.networkSchedule !== undefined) {
+			app.insertResource(this.peerRecorder);
+			registerRecorderListeners(app, this.peerRecorder);
+		}
 		registerRecorderListeners(app, this.recorder);
 	}
 
@@ -378,12 +528,24 @@ export class WorldInspectorServerPlugin implements Plugin {
 		registerWorldInspectorNetEvents();
 		rovy.__resource(WorldInspectorServerState, "rovy/world-inspector/WorldInspectorServerState");
 		registerServerObservers();
+		rovy.__system(WorldInspectorServerRecordingStreamSystem, {
+			id: "rovy/world-inspector/WorldInspectorServerRecordingStreamSystem",
+			schedule: this.options.schedule,
+			set: NetFlushSet,
+			params: [
+				{ kind: "world" },
+				{ kind: "resMut", ctor: WorldInspectorServerState },
+				{ kind: "external", id: NET_SERVER_PARAM },
+				{ kind: "res", ctor: ScheduleContext },
+			],
+		});
 		new NetPlugin({
 			schedule: this.options.schedule,
 			transport: this.options.networkTransport ?? new RemoteEventTransport(),
 			boundary: this.options.networkBoundary,
 		}).build(app);
 		app.insertResource(this.state);
+		registerRecorderListeners(app, this.state);
 	}
 }
 
@@ -410,6 +572,16 @@ function registerClientObservers(): void {
 		priority: 0,
 		params: [{ kind: "event" }, { kind: "resMut", ctor: WorldInspectorState }],
 	});
+	rovy.__observer(RecordingControlResponseObserver, {
+		event: RecordingControlResponse,
+		priority: 0,
+		params: [{ kind: "event" }, { kind: "resMut", ctor: WorldInspectorRecorderState }],
+	});
+	rovy.__observer(RecordingFrameObserver, {
+		event: RecordingFrame,
+		priority: 0,
+		params: [{ kind: "event" }, { kind: "resMut", ctor: WorldInspectorRecorderState }],
+	});
 	rovy.__observer(WorldInspectorPeerSnapshotRequestObserver, {
 		event: WorldInspectorPeerSnapshotRequest,
 		priority: 0,
@@ -419,6 +591,16 @@ function registerClientObservers(): void {
 		event: WorldInspectorPeerEditRequest,
 		priority: 0,
 		params: [{ kind: "event" }, { kind: "world" }, { kind: "external", id: NET_CLIENT_PARAM }],
+	});
+	rovy.__observer(PeerRecordingControlRequestObserver, {
+		event: PeerRecordingControlRequest,
+		priority: 0,
+		params: [
+			{ kind: "event" },
+			{ kind: "resMut", ctor: WorldInspectorPeerRecorderState },
+			{ kind: "external", id: NET_CLIENT_PARAM },
+			{ kind: "res", ctor: ScheduleContext },
+		],
 	});
 }
 
@@ -475,6 +657,37 @@ function registerServerObservers(): void {
 			{ kind: "resMut", ctor: WorldInspectorServerState },
 		],
 	});
+	rovy.__observer(RecordingControlRequestObserver, {
+		event: RecordingControlRequest,
+		priority: 0,
+		params: [
+			{ kind: "event" },
+			{ kind: "external", id: NET_SERVER_PARAM },
+			{ kind: "external", id: NET_EVENT_CONTEXT_PARAM },
+			{ kind: "resMut", ctor: WorldInspectorServerState },
+			{ kind: "res", ctor: ScheduleContext },
+		],
+	});
+	rovy.__observer(PeerRecordingControlResponseObserver, {
+		event: PeerRecordingControlResponse,
+		priority: 0,
+		params: [
+			{ kind: "event" },
+			{ kind: "external", id: NET_SERVER_PARAM },
+			{ kind: "external", id: NET_EVENT_CONTEXT_PARAM },
+			{ kind: "resMut", ctor: WorldInspectorServerState },
+		],
+	});
+	rovy.__observer(PeerRecordingFrameObserver, {
+		event: PeerRecordingFrame,
+		priority: 0,
+		params: [
+			{ kind: "event" },
+			{ kind: "external", id: NET_SERVER_PARAM },
+			{ kind: "external", id: NET_EVENT_CONTEXT_PARAM },
+			{ kind: "resMut", ctor: WorldInspectorServerState },
+		],
+	});
 }
 
 function getPlayers(): Player[] {
@@ -491,6 +704,10 @@ function findPlayerByUserId(userId: number): Player | undefined {
 
 function samePlayer(a: Player, b: Player): boolean {
 	return a === b || a.UserId === b.UserId;
+}
+
+function recordingSessionKey(requesterUserId: number, sessionId: string): string {
+	return `${tostring(requesterUserId)}:${sessionId}`;
 }
 
 function playerTargetKey(player: Player): string {

@@ -2,6 +2,7 @@ import type { Entity, StableId } from "@rovy/core";
 import type { WorldInspectorValueNodeDto } from "./value-tree";
 
 export type ChangeKind = "add" | "change" | "remove";
+export type RecordingControlCommand = "start" | "stop";
 
 export interface EntityChangeTarget {
 	readonly kind: "entity";

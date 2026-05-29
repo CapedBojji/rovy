@@ -128,20 +128,21 @@ function selectedComponent(
 	return undefined;
 }
 
-function renderTargetPicker(state: WorldInspectorState): void {
+function renderTargetPicker(state: WorldInspectorState, recorder?: WorldInspectorRecorderState): void {
 	const choices = targetChoices(state);
 	const labels = choices.map((choice) => choice.label);
 	const current = choices.find((choice) => choice.key === state.selectedTargetKey) ?? choices[0];
 	const picker = comboBox({ items: labels, selected: current.label });
 	if (picker.changed()) {
 		for (const choice of choices) {
-				if (choice.label === picker.value()) {
-					state.selectedTargetKey = choice.key;
-					state.componentPicker = "";
-					state.lastSnapshotAt = 0;
-					if (choice.key !== "local") state.queueSnapshot(choice.key);
-					break;
-			}
+					if (choice.label === picker.value()) {
+						state.selectedTargetKey = choice.key;
+						recorder?.selectTarget(choice.key);
+						state.componentPicker = "";
+						state.lastSnapshotAt = 0;
+						if (choice.key !== "local") state.queueSnapshot(choice.key);
+						break;
+				}
 		}
 	}
 }
@@ -158,16 +159,16 @@ function renderMainTabs(state: WorldInspectorState): void {
 }
 
 function renderFramesTab(recorder: WorldInspectorRecorderState, state: WorldInspectorState): void {
-	label("Records mutations on the LOCAL world only.");
+	recorder.selectTarget(state.selectedTargetKey);
+	label(`Records mutations on ${state.selectedTargetKey}.`);
 	row(() => {
 		const recording = recorder.phase === "recording";
 		if (button(recording ? "Stop" : "Record").clicked()) {
-			if (recording) recorder.queueStop();
-			else recorder.queueStart();
+			if (recording) recorder.queueStop(state.selectedTargetKey);
+			else recorder.queueStart(state.selectedTargetKey);
 		}
 		if (button("Clear").clicked()) {
-			recorder.clearBuffer();
-			recorder.openDetailFrames.clear();
+			recorder.queueClear(state.selectedTargetKey);
 		}
 		__scope("frames:max-frames", () => {
 			useKey("max-frames");
@@ -179,6 +180,7 @@ function renderFramesTab(recorder: WorldInspectorRecorderState, state: WorldInsp
 		});
 	});
 	label(`phase: ${recorder.phase}   frames: ${tostring(recorder.count)} / ${tostring(recorder.config.maxFrames)}`);
+	if (recorder.statusMessage !== undefined) label(recorder.statusMessage);
 	separator();
 
 	if (recorder.count === 0) {
@@ -545,7 +547,7 @@ export function worldInspector(options: WorldInspectorOptions): void {
 		},
 		() => {
 			if (state.error !== undefined) label(state.error);
-			renderTargetPicker(state);
+			renderTargetPicker(state, recorder);
 			space(4);
 			renderMainTabs(state);
 			space(4);

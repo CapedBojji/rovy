@@ -22,6 +22,7 @@ export type WorldInspectorExplorerSource =
 export interface WorldInspectorTableExplorerState {
 	readonly title: string;
 	readonly source: WorldInspectorExplorerSource;
+	path?: ReadonlyArray<string>;
 }
 
 export class WorldInspectorState {
@@ -82,9 +83,13 @@ export class WorldInspectorState {
 		this.actionErrors.clear();
 	}
 
-	openTableExplorer(key: string, title: string, source: WorldInspectorExplorerSource): void {
-		if (this.tableExplorers.has(key)) return;
-		this.tableExplorers.set(key, { title, source });
+	openTableExplorer(key: string, title: string, source: WorldInspectorExplorerSource, path: ReadonlyArray<string> = []): void {
+		const existing = this.tableExplorers.get(key);
+		if (existing !== undefined) {
+			existing.path = path;
+			return;
+		}
+		this.tableExplorers.set(key, { title, source, path });
 	}
 
 	closeTableExplorer(key: string): void {
