@@ -18,6 +18,61 @@ importers:
         specifier: ^1.6.3
         version: 1.6.4(@algolia/client-search@5.52.1)(@types/node@22.19.19)(postcss@8.5.15)(search-insights@2.17.3)(typescript@5.9.3)
 
+  examples/game-template:
+    dependencies:
+      '@rbxts/better-janitor':
+        specifier: ^0.4.0
+        version: 0.4.0
+      '@rovy/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@rovy/jecs':
+        specifier: workspace:*
+        version: link:../../packages/jecs
+    devDependencies:
+      '@rbxts/compiler-types':
+        specifier: 3.0.0-types.0
+        version: 3.0.0-types.0
+      '@rbxts/testez':
+        specifier: 0.4.2-ts.0
+        version: 0.4.2-ts.0
+      '@rbxts/types':
+        specifier: ^1.0.920
+        version: 1.0.920
+      '@typescript-eslint/eslint-plugin':
+        specifier: ^8.59.3
+        version: 8.59.3(@typescript-eslint/parser@8.59.3(eslint@10.4.0)(typescript@5.5.3))(eslint@10.4.0)(typescript@5.5.3)
+      '@typescript-eslint/parser':
+        specifier: ^8.59.3
+        version: 8.59.3(eslint@10.4.0)(typescript@5.5.3)
+      eslint:
+        specifier: ^10.3.0
+        version: 10.4.0
+      eslint-config-prettier:
+        specifier: ^10.1.8
+        version: 10.1.8(eslint@10.4.0)
+      eslint-plugin-prettier:
+        specifier: ^5.5.5
+        version: 5.5.5(eslint-config-prettier@10.1.8(eslint@10.4.0))(eslint@10.4.0)(prettier@3.8.3)
+      eslint-plugin-roblox-ts:
+        specifier: ^1.4.0
+        version: 1.4.0(@typescript-eslint/parser@8.59.3(eslint@10.4.0)(typescript@5.5.3))(eslint@10.4.0)(typescript@5.5.3)
+      prettier:
+        specifier: ^3.8.3
+        version: 3.8.3
+      roblox-ts:
+        specifier: ^3.0.0
+        version: 3.0.0
+      rovy-build:
+        specifier: workspace:*
+        version: link:../../packages/build
+      rovy-transformer:
+        specifier: workspace:*
+        version: link:../../packages/transformer
+      typescript:
+        specifier: 5.5.3
+        version: 5.5.3
+
   examples/multiplace-template:
     dependencies:
       '@rbxts/better-janitor':
@@ -3085,7 +3140,7 @@ snapshots:
 
   '@typescript-eslint/project-service@8.56.0(typescript@5.5.3)':
     dependencies:
-      '@typescript-eslint/tsconfig-utils': 8.56.0(typescript@5.5.3)
+      '@typescript-eslint/tsconfig-utils': 8.59.3(typescript@5.5.3)
       '@typescript-eslint/types': 8.59.3
       debug: 4.4.3
       typescript: 5.5.3
