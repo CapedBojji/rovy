@@ -173,17 +173,60 @@ for _, r in roots do
 	indexTree(r)
 end
 
-local function signal()
+local allConnections = {}
+
+local function liveConnectionCount(label)
+	local total = 0
+	for _, connection in ipairs(allConnections) do
+		if connection.Connected and (label == nil or connection.__label == label) then
+			total += 1
+		end
+	end
+	return total
+end
+
+local function disconnectLoggedConnections()
+	for _, connection in ipairs(allConnections) do
+		if connection.Connected then
+			connection:Disconnect()
+		end
+	end
+	table.clear(allConnections)
+end
+
+local function signal(label)
 	local listeners = {}
 	return {
 		Connect = function(_self, fn)
-			local listener = { connected = true, fn = fn }
+			local listener = { connected = true, fn = fn, connection = nil }
 			table.insert(listeners, listener)
-			return {
-				Disconnect = function()
+			local connection = {
+				Connected = true,
+				__label = label,
+				Disconnect = function(self)
 					listener.connected = false
+					self.Connected = false
 				end,
 			}
+			listener.connection = connection
+			table.insert(allConnections, connection)
+			return connection
+		end,
+		DisconnectAll = function(_self)
+			for _, listener in ipairs(listeners) do
+				if listener.connection ~= nil then
+					listener.connection:Disconnect()
+				else
+					listener.connected = false
+				end
+			end
+		end,
+		LiveConnectionCount = function(_self)
+			local total = 0
+			for _, listener in ipairs(listeners) do
+				if listener.connected then total += 1 end
+			end
+			return total
 		end,
 		Fire = function(_self, ...)
 			for _, listener in ipairs(listeners) do
@@ -229,7 +272,7 @@ FakeInstance.__index = function(self, key)
 	end
 	local events = rawget(self, "__events")
 	if events[key] == nil then
-		events[key] = signal()
+		events[key] = signal(tostring(rawget(self, "ClassName")) .. "." .. tostring(key))
 	end
 	return events[key]
 end
@@ -251,18 +294,33 @@ FakeInstance.__newindex = function(self, key, value)
 	else
 		rawset(self, key, value)
 	end
+	local propertyEvents = rawget(self, "__propertyEvents")
+	local propertyEvent = propertyEvents and propertyEvents[key]
+	if propertyEvent ~= nil then
+		propertyEvent:Fire()
+	end
 end
 function FakeInstance:IsA(className)
 	return self.ClassName == className or className == "Instance" or (className == "GuiObject" and self.__isGui)
 end
-	function FakeInstance:Destroy()
-		self.Destroyed = true
-		self.Parent = nil
-		for _, child in ipairs(self:GetChildren()) do
-			child:Destroy()
+function FakeInstance:Destroy()
+	self.Destroyed = true
+	self.Parent = nil
+	for _, event in pairs(self.__events) do
+		if event.DisconnectAll ~= nil then
+			event:DisconnectAll()
 		end
-		self.__children = {}
 	end
+	for _, event in pairs(self.__propertyEvents) do
+		if event.DisconnectAll ~= nil then
+			event:DisconnectAll()
+		end
+	end
+	for _, child in ipairs(self:GetChildren()) do
+		child:Destroy()
+	end
+	self.__children = {}
+end
 function FakeInstance:GetChildren()
 	local children = {}
 	for _, instance in ipairs(allInstances) do
@@ -297,6 +355,13 @@ end
 function FakeInstance:GetAttribute(name)
 	return self.__attributes[name]
 end
+function FakeInstance:GetPropertyChangedSignal(name)
+	local events = rawget(self, "__propertyEvents")
+	if events[name] == nil then
+		events[name] = signal(tostring(rawget(self, "ClassName")) .. "." .. tostring(name) .. "Changed")
+	end
+	return events[name]
+end
 
 local function newInstance(className)
 	local instance = setmetatable({
@@ -304,6 +369,7 @@ local function newInstance(className)
 		Name = className,
 		__children = {},
 		__events = {},
+		__propertyEvents = {},
 		__attributes = {},
 		__isGui = true,
 		LayoutOrder = 0,
@@ -363,9 +429,9 @@ end
 
 local services = {
 	UserInputService = {
-		InputBegan = signal(),
-		InputChanged = signal(),
-		InputEnded = signal(),
+		InputBegan = signal("UserInputService.InputBegan"),
+		InputChanged = signal("UserInputService.InputChanged"),
+		InputEnded = signal("UserInputService.InputEnded"),
 		MouseLocation = { X = 0, Y = 0 },
 		GetMouseLocation = function(self)
 			return self.MouseLocation
@@ -376,6 +442,17 @@ local services = {
 		GetGuiInset = function(self)
 			return self.GuiInset, { X = 0, Y = 0 }
 		end,
+	},
+	RunService = {
+		RenderStepped = signal("RunService.RenderStepped"),
+	},
+	Players = {
+		LocalPlayer = {
+			Mouse = { Icon = "" },
+			GetMouse = function(self)
+				return self.Mouse
+			end,
+		},
 	},
 	AssetService = {
 		CreatedEditableImages = {},
@@ -421,6 +498,10 @@ local fakeGlobals = {
 		end,
 	},
 	__rovyTestServices = services,
+	__rovyTestRuntime = {
+		liveConnectionCount = liveConnectionCount,
+		resetConnections = disconnectLoggedConnections,
+	},
 	Enum = setmetatable({}, {
 		__index = function(_, enumName)
 			return setmetatable({}, {

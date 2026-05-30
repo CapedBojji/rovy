@@ -333,6 +333,37 @@ importers:
         specifier: 5.5.3
         version: 5.5.3
 
+  examples/ui-test-place:
+    dependencies:
+      '@rbxts/better-janitor':
+        specifier: ^0.4.0
+        version: 0.4.0
+      '@rovy/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@rovy/jecs':
+        specifier: workspace:*
+        version: link:../../packages/jecs
+      '@rovy/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+    devDependencies:
+      '@rbxts/compiler-types':
+        specifier: 3.0.0-types.0
+        version: 3.0.0-types.0
+      '@rbxts/types':
+        specifier: ^1.0.920
+        version: 1.0.924
+      roblox-ts:
+        specifier: ^3.0.0
+        version: 3.0.0
+      rovy-build:
+        specifier: workspace:*
+        version: link:../../packages/build
+      typescript:
+        specifier: 5.5.3
+        version: 5.5.3
+
   examples/zombie-game:
     dependencies:
       '@rbxts/better-janitor':

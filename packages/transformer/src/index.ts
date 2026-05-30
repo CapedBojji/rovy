@@ -973,7 +973,7 @@ function constructorValidatorForParams(
 ): ts.Expression {
 	if (!state.runtimeTypeChecksEnabled() || params.length === 0) return alwaysTrueValidator();
 	const validators = params.map((param) => validatorForType(state, sourceFile, param.type, param.questionToken !== undefined));
-	return call(field(state.addTImport(sourceFile), "tuple"), validators);
+	return call(field(state.addTImport(sourceFile), "strictArray"), validators);
 }
 
 function validatorForType(
@@ -1008,7 +1008,7 @@ function validatorForRequiredType(
 		case ts.SyntaxKind.TupleType: {
 			const tupleType = type as ts.TupleTypeNode;
 			return call(
-				field(t, "tuple"),
+				field(t, "strictArray"),
 				tupleType.elements.map((element) => validatorForType(state, sourceFile, element, false)),
 			);
 		}
@@ -1224,8 +1224,16 @@ function unsupportedDatastoreType(
 	return alwaysTrueValidator();
 }
 
-function alwaysTrueValidator(): ts.ArrowFunction {
-	return arrow(bool(true));
+function alwaysTrueValidator(): ts.Expression {
+	const value = id("value");
+	return ts.factory.createArrowFunction(
+		undefined,
+		undefined,
+		[ts.factory.createParameterDeclaration(undefined, undefined, value, undefined, ts.factory.createKeywordTypeNode(ts.SyntaxKind.UnknownKeyword))],
+		ts.factory.createTypePredicateNode(undefined, value, ts.factory.createKeywordTypeNode(ts.SyntaxKind.UnknownKeyword)),
+		ts.factory.createToken(ts.SyntaxKind.EqualsGreaterThanToken),
+		bool(true),
+	);
 }
 
 const ROBLOX_INSTANCE_TYPES = new Set([

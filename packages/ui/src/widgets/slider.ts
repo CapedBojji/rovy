@@ -15,6 +15,7 @@ export interface SliderOptions {
 	showValueBox?: boolean;
 	valueBoxWidth?: number;
 	suffix?: string;
+	step?: number;
 }
 
 interface SliderRefs {
@@ -50,7 +51,22 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 	const min = opts.min ?? 0;
 	const max = opts.max ?? 1;
 	const initial = opts.initial ?? min;
-	const initPercent = (initial - min) / (max - min);
+	const range = max - min;
+	const stepSize = opts.step !== undefined && opts.step > 0 ? opts.step : undefined;
+	const snapValue = (raw: number): number => {
+		const clamped = math.clamp(raw, min, max);
+		if (stepSize === undefined) return clamped;
+		return math.clamp(min + math.round((clamped - min) / stepSize) * stepSize, min, max);
+	};
+	const valueToPercent = (raw: number): number => (range > 0 ? (snapValue(raw) - min) / range : 0);
+	const percentToValue = (percent: number): number => snapValue(math.clamp(percent, 0, 1) * range + min);
+	const setRawPercent = (percent: number): void => {
+		setPercentageValue(valueToPercent(percentToValue(percent)));
+	};
+	const setRawValue = (value: number): void => {
+		setPercentageValue(valueToPercent(value));
+	};
+	const initPercent = valueToPercent(initial);
 	const [percentageValue, setPercentageValue] = __useState("slider:value", initPercent);
 	const [editing, setEditing] = __useState("slider:editing", false);
 	const [focused, setFocused] = __useState("slider:focused", false);
@@ -104,7 +120,7 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 				const trackFrame = ref.track;
 				const trackWidth = trackFrame.AbsoluteSize.X;
 				const x = math.clamp(moveInput.Position.X - trackFrame.AbsolutePosition.X, 0, trackWidth);
-				setPercentageValue(x / trackWidth);
+				setRawPercent(x / trackWidth);
 			});
 		};
 
@@ -129,7 +145,7 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 				const range = rMax - rMin;
 				const speed = range > 0 ? math.max(range / 200, 0.01) : 1;
 				const newVal = math.clamp((ref.dragStartValue ?? rMin) + dx * speed, rMin, rMax);
-				setPercentageValue(range > 0 ? (newVal - rMin) / range : 0);
+				setRawValue(newVal);
 			});
 		};
 
@@ -200,10 +216,10 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 						const inputObj = args[0] as InputObject;
 						if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
 						if (!isTopGuiTarget(ref.track)) return;
-						const trackFrame = ref.track;
+					const trackFrame = ref.track;
 					const trackWidth = trackFrame.AbsoluteSize.X;
 					const x = math.clamp(inputObj.Position.X - trackFrame.AbsolutePosition.X, 0, trackWidth);
-					setPercentageValue(x / trackWidth);
+					setRawPercent(x / trackWidth);
 					startTrackDrag();
 				},
 				InputEnded: (...args: ReadonlyArray<unknown>) => {
@@ -295,7 +311,7 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 							const rangeMax = ref.rangeMax ?? 1;
 							const range = rangeMax - rangeMin;
 							const clamped = math.clamp(parsed, rangeMin, rangeMax);
-							setPercentageValue(range > 0 ? (clamped - rangeMin) / range : 0);
+							setRawValue(clamped);
 						}
 					}
 					setEditing(false);
@@ -321,15 +337,16 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 		};
 	});
 
-	refs.currentPercent = percentageValue;
+	const value = percentToValue(percentageValue);
+	const displayPercent = valueToPercent(value);
+
+	refs.currentPercent = displayPercent;
 	refs.rangeMin = min;
 	refs.rangeMax = max;
 	refs.isEditing = editing;
 
-	refs.grab.Position = udim2(percentageValue, 0, 0.5, 0);
-	refs.fill.Size = udim2(percentageValue, 0, 1, 0);
-
-	const value = percentageValue * (max - min) + min;
+	refs.grab.Position = udim2(displayPercent, 0, 0.5, 0);
+	refs.fill.Size = udim2(displayPercent, 0, 1, 0);
 
 	const style = useStyle();
 	refs.valueBox.Visible = showValueBox;

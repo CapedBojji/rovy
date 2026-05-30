@@ -1,5 +1,5 @@
 import { widget, __useState } from "../runtime";
-import { c, v2 } from "../primitives";
+import { c, udim2, v2 } from "../primitives";
 import { darkStyle, lightStyle, setStyle } from "../style";
 import { window } from "./window";
 import { button } from "./button";
@@ -19,6 +19,8 @@ import { progressBar } from "./progress-bar";
 import { collapsingHeader } from "./collapsing-header";
 import { toggle } from "./toggle";
 import { clickableLabel } from "./clickable-label";
+import { EditableImageBuffer } from "../editable-image-buffer";
+import { editableImage } from "./editable-image";
 import { modal } from "./modal";
 import { popup } from "./popup";
 import { childWindow } from "./child-window";
@@ -73,6 +75,69 @@ const tableExplorerSample: ReadonlyArray<TableExplorerNode> = [
 	{ key: "self", typeLabel: "table", preview: "{1 key}", cycle: true },
 	{ key: "version", typeLabel: "string", preview: "1.0.0" },
 ];
+
+interface EditableImageDemoSettings {
+	background: boolean;
+	fillShapes: boolean;
+	showCircle: boolean;
+	showPolygon: boolean;
+	showLine: boolean;
+	strokeThickness: number;
+}
+
+const editableImageDemoDefaults: EditableImageDemoSettings = {
+	background: true,
+	fillShapes: true,
+	showCircle: true,
+	showPolygon: true,
+	showLine: true,
+	strokeThickness: 3,
+};
+
+function drawEditableImageDemoSample(pixels: EditableImageBuffer, settings: EditableImageDemoSettings): void {
+	const width = pixels.size.X;
+	const height = pixels.size.Y;
+	pixels.clear(0, 0, 0, 0);
+
+	if (settings.background) {
+		pixels.fillRect(v2(0, 0), pixels.size, c(14, 20, 28), 255);
+		for (let x = 0; x < width; x += 16) {
+			pixels.drawLine(v2(x, 0), v2(x, height - 1), c(42, 58, 76), { alpha: 115 });
+		}
+		for (let y = 0; y < height; y += 16) {
+			pixels.drawLine(v2(0, y), v2(width - 1, y), c(42, 58, 76), { alpha: 115 });
+		}
+	}
+
+	pixels.fillRect(v2(10, 10), v2(28, 22), c(245, 92, 112), 230);
+
+	if (settings.showPolygon) {
+		pixels.drawPolygon([v2(18, 96), v2(50, 42), v2(88, 58), v2(108, 104)], c(0, 184, 255), {
+			alpha: 235,
+			fill: settings.fillShapes,
+			thickness: settings.strokeThickness,
+		});
+	}
+	if (settings.showCircle) {
+		pixels.drawCircle(v2(86, 38), 24, c(255, 215, 88), {
+			alpha: 235,
+			fill: settings.fillShapes,
+			thickness: settings.strokeThickness,
+		});
+	}
+	if (settings.showLine) {
+		pixels.drawLine(v2(18, 116), v2(112, 18), c(150, 255, 170), {
+			alpha: 255,
+			thickness: settings.strokeThickness,
+		});
+	}
+}
+
+function createEditableImageDemoBuffer(): EditableImageBuffer {
+	const pixels = new EditableImageBuffer(v2(128, 128));
+	drawEditableImageDemoSample(pixels, editableImageDemoDefaults);
+	return pixels;
+}
 
 /** @widget */
 export const demoWindow = widget((): void => {
@@ -131,6 +196,115 @@ export const demoWindow = widget((): void => {
 	const [tableActionCount, setTableActionCount] = __useState("demo:tableActionCount", 0);
 	const [tableTuning, setTableTuning] = __useState("demo:tableTuning", 25);
 	const [tableExplorerDemoOpen, setTableExplorerDemoOpen] = __useState("demo:tableExplorerDemoOpen", false);
+
+	const [editableDemoOpen, setEditableDemoOpen] = __useState("demo:editableDemoOpen", false);
+	const [editableDemoBackground, setEditableDemoBackground] = __useState(
+		"demo:editableDemoBackground",
+		editableImageDemoDefaults.background,
+	);
+	const [editableDemoFillShapes, setEditableDemoFillShapes] = __useState(
+		"demo:editableDemoFillShapes",
+		editableImageDemoDefaults.fillShapes,
+	);
+	const [editableDemoCircle, setEditableDemoCircle] = __useState(
+		"demo:editableDemoCircle",
+		editableImageDemoDefaults.showCircle,
+	);
+	const [editableDemoPolygon, setEditableDemoPolygon] = __useState(
+		"demo:editableDemoPolygon",
+		editableImageDemoDefaults.showPolygon,
+	);
+	const [editableDemoLine, setEditableDemoLine] = __useState("demo:editableDemoLine", editableImageDemoDefaults.showLine);
+	const [editableDemoStrokeThickness, setEditableDemoStrokeThickness] = __useState(
+		"demo:editableDemoStrokeThickness",
+		editableImageDemoDefaults.strokeThickness,
+	);
+	const [editableDemoRevision, setEditableDemoRevision] = __useState("demo:editableDemoRevision", 1);
+	const [editableDemoStatus, setEditableDemoStatus] = __useState("demo:editableDemoStatus", "Sample drawn");
+	const [editableDemoBuffer] = __useState("demo:editableDemoBuffer", createEditableImageDemoBuffer);
+
+	const editableDemoSettings = (
+		background = editableDemoBackground,
+		fillShapes = editableDemoFillShapes,
+		showCircle = editableDemoCircle,
+		showPolygon = editableDemoPolygon,
+		showLine = editableDemoLine,
+		strokeThickness = editableDemoStrokeThickness,
+	): EditableImageDemoSettings => ({
+		background,
+		fillShapes,
+		showCircle,
+		showPolygon,
+		showLine,
+		strokeThickness,
+	});
+
+	const redrawEditableDemo = (settings = editableDemoSettings(), status = "Sample drawn"): void => {
+		drawEditableImageDemoSample(editableDemoBuffer, settings);
+		setEditableDemoStatus(status);
+		setEditableDemoRevision(editableDemoRevision + 1);
+	};
+
+	const clearEditableDemo = (): void => {
+		editableDemoBuffer.clear(0, 0, 0, 0);
+		setEditableDemoStatus("Cleared transparent buffer");
+		setEditableDemoRevision(editableDemoRevision + 1);
+	};
+
+	const renderEditableImageDemoControls = (): void => {
+		row(() => {
+			if (button("Draw sample", { width: 110 }).clicked()) {
+				redrawEditableDemo();
+			}
+			if (button("Clear", { width: 70 }).clicked()) {
+				clearEditableDemo();
+			}
+		});
+
+		if (checkbox("background grid", { checked: editableDemoBackground }).clicked()) {
+			const backgroundNext = !editableDemoBackground;
+			setEditableDemoBackground(backgroundNext);
+			redrawEditableDemo(editableDemoSettings(backgroundNext), "Background toggled");
+		}
+		if (checkbox("fill shapes", { checked: editableDemoFillShapes }).clicked()) {
+			const fillNext = !editableDemoFillShapes;
+			setEditableDemoFillShapes(fillNext);
+			redrawEditableDemo(editableDemoSettings(undefined, fillNext), "Fill toggled");
+		}
+		if (checkbox("circle", { checked: editableDemoCircle }).clicked()) {
+			const circleNext = !editableDemoCircle;
+			setEditableDemoCircle(circleNext);
+			redrawEditableDemo(editableDemoSettings(undefined, undefined, circleNext), "Circle toggled");
+		}
+		if (checkbox("polygon", { checked: editableDemoPolygon }).clicked()) {
+			const polygonNext = !editableDemoPolygon;
+			setEditableDemoPolygon(polygonNext);
+			redrawEditableDemo(editableDemoSettings(undefined, undefined, undefined, polygonNext), "Polygon toggled");
+		}
+		if (checkbox("line", { checked: editableDemoLine }).clicked()) {
+			const lineNext = !editableDemoLine;
+			setEditableDemoLine(lineNext);
+			redrawEditableDemo(editableDemoSettings(undefined, undefined, undefined, undefined, lineNext), "Line toggled");
+		}
+
+		const nextStroke = slider({
+			min: 1,
+			max: 8,
+			initial: editableDemoStrokeThickness,
+			label: "Stroke",
+			suffix: "px",
+			step: 1,
+		});
+		if (nextStroke !== editableDemoStrokeThickness) {
+			setEditableDemoStrokeThickness(nextStroke);
+			redrawEditableDemo(
+				editableDemoSettings(undefined, undefined, undefined, undefined, undefined, nextStroke),
+				"Stroke changed",
+			);
+		}
+
+		label(`Revision ${editableDemoRevision}: ${editableDemoStatus}`, { color: c(170, 170, 170) });
+	};
 
 	const renderDemoEntry = (
 		title: string,
@@ -318,6 +492,11 @@ export const demoWindow = widget((): void => {
 				}
 				toggle("Disabled toggle", { on: true, disabled: true });
 
+				space(6);
+
+				heading("EditableImage");
+				separator();
+				label("Open Demos > Images > Editable Image Demo for draw, clear, and shape controls.", { wrapped: true });
 				space(6);
 
 				heading("TextEdit");
@@ -529,6 +708,18 @@ export const demoWindow = widget((): void => {
 								() => {
 									label("Navigable value-tree explorer. Open to launch.");
 								},
+							);
+						});
+
+						collapsingHeader("Images", () => {
+							renderDemoEntry(
+								"Editable Image Demo",
+								editableDemoOpen,
+								setEditableDemoOpen,
+								() => {
+									label(`Revision ${editableDemoRevision}: ${editableDemoStatus}`, { color: c(170, 170, 170) });
+								},
+								{ height: 95 },
 							);
 						});
 					},
@@ -861,6 +1052,43 @@ export const demoWindow = widget((): void => {
 		});
 		if (explorerHandle.closed()) {
 			setTableExplorerDemoOpen(false);
+		}
+	}
+
+	if (editableDemoOpen) {
+		const editableDemoWindow = window(
+			{
+				title: "Editable Image Demo",
+				closable: true,
+				minimizable: true,
+				movable: true,
+				resizable: true,
+				size: v2(390, 520),
+				position: v2(460, 300),
+			},
+			() => {
+				label("Draw buffer with helper, then push buffer into editableImage widget.");
+				space(6);
+
+				const editableHandle = editableImage({
+					size: editableDemoBuffer.size,
+					displaySize: udim2(0, 224, 0, 224),
+					backgroundTransparency: 0,
+				});
+				if (!editableHandle.draw(editableDemoBuffer.getBuffer())) {
+					label(editableHandle.error() ?? "EditableImage unavailable", {
+						wrapped: true,
+						color: c(255, 170, 110),
+					});
+				}
+
+				space(6);
+				renderEditableImageDemoControls();
+			},
+		);
+
+		if (editableDemoWindow.closed()) {
+			setEditableDemoOpen(false);
 		}
 	}
 }, "@rovy/ui/demoWindow");

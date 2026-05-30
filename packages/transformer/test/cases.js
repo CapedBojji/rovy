@@ -97,8 +97,8 @@ ${header}
 }
 `);
 	assertNoDiagnostics(result, "component editor metadata default");
-	assert.match(result.printed, /editor: \{ fields: \[ \{ key: "rootPart", typeLabel: "BasePart", validator: \(\) => true \} \]/);
-	assert.match(result.printed, /constructorValidator: \(\) => true/);
+	assert.match(result.printed, /editor: \{ fields: \[ \{ key: "rootPart", typeLabel: "BasePart", validator: \(value: unknown\): value is unknown => true \} \]/);
+	assert.match(result.printed, /constructorValidator: \(value: unknown\): value is unknown => true/);
 	assert.doesNotMatch(result.printed, /@rbxts\/t/);
 });
 
@@ -126,7 +126,7 @@ ${header}
 	assertNoDiagnostics(result, "component editor metadata enabled");
 	assert.match(result.printed, /from "@rbxts\/t"/);
 	assert.match(result.printed, /validator: .*\.instanceIsA\("BasePart"\)/);
-	assert.match(result.printed, /constructorValidator: .*\.tuple\(.*\.instanceIsA\("BasePart"\)\)/);
+	assert.match(result.printed, /constructorValidator: .*\.strictArray\(.*\.instanceIsA\("BasePart"\)\)/);
 });
 
 runCase(".rovy.json debug enables runtime type checks when editor flag omitted", () => {
@@ -151,7 +151,7 @@ ${header}
 	assertNoDiagnostics(result, "debug runtime type checks");
 	assert.match(result.printed, /from "@rbxts\/t"/);
 	assert.match(result.printed, /validator: .*\.string/);
-	assert.match(result.printed, /constructorValidator: .*\.tuple\(.*\.string\)/);
+	assert.match(result.printed, /constructorValidator: .*\.strictArray\(.*\.string\)/);
 });
 
 runCase("package rovy-build config takes precedence over .rovy.json", () => {
@@ -211,7 +211,7 @@ ${header}
 		},
 	);
 	assertNoDiagnostics(result, "runtime type checks override");
-	assert.match(result.printed, /validator: \(\) => true/);
+	assert.match(result.printed, /validator: \(value: unknown\): value is unknown => true/);
 	assert.doesNotMatch(result.printed, /@rbxts\/t/);
 });
 
@@ -521,8 +521,8 @@ class DebugState {
 	);
 	assertNoDiagnostics(result, "inspect resource metadata");
 	assert.match(result.printed, /__resource\(DebugState, "src\/main@DebugState", \{ inspect: \{ fields: \[/);
-	assert.match(result.printed, /\{ key: "tick", typeLabel: "number", validator: \(\) => true \}/);
-	assert.match(result.printed, /\{ key: "name", typeLabel: "string", validator: \(\) => true \}/);
+	assert.match(result.printed, /\{ key: "tick", typeLabel: "number", validator: \(value: unknown\): value is unknown => true \}/);
+	assert.match(result.printed, /\{ key: "name", typeLabel: "string", validator: \(value: unknown\): value is unknown => true \}/);
 	assert.match(result.printed, /\{ key: "alive", typeLabel: "boolean", validator: .*\.boolean \}/);
 	assert.doesNotMatch(result.printed, /key: "secret"/);
 	assert.doesNotMatch(result.printed, /key: "hidden"/);
@@ -554,8 +554,8 @@ class DebugState {
 	);
 	assertNoDiagnostics(result, "resource metadata without inspect");
 	assert.match(result.printed, /__resource\(DebugState, "src\/main@DebugState", \{ inspect: \{ fields: \[/);
-	assert.match(result.printed, /\{ key: "tick", typeLabel: "number", validator: \(\) => true \}/);
-	assert.match(result.printed, /\{ key: "name", typeLabel: "string", validator: \(\) => true \}/);
+	assert.match(result.printed, /\{ key: "tick", typeLabel: "number", validator: \(value: unknown\): value is unknown => true \}/);
+	assert.match(result.printed, /\{ key: "name", typeLabel: "string", validator: \(value: unknown\): value is unknown => true \}/);
 	assert.doesNotMatch(result.printed, /key: "secret"/);
 	assert.doesNotMatch(result.printed, /__inspect\(/);
 });

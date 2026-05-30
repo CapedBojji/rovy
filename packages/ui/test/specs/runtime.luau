@@ -286,11 +286,22 @@ return function(TS, t)
 				break
 			end
 			t.expect(hasChildren).toBeTruthy()
-		end)
+			end)
 
-		t.it("writes pixels through EditableImageBuffer", function()
-			RovyUi.__reset()
-			local img = RovyUi.EditableImageBuffer.new(_G.Vector2.new(4, 4))
+			t.it("snaps slider value to configured step", function()
+				RovyUi.__reset()
+				local snapped
+				run(function()
+					RovyUi.window("Tools", function()
+						snapped = RovyUi.slider({ min = 1, max = 8, initial = 3.6, step = 1, label = "Stroke" })
+					end)
+				end)
+				t.expect(snapped).toBe(4)
+			end)
+
+			t.it("writes pixels through EditableImageBuffer", function()
+				RovyUi.__reset()
+				local img = RovyUi.EditableImageBuffer.new(_G.Vector2.new(4, 4))
 			local pixels = img:getBuffer()
 			t.expect(_G.buffer.len(pixels)).toBe(64)
 
@@ -313,6 +324,51 @@ return function(TS, t)
 			t.expect(_G.buffer.readu8(pixels, 1)).toBe(2)
 			t.expect(_G.buffer.readu8(pixels, 2)).toBe(3)
 			t.expect(_G.buffer.readu8(pixels, 3)).toBe(4)
+		end)
+
+		t.it("draws lines, circles, and polygons into EditableImageBuffer", function()
+			RovyUi.__reset()
+			local img = RovyUi.EditableImageBuffer.new(_G.Vector2.new(8, 8))
+			local pixels = img:getBuffer()
+
+			img:drawLine(_G.Vector2.new(0, 0), _G.Vector2.new(3, 0), _G.Color3.fromRGB(10, 20, 30), { alpha = 40 })
+			t.expect(_G.buffer.readu8(pixels, 0)).toBe(10)
+			t.expect(_G.buffer.readu8(pixels, 1)).toBe(20)
+			t.expect(_G.buffer.readu8(pixels, 2)).toBe(30)
+			t.expect(_G.buffer.readu8(pixels, 3)).toBe(40)
+			t.expect(_G.buffer.readu8(pixels, (0 * 8 + 3) * 4 + 3)).toBe(40)
+
+			img:clear()
+			img:drawCircle(_G.Vector2.new(3, 3), 2, _G.Color3.fromRGB(200, 0, 0), { alpha = 99 })
+			t.expect(_G.buffer.readu8(pixels, (3 * 8 + 3) * 4)).toBe(200)
+			t.expect(_G.buffer.readu8(pixels, (3 * 8 + 3) * 4 + 3)).toBe(99)
+			t.expect(_G.buffer.readu8(pixels, (3 * 8 + 5) * 4 + 3)).toBe(99)
+			t.expect(_G.buffer.readu8(pixels, (3 * 8 + 6) * 4 + 3)).toBe(0)
+
+			img:clear()
+			img:drawCircle(_G.Vector2.new(3, 3), 2, _G.Color3.fromRGB(0, 200, 0), { alpha = 77, fill = false })
+			t.expect(_G.buffer.readu8(pixels, (3 * 8 + 3) * 4 + 3)).toBe(0)
+			t.expect(_G.buffer.readu8(pixels, (3 * 8 + 5) * 4 + 3)).toBe(77)
+
+			img:clear()
+			img:drawPolygon({
+				_G.Vector2.new(1, 1),
+				_G.Vector2.new(5, 1),
+				_G.Vector2.new(1, 5),
+			}, _G.Color3.fromRGB(0, 0, 200), { alpha = 55 })
+			t.expect(_G.buffer.readu8(pixels, (2 * 8 + 2) * 4 + 2)).toBe(200)
+			t.expect(_G.buffer.readu8(pixels, (2 * 8 + 2) * 4 + 3)).toBe(55)
+			t.expect(_G.buffer.readu8(pixels, (6 * 8 + 6) * 4 + 3)).toBe(0)
+
+			img:clear()
+			img:drawPolygon({
+				_G.Vector2.new(1, 1),
+				_G.Vector2.new(4, 1),
+				_G.Vector2.new(4, 4),
+				_G.Vector2.new(1, 4),
+			}, _G.Color3.fromRGB(250, 250, 0), { alpha = 33, fill = false })
+			t.expect(_G.buffer.readu8(pixels, (1 * 8 + 1) * 4 + 3)).toBe(33)
+			t.expect(_G.buffer.readu8(pixels, (2 * 8 + 2) * 4 + 3)).toBe(0)
 		end)
 
 		t.it("displays an EditableImage and draws caller-provided buffers", function()
@@ -535,6 +591,72 @@ return function(TS, t)
 			t.expect(modalDialog.Active).toBe(true)
 			t.expect(modalDialog.InputSink).toBe(_G.Enum.InputSink.All)
 			t.expect(modalDialog.ZIndex > modalOverlay.ZIndex).toBeTruthy()
+		end)
+
+		t.it("cleans transient UI connections when an interactive subtree unmounts", function()
+			RovyUi.__reset()
+			_G.__rovyTestRuntime.resetConnections()
+			local services = _G.__rovyTestServices
+			local playerGui = _G.Instance.new("PlayerGui")
+			local gui = root()
+			gui.Parent = playerGui
+			local node = RovyUi.new(gui)
+
+			RovyUi.start(node, function()
+				RovyUi.window({ title = "Leaks" }, function()
+					RovyUi.button("Hover")
+					RovyUi.dragValue({ min = 0, max = 100, step = 1, initial = 0, label = "Speed" })
+				end)
+			end)
+
+			local hoverButton = findFirstDescendant(gui, function(instance)
+				return instance.ClassName == "TextButton" and instance.Text == "Hover"
+			end)
+			local dragButton = findFirstDescendant(gui, function(instance)
+				return instance.ClassName == "TextButton" and instance.Text == "Speed: 0"
+			end)
+			t.expect(hoverButton).toBeDefined()
+			t.expect(dragButton).toBeDefined()
+
+			services.UserInputService.MouseLocation = { X = 10, Y = 12 }
+			playerGui.__guiObjectsAtPosition = { hoverButton }
+			hoverButton.MouseEnter:Fire()
+			playerGui.__guiObjectsAtPosition = { dragButton }
+			dragButton.InputBegan:Fire({
+				UserInputType = _G.Enum.UserInputType.MouseButton1,
+				Position = { X = 0, Y = 0, Z = 0 },
+			})
+
+			t.expect(_G.__rovyTestRuntime.liveConnectionCount("UserInputService.InputChanged")).toBe(1)
+			t.expect(_G.__rovyTestRuntime.liveConnectionCount("UserInputService.InputEnded")).toBe(1)
+
+			RovyUi.start(node, function() end)
+			t.expect(_G.__rovyTestRuntime.liveConnectionCount()).toBe(0)
+		end)
+
+		t.it("cleans modal default cursor loop when overlay unmounts while hovered", function()
+			RovyUi.__reset()
+			_G.__rovyTestRuntime.resetConnections()
+			local playerGui = _G.Instance.new("PlayerGui")
+			local gui = root()
+			gui.Parent = playerGui
+			local node = RovyUi.new(gui)
+
+			RovyUi.start(node, function()
+				RovyUi.modal({ title = "Cursor", open = true }, function() end)
+			end)
+
+			local overlay = findFirstDescendant(gui, function(instance)
+				return instance.Name == "ModalOverlay"
+			end)
+			t.expect(overlay).toBeDefined()
+
+			overlay.MouseEnter:Fire()
+			t.expect(_G.__rovyTestRuntime.liveConnectionCount("RunService.RenderStepped")).toBe(1)
+
+			RovyUi.start(node, function() end)
+			t.expect(overlay.Destroyed).toBeTruthy()
+			t.expect(_G.__rovyTestRuntime.liveConnectionCount()).toBe(0)
 		end)
 
 			t.it("keeps dragValue dragging after pointer leaves the control", function()

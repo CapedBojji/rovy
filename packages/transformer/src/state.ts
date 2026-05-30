@@ -281,6 +281,13 @@ export class TransformState {
 			if (clause?.namedBindings && ts.isNamespaceImport(clause.namedBindings)) {
 				return ts.factory.createIdentifier(clause.namedBindings.name.text);
 			}
+			if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+				for (const binding of clause.namedBindings.elements) {
+					if ((binding.propertyName?.text ?? binding.name.text) === "t") {
+						return ts.factory.createIdentifier(binding.name.text);
+					}
+				}
+			}
 		}
 
 		let identifier = this.pendingTImports.get(file.fileName);
@@ -302,7 +309,7 @@ export class TransformState {
 		if (rovyNetImport) imports.push(importNamed("@rovy/networking", "rovyNet", rovyNetImport.text));
 		if (rovyDataImport) imports.push(importNamed("@rovy/datastore", "rovyData", rovyDataImport.text));
 		if (rovyUiImport) imports.push(importDefault("@rovy/ui", rovyUiImport.text));
-		if (tImport) imports.push(importDefault("@rbxts/t", tImport.text));
+		if (tImport) imports.push(importNamed("@rbxts/t", "t", tImport.text));
 		const pluginImports = this.pendingPluginImports.get(file.fileName);
 		if (pluginImports) {
 			for (const [key, localName] of pluginImports) {

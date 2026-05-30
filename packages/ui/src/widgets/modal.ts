@@ -60,7 +60,7 @@ export const modal = widget((options: string | ModalOptions, fn: () => void): Mo
 			overlay.Visible = false;
 			markHitTestSurface(overlay);
 			markInputSink(overlay);
-			bindDefaultCursor(overlay);
+			const unbindDefaultCursor = bindDefaultCursor(overlay);
 			overlay.Parent = rootGui;
 
 		const dialog = new Instance("Frame");
@@ -153,6 +153,7 @@ export const modal = widget((options: string | ModalOptions, fn: () => void): Mo
 		refs.modalContent = content;
 
 		return () => {
+			unbindDefaultCursor();
 			if (overlay !== undefined && overlay.Parent !== undefined) overlay.Destroy();
 			refs.overlay = undefined;
 			refs.modalContent = undefined;

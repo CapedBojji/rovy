@@ -73,6 +73,13 @@ function ensureDefaultCursorLoop(): void {
 	});
 }
 
+function stopDefaultCursorLoopIfIdle(): void {
+	if (defaultCursorHoldCount > 0) return;
+	defaultCursorConnection?.Disconnect();
+	defaultCursorConnection = undefined;
+	defaultCursorHoldCount = 0;
+}
+
 export function defaultCursorHandlers(): {
 	MouseEnter: () => void;
 	MouseMoved: () => void;
@@ -91,6 +98,7 @@ export function defaultCursorHandlers(): {
 		if (!hovering) return;
 		hovering = false;
 		defaultCursorHoldCount = math.max(0, defaultCursorHoldCount - 1);
+		stopDefaultCursorLoopIfIdle();
 	};
 	return {
 		MouseEnter: enter,
@@ -101,11 +109,17 @@ export function defaultCursorHandlers(): {
 	};
 }
 
-export function bindDefaultCursor(guiObject: GuiObject): void {
+export function bindDefaultCursor(guiObject: GuiObject): () => void {
 	const handlers = defaultCursorHandlers();
-	guiObject.MouseEnter.Connect(handlers.MouseEnter);
-	guiObject.MouseMoved.Connect(handlers.MouseMoved);
-	guiObject.MouseLeave.Connect(handlers.MouseLeave);
+	const enterConnection = guiObject.MouseEnter.Connect(handlers.MouseEnter);
+	const moveConnection = guiObject.MouseMoved.Connect(handlers.MouseMoved);
+	const leaveConnection = guiObject.MouseLeave.Connect(handlers.MouseLeave);
+	return () => {
+		handlers.MouseLeave();
+		enterConnection.Disconnect();
+		moveConnection.Disconnect();
+		leaveConnection.Disconnect();
+	};
 }
 
 function parentOf(instance: Instance): Instance | undefined {

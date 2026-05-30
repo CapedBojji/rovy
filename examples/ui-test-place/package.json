@@ -1,0 +1,69 @@
+{
+	"name": "@rovy/example-ui-test-place",
+	"private": true,
+	"version": "1.0.0",
+	"description": "Full Roblox place for manually testing @rovy/ui widgets.",
+	"main": "index.js",
+	"scripts": {
+		"compile": "node ../../packages/build/bin/rovy-build.js compile",
+		"build": "pnpm --filter rovy-build build && pnpm --filter @rovy/core build && pnpm --filter @rovy/ui build && node ../../packages/build/bin/rovy-build.js build",
+		"watch": "node ../../packages/build/bin/rovy-build.js watch",
+		"open": "node ../../packages/build/bin/rovy-build.js open",
+		"start": "node ../../packages/build/bin/rovy-build.js start",
+		"stop": "node ../../packages/build/bin/rovy-build.js stop",
+		"build:place": "pnpm run build",
+		"test:output": "node test/assert-output.js",
+		"test:place": "node test/assert-place.js"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"type": "module",
+	"dependencies": {
+		"@rbxts/better-janitor": "^0.4.0",
+		"@rovy/core": "workspace:*",
+		"@rovy/jecs": "workspace:*",
+		"@rovy/ui": "workspace:*"
+	},
+	"devDependencies": {
+		"@rbxts/compiler-types": "3.0.0-types.0",
+		"@rbxts/types": "^1.0.920",
+		"roblox-ts": "^3.0.0",
+		"rovy-build": "workspace:*",
+		"typescript": "5.5.3"
+	},
+	"rovy-build": {
+		"$schema": "../../packages/core/schema/rovy-build.schema.json",
+		"current": "dev",
+		"placeFile": "../../build/rovy-ui-test-place.rbxl",
+		"rbxtscArgs": [
+			"--type",
+			"game"
+		],
+		"rojoBuildArgs": [
+			"build",
+			"default.project.json",
+			"-o",
+			"../../build/rovy-ui-test-place.rbxl"
+		],
+		"watchOnOpen": true,
+		"generateBlink": false,
+		"environments": {
+			"dev": {
+				"rojo": "default.project.json",
+				"sourcemap": "sourcemap.json",
+				"boundaries": {
+					"server": [
+						"src/server"
+					],
+					"client": [
+						"src/client"
+					],
+					"shared": [
+						"src/shared"
+					]
+				}
+			}
+		}
+	}
+}

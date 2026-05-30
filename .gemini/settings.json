@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "robloxstudio": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@chrrxs/robloxstudio-mcp@latest"
+      ],
+      "trust": true
+    }
+  }
+}

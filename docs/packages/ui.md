@@ -466,6 +466,8 @@ Displays a Roblox `EditableImage` from caller-provided RGBA bytes.
 ```ts
 const pixels = new EditableImageBuffer(new Vector2(64, 64));
 pixels.fillRect(new Vector2(8, 8), new Vector2(16, 16), Color3.fromRGB(255, 0, 0), 255);
+pixels.drawCircle(new Vector2(32, 32), 12, Color3.fromRGB(255, 255, 255), { fill: false, thickness: 2 });
+pixels.drawPolygon([new Vector2(4, 4), new Vector2(28, 10), new Vector2(12, 30)], Color3.fromRGB(0, 180, 255));
 
 const image = editableImage({ size: pixels.size });
 image.draw(pixels.getBuffer());
@@ -487,6 +489,7 @@ interface EditableImageHandle {
 ```
 
 `draw` writes the full buffer with `EditableImage:WritePixelsBuffer(Vector2.zero, size, pixels)`.
+`EditableImageBuffer` writes RGBA bytes and provides `setPixel`, `fillRect`, `drawLine`, `drawCircle`, `drawPolygon`, `clear`, and `getBuffer`.
 
 ---
 
@@ -526,12 +529,13 @@ interface SliderOptions {
 	initial?: number;
 	label?: string;
 	width?: number;
+	step?: number;
 }
 ```
 
 Pass a number shorthand for initial value: `slider(0.5)`.
 
-Returns the current value.
+Returns the current value. Set `step` to snap drag, click, and text input to fixed increments.
 
 ---
 
