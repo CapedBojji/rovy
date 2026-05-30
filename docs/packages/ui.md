@@ -459,6 +459,37 @@ progressBar({ value: hp / maxHp, label: "HP" });
 
 ---
 
+#### `editableImage`
+
+Displays a Roblox `EditableImage` from caller-provided RGBA bytes.
+
+```ts
+const pixels = new EditableImageBuffer(new Vector2(64, 64));
+pixels.fillRect(new Vector2(8, 8), new Vector2(16, 16), Color3.fromRGB(255, 0, 0), 255);
+
+const image = editableImage({ size: pixels.size });
+image.draw(pixels.getBuffer());
+```
+
+```ts
+interface EditableImageOptions {
+	size: Vector2;          // integer pixels, max 1024x1024
+	displaySize?: UDim2;   // defaults to offset pixel size
+	backgroundTransparency?: number;
+}
+
+interface EditableImageHandle {
+	draw: (pixels: buffer) => boolean;
+	image: () => EditableImage | undefined;
+	label: () => ImageLabel | undefined;
+	error: () => string | undefined;
+}
+```
+
+`draw` writes the full buffer with `EditableImage:WritePixelsBuffer(Vector2.zero, size, pixels)`.
+
+---
+
 #### `collapsingHeader`
 
 ```ts

@@ -277,6 +277,7 @@ return function(TS, t)
 					must("selectableLabel", function() RovyUi.selectableLabel("Select") end)
 					must("clickableLabel", function() RovyUi.clickableLabel("ClickLabel") end)
 					must("collapsingHeader", function() RovyUi.collapsingHeader("Header", function() end) end)
+					must("editableImage", function() RovyUi.editableImage({ size = _G.Vector2.new(2, 2) }) end)
 				end)
 			end)
 			local hasChildren = false
@@ -285,6 +286,93 @@ return function(TS, t)
 				break
 			end
 			t.expect(hasChildren).toBeTruthy()
+		end)
+
+		t.it("writes pixels through EditableImageBuffer", function()
+			RovyUi.__reset()
+			local img = RovyUi.EditableImageBuffer.new(_G.Vector2.new(4, 4))
+			local pixels = img:getBuffer()
+			t.expect(_G.buffer.len(pixels)).toBe(64)
+
+			img:setPixel(_G.Vector2.new(1, 2), _G.Color3.fromRGB(255, 128, 0), 200)
+			local offset = (2 * 4 + 1) * 4
+			t.expect(_G.buffer.readu8(pixels, offset)).toBe(255)
+			t.expect(_G.buffer.readu8(pixels, offset + 1)).toBe(128)
+			t.expect(_G.buffer.readu8(pixels, offset + 2)).toBe(0)
+			t.expect(_G.buffer.readu8(pixels, offset + 3)).toBe(200)
+
+			img:fillRect(_G.Vector2.new(2, 1), _G.Vector2.new(2, 2), _G.Color3.fromRGB(0, 10, 20), 77)
+			local rectOffset = (1 * 4 + 2) * 4
+			t.expect(_G.buffer.readu8(pixels, rectOffset)).toBe(0)
+			t.expect(_G.buffer.readu8(pixels, rectOffset + 1)).toBe(10)
+			t.expect(_G.buffer.readu8(pixels, rectOffset + 2)).toBe(20)
+			t.expect(_G.buffer.readu8(pixels, rectOffset + 3)).toBe(77)
+
+			img:clear(1, 2, 3, 4)
+			t.expect(_G.buffer.readu8(pixels, 0)).toBe(1)
+			t.expect(_G.buffer.readu8(pixels, 1)).toBe(2)
+			t.expect(_G.buffer.readu8(pixels, 2)).toBe(3)
+			t.expect(_G.buffer.readu8(pixels, 3)).toBe(4)
+		end)
+
+		t.it("displays an EditableImage and draws caller-provided buffers", function()
+			RovyUi.__reset()
+			local services = _G.__rovyTestServices
+			table.clear(services.AssetService.CreatedEditableImages)
+			services.AssetService.FailCreate = false
+			local gui = root()
+			local node = RovyUi.new(gui)
+			local handle
+
+			RovyUi.start(node, function()
+				handle = RovyUi.editableImage({ size = _G.Vector2.new(2, 2) })
+			end)
+
+			t.expect(handle).toBeDefined()
+			t.expect(#services.AssetService.CreatedEditableImages).toBe(1)
+			local created = services.AssetService.CreatedEditableImages[1]
+			t.expect(handle.image()).toBe(created)
+			t.expect(handle.label().ClassName).toBe("ImageLabel")
+			t.expect(handle.label().ImageContent.Object).toBe(created)
+
+			local pixels = RovyUi.EditableImageBuffer.new(_G.Vector2.new(2, 2))
+			pixels:setPixel(_G.Vector2.new(0, 0), _G.Color3.fromRGB(255, 0, 0), 255)
+			t.expect(handle.draw(pixels:getBuffer())).toBe(true)
+			t.expect(#created.Writes).toBe(1)
+			t.expect(created.Writes[1].position.X).toBe(0)
+			t.expect(created.Writes[1].position.Y).toBe(0)
+			t.expect(created.Writes[1].size.X).toBe(2)
+			t.expect(created.Writes[1].size.Y).toBe(2)
+			t.expect(created.Writes[1].pixels).toBe(pixels:getBuffer())
+			t.expect(handle.error()).toBe(nil)
+
+			t.expect(handle.draw(_G.buffer.create(3))).toBe(false)
+			t.expect(handle.error()).toBeDefined()
+
+			RovyUi.start(node, function() end)
+			t.expect(created.Destroyed).toBeTruthy()
+		end)
+
+		t.it("renders editableImage fallback when EditableImage creation fails", function()
+			RovyUi.__reset()
+			local services = _G.__rovyTestServices
+			services.AssetService.FailCreate = true
+			local gui = root()
+			local node = RovyUi.new(gui)
+			local handle
+
+			RovyUi.start(node, function()
+				handle = RovyUi.editableImage({ size = _G.Vector2.new(2, 2) })
+			end)
+
+			t.expect(handle).toBeDefined()
+			t.expect(handle.error()).toBeDefined()
+			t.expect(handle.draw(_G.buffer.create(16))).toBe(false)
+			local fallback = findFirstDescendant(gui, function(instance)
+				return instance.ClassName == "TextLabel" and instance.Visible == true and tostring(instance.Text):find("editableImage") ~= nil
+			end)
+			t.expect(fallback).toBeDefined()
+			services.AssetService.FailCreate = false
 		end)
 
 		t.it("creates and reuses the expected instance tree across manual frames", function()

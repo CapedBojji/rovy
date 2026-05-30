@@ -315,6 +315,52 @@ local function newInstance(className)
 	return instance
 end
 
+local function fakeBuffer()
+	local api = {}
+	function api.create(size)
+		local b = { __rovyBuffer = true, __len = size, __data = {} }
+		for i = 0, size - 1 do
+			b.__data[i] = 0
+		end
+		return b
+	end
+	function api.len(b)
+		return b.__len
+	end
+	function api.readu8(b, offset)
+		return b.__data[offset] or 0
+	end
+	function api.writeu8(b, offset, value)
+		b.__data[offset] = math.clamp(math.floor(value), 0, 255)
+	end
+	function api.fill(b, offset, value, count)
+		local n = count or (b.__len - offset)
+		for i = offset, offset + n - 1 do
+			api.writeu8(b, i, value)
+		end
+	end
+	return api
+end
+
+local function makeEditableImage(size)
+	return {
+		ClassName = "EditableImage",
+		Size = size,
+		Writes = {},
+		Destroyed = false,
+		WritePixelsBuffer = function(self, position, writeSize, pixels)
+			table.insert(self.Writes, {
+				position = position,
+				size = writeSize,
+				pixels = pixels,
+			})
+		end,
+		Destroy = function(self)
+			self.Destroyed = true
+		end,
+	}
+end
+
 local services = {
 	UserInputService = {
 		InputBegan = signal(),
@@ -331,7 +377,21 @@ local services = {
 			return self.GuiInset, { X = 0, Y = 0 }
 		end,
 	},
+	AssetService = {
+		CreatedEditableImages = {},
+		FailCreate = false,
+		CreateEditableImage = function(self, options)
+			if self.FailCreate then
+				error("CreateEditableImage failed", 2)
+			end
+			local image = makeEditableImage(options and options.Size or { X = 512, Y = 512 })
+			table.insert(self.CreatedEditableImages, image)
+			return image
+		end,
+	},
 }
+
+local bufferApi = _G.buffer or fakeBuffer()
 
 local fakeGlobals = {
 	Color3 = {
@@ -343,6 +403,13 @@ local fakeGlobals = {
 	UDim2 = { new = function(xs, xo, ys, yo) return { X = { Scale = xs, Offset = xo }, Y = { Scale = ys, Offset = yo } } end },
 	UDim = { new = function(scale, offset) return { Scale = scale, Offset = offset } end },
 	Instance = { new = newInstance },
+	Content = {
+		fromObject = function(object)
+			return { SourceType = "Object", Object = object }
+		end,
+		none = { SourceType = "None" },
+	},
+	buffer = bufferApi,
 	game = {
 		GetService = function(selfOrName, maybeName)
 			local name = maybeName or selfOrName

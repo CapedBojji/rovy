@@ -54,6 +54,8 @@ import { input } from "./widgets/input";
 import { comboBox } from "./widgets/combo-box";
 import { progressBar } from "./widgets/progress-bar";
 import { collapsingHeader } from "./widgets/collapsing-header";
+import { editableImage } from "./widgets/editable-image";
+import { EditableImageBuffer } from "./editable-image-buffer";
 import { uiTable as _table } from "./widgets/table";
 import { tableRow } from "./widgets/table-row";
 import { tableCell } from "./widgets/table-cell";
@@ -91,6 +93,8 @@ export * from "./widgets/input";
 export * from "./widgets/combo-box";
 export * from "./widgets/progress-bar";
 export * from "./widgets/collapsing-header";
+export * from "./widgets/editable-image";
+export * from "./editable-image-buffer";
 export * from "./widgets/table";
 export * from "./widgets/table-row";
 export * from "./widgets/table-cell";
@@ -150,6 +154,8 @@ export const rovyUi = {
 	dragValue,
 	progressBar,
 	collapsingHeader,
+	editableImage,
+	EditableImageBuffer,
 	toggle,
 	clickableLabel,
 	modal,
