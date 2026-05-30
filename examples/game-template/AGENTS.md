@@ -52,12 +52,14 @@ RunService.Heartbeat.Connect((dt) => {
 - `observers/` is only for `@observer` classes.
 - `monitors/` is only for `@monitor` classes.
 - `prefabs/` is only for `@prefab` classes.
+- `src/client/widgets/` is only for client UI widget helpers.
 - Put exactly one decorated system, observer, monitor, collector, or prefab class in each runtime file.
 - Components and resources may share a file only when they are directly related.
 - Do not use gameplay barrel files such as `index.ts`; import concrete files directly.
 - Runtime file names must end with their Rovy role: `.system.ts`, `.observer.ts`, `.monitor.ts`, `.collect.ts`, `.prefab.ts`, `.component.ts`, `.resource.ts`, or `.event.ts`.
 - Use `state.ts` only for schedules and sets; do not add role suffixes to `state.ts`.
 - Client/server folders may each have `collectors/`, `components/`, `events/`, `monitors/`, `observers/`, `prefabs/`, `resources/`, `systems/`, and `state.ts`.
+- Client code may also have `widgets/` for client-only UI widget helpers.
 - Shared code should use `components/`, `events/`, `prefabs/`, `resources/`, and shared `state.ts` only when both sides use it.
 - Do not put side-specific Roblox service logic in `src/shared`.
 - Do not add Roblox signal callbacks outside collectors.
