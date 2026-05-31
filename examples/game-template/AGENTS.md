@@ -282,11 +282,13 @@ Good split into components:
 ```ts
 @component
 export class Cooldown {
-	constructor(public readonly remaining: number) {}
+	/** Remaining cooldown time in seconds. */
+	constructor(public readonly remainingSeconds: number) {}
 }
 
 @component
 export class ActiveTarget {
+	/** Current target entity for this owner entity. */
 	constructor(public readonly target: Entity) {}
 }
 ```
