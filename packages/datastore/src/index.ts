@@ -38,6 +38,17 @@ export type {
 	SharedDocument,
 	SharedDocumentOptions,
 } from "./types";
+export {
+	InMemoryDocumentServiceAdapter,
+	MockDocumentServiceAdapter,
+	type DocumentBackendResult,
+	type DocumentHandle,
+	type DocumentServiceAdapter,
+	type DocumentSignalSink,
+	type DocumentStoreHandle,
+	type MockDocumentData,
+	type MockDocumentServiceAdapterOptions,
+} from "./runtime/document-service-adapter";
 
 // Importing the package is enough to install runtime app-extension wiring.
 export * from "./runtime/app-extension";

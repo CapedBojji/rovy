@@ -44,6 +44,13 @@ export interface DocumentServiceAdapter {
 	connectSignals<T>(document: DocumentHandle<T>, sink: DocumentSignalSink<T>): () => void;
 }
 
+export type MockDocumentData = Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+
+export interface MockDocumentServiceAdapterOptions {
+	/** Initial mock contents by document id, then resolved datastore key. */
+	readonly data?: MockDocumentData;
+}
+
 interface MemoryEntry<T> {
 	data: T;
 	open: boolean;
@@ -63,18 +70,17 @@ class MemoryDocument<T> implements DocumentHandle<T> {
 	) {}
 }
 
-/**
- * Package-owned adapter seam. The shipped v1 keeps the DocumentService shape
- * isolated here; tests can replace it, and a vendored DocumentService module can
- * be swapped in without touching handles/transformer lowering.
- */
-export class InMemoryDocumentServiceAdapter implements DocumentServiceAdapter {
+/** Runtime-only mock backend. Keeps data in memory and never calls Roblox datastore APIs. */
+export class MockDocumentServiceAdapter implements DocumentServiceAdapter {
 	private readonly stores = new Map<string, MemoryDocumentStore<unknown>>();
+
+	constructor(private readonly options: MockDocumentServiceAdapterOptions = {}) {}
 
 	createStore<T>(def: RuntimeDocumentDef<T>): DocumentStoreHandle<T> {
 		let store = this.stores.get(def.id) as MemoryDocumentStore<T> | undefined;
 		if (store === undefined) {
 			store = new MemoryDocumentStore(def);
+			this.seedStore(store);
 			this.stores.set(def.id, store as MemoryDocumentStore<unknown>);
 		}
 		return store;
@@ -135,4 +141,18 @@ export class InMemoryDocumentServiceAdapter implements DocumentServiceAdapter {
 	connectSignals<T>(_document: DocumentHandle<T>, _sink: DocumentSignalSink<T>): () => void {
 		return () => {};
 	}
+
+	private seedStore<T>(store: MemoryDocumentStore<T>): void {
+		const rows = this.options.data?.[store.def.id];
+		if (rows === undefined) return;
+		for (const [key, data] of pairs(rows as Record<string, T>)) {
+			store.entries.set(key, { data, open: false, locked: false });
+		}
+	}
 }
+
+/**
+ * Back-compat alias for older tests/imports. Prefer MockDocumentServiceAdapter
+ * when intentionally avoiding real backend calls.
+ */
+export class InMemoryDocumentServiceAdapter extends MockDocumentServiceAdapter {}
