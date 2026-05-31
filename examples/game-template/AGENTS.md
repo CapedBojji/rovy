@@ -9,6 +9,7 @@ This file is the source of truth for agents working in this game project.
 - Do not add speculative gameplay, networking, UI, schedules, systems, abstractions, docs folders, runtime hooks, or future support.
 - If a future need is mentioned, implement only the current requested behavior unless the user asks for future support now.
 - Use decorator-based Rovy classes such as `@component`, `@resource`, `@collect`, `@system`, `@observer`, `@monitor`, `@prefab`, and `@schedule`.
+- Add JSDoc comments to runtime classes and APIs (`@component`, `@resource`, `@event`, `@collect`, `@system`, `@observer`, `@monitor`, and `@prefab`) so intent is explicit for agents and collaborators.
 - Keep explicit imports for every runtime module that must register with Rovy.
 - Prefer deferred writes through `commands`: `commands.spawn(...)`, `commands.insert(...)`, `commands.set(...)`, `commands.remove(...)`, `commands.despawn(...)`, `commands.trigger(...)`, and `commands.send(...)`.
 - Use direct `world` writes only when the same system must read or react to that exact mutation immediately.
@@ -234,6 +235,8 @@ class ApplyJumpInputSystem {
 - Inject resources with `Res<T>` or `ResMut<T>` in systems.
 - Do not fetch resources inside helpers through `world.resource(...)`.
 - If a collector needs an outbound handle, put that handle in a resource and inject it into the draining system.
+- Do not use one resource as a catch-all store for entity gameplay state.
+- If a resource starts holding arrays/maps keyed by entities (for example `Map<Entity, ...>` or `Entity[]`), split that data into entity components unless it is truly app-wide state.
 
 Good resource usage:
 
@@ -259,6 +262,30 @@ function tickClock(world: World) {
 	const clock = world.resource(GameClock);
 	const time = world.resource(FrameTime);
 	clock.elapsed += time.dt;
+}
+```
+
+Bad resource shape:
+
+```ts
+@resource
+export class CombatState {
+	public readonly cooldownByEntity = new Map<Entity, number>();
+	public readonly activeTargets: Entity[] = [];
+}
+```
+
+Good split into components:
+
+```ts
+@component
+export class Cooldown {
+	constructor(public readonly remaining: number) {}
+}
+
+@component
+export class ActiveTarget {
+	constructor(public readonly target: Entity) {}
 }
 ```
 
