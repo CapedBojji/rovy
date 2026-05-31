@@ -19,7 +19,7 @@ import { DocumentOpenerHandle } from "./document-opener-handle";
 import { DocumentReaderHandle } from "./document-reader-handle";
 import { DocumentWriterHandle } from "./document-writer-handle";
 
-const DATASTORE_PLUGIN_MARKER = "__rovyDatastoreInstalled";
+const DATASTORE_RUNTIME_MARKER = "__rovyDatastoreInstalled";
 const DATASTORE_CONFIG_MARKER = "__rovyDatastoreConfig";
 
 export interface DataStorePluginOptions {
@@ -75,7 +75,7 @@ function registryNeedsDatastore(registry: RovyRegistry): boolean {
 
 function configureDatastoreRuntime(app: App, config: DataStoreRuntimeConfig): void {
 	const marked = app as App & Record<string, unknown>;
-	assert(marked[DATASTORE_PLUGIN_MARKER] !== true, "[rovy/datastore] DataStorePlugin must be added before datastore installs.");
+	assert(marked[DATASTORE_RUNTIME_MARKER] !== true, "[rovy/datastore] DataStorePlugin must be added before datastore runtime installs.");
 	marked[DATASTORE_CONFIG_MARKER] = config;
 }
 
@@ -94,12 +94,11 @@ function adapterForOptions(options: DataStorePluginOptions | undefined): Documen
 export function installDatastoreRuntime(
 	app: App,
 	registry: RovyRegistry,
-	options?: DataStorePluginOptions,
 ): DataStoreRuntime | undefined {
 	const marked = app as App & Record<string, unknown>;
-	if (marked[DATASTORE_PLUGIN_MARKER] === true) return undefined;
+	if (marked[DATASTORE_RUNTIME_MARKER] === true) return undefined;
 	if (!registryNeedsDatastore(registry)) return undefined;
-	marked[DATASTORE_PLUGIN_MARKER] = true;
+	marked[DATASTORE_RUNTIME_MARKER] = true;
 
 	for (const doc of rovyData.documents()) {
 		rovy.__event(rovyData.eventCtor("opened", doc.id), { label: `DocumentOpened<${doc.name}>` });
@@ -111,7 +110,7 @@ export function installDatastoreRuntime(
 	}
 
 	const config = datastoreConfigFor(app);
-	const runtime = new DataStoreRuntime(rovyData.documents(), app.eventRegistry, adapterForOptions(options ?? config?.options));
+	const runtime = new DataStoreRuntime(rovyData.documents(), app.eventRegistry, adapterForOptions(config?.options));
 	config?.onInstall?.(runtime);
 	app.insertResource(runtime);
 	for (const doc of rovyData.documents()) {
