@@ -212,5 +212,65 @@ return function(TS, t)
 			t.expect(seen[1]).toBe(42)
 			datastore.rovyData:__reset()
 		end)
+
+		t.it("mock backend saves writes and returns them on reopen", function()
+			local docId = "test/Profile"
+			local def = {
+				id = docId,
+				kind = "player",
+				name = "Profile",
+				store = "PlayerData",
+				key = function(owner)
+					return tostring(owner.UserId)
+				end,
+				default = function()
+					return { coins = 0 }
+				end,
+				check = function(value)
+					return type(value) == "table" and type(value.coins) == "number"
+				end,
+				migrations = {},
+				session = {
+					lock = true,
+					stealOnSessionLocked = true,
+				},
+				lifecycle = {
+					autoOpen = false,
+					autoClose = false,
+					kickOnOpenFailure = false,
+				},
+				debug = {
+					printLifecycle = false,
+					printWrites = false,
+				},
+				publicToken = {
+					id = docId,
+					name = "Profile",
+				},
+			}
+			local adapter = datastore.MockDocumentServiceAdapter.new({
+				data = {
+					[docId] = {
+						["202"] = { coins = 13 },
+					},
+				},
+			})
+			local store = adapter:createStore(def)
+			local document = adapter:getDocument(store, "202")
+
+			local opened = adapter:open(document, { stealOnSessionLocked = true })
+			t.expect(opened.success).toBe(true)
+			t.expect(opened.data.coins).toBe(13)
+			adapter:setCache(document, { coins = 99 })
+			local saved = adapter:save(document)
+			t.expect(saved.success).toBe(true)
+			t.expect(saved.data.coins).toBe(99)
+			t.expect(adapter:close(document, { save = true }).success).toBe(true)
+
+			local reopened = adapter:open(document, { stealOnSessionLocked = true })
+			t.expect(reopened.success).toBe(true)
+			t.expect(reopened.data.coins).toBe(99)
+			t.expect(adapter:getCache(document).coins).toBe(99)
+		end)
 	end)
 end
