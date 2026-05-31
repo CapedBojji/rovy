@@ -235,8 +235,9 @@ class ApplyJumpInputSystem {
 - Inject resources with `Res<T>` or `ResMut<T>` in systems.
 - Do not fetch resources inside helpers through `world.resource(...)`.
 - If a collector needs an outbound handle, put that handle in a resource and inject it into the draining system.
-- Do not use one resource as a catch-all store for entity gameplay state.
-- If a resource starts holding arrays/maps keyed by entities (for example `Map<Entity, ...>` or `Entity[]`), split that data into entity components unless it is truly app-wide state.
+- Only store data in resources when the data is truly singleton (one app-wide instance) or intentionally queued/batched together for one shared handoff.
+- If data is primarily per-entity gameplay state, prefer components instead of resources.
+- Arrays/maps keyed by entities are a common smell, but the rule is broader: even non-map/non-array per-entity state should move to components.
 
 Good resource usage:
 
@@ -272,6 +273,7 @@ Bad resource shape:
 export class CombatState {
 	public readonly cooldownByEntity = new Map<Entity, number>();
 	public readonly activeTargets: Entity[] = [];
+	public readonly sprintingByEntity: Record<string, boolean> = {};
 }
 ```
 
