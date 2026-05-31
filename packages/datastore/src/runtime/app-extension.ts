@@ -9,11 +9,45 @@ import {
 	writerParamId,
 } from "../types";
 import { DataStoreRuntime } from "./data-store-runtime";
+import {
+	InMemoryDocumentServiceAdapter,
+	MockDocumentServiceAdapter,
+	type DocumentServiceAdapter,
+	type MockDocumentServiceAdapterOptions,
+} from "./document-service-adapter";
 import { DocumentOpenerHandle } from "./document-opener-handle";
 import { DocumentReaderHandle } from "./document-reader-handle";
 import { DocumentWriterHandle } from "./document-writer-handle";
 
 const DATASTORE_PLUGIN_MARKER = "__rovyDatastoreInstalled";
+const DATASTORE_CONFIG_MARKER = "__rovyDatastoreConfig";
+
+export interface DataStorePluginOptions {
+	/** Override backend calls entirely. Useful for tests or custom persistence. */
+	readonly adapter?: DocumentServiceAdapter;
+	/** Runtime-only mock backend. Pass true for defaults, or seed data by document id/key. */
+	readonly mock?: boolean | MockDocumentServiceAdapterOptions;
+}
+
+interface DataStoreRuntimeConfig {
+	readonly options: DataStorePluginOptions;
+	readonly onInstall?: (runtime: DataStoreRuntime) => void;
+}
+
+export class DataStorePlugin {
+	runtime?: DataStoreRuntime;
+
+	constructor(private readonly options: DataStorePluginOptions = {}) {}
+
+	build(app: App): void {
+		configureDatastoreRuntime(app, {
+			options: this.options,
+			onInstall: (runtime) => {
+				this.runtime = runtime;
+			},
+		});
+	}
+}
 
 export class DataStoreSet {}
 
@@ -39,7 +73,29 @@ function registryNeedsDatastore(registry: RovyRegistry): boolean {
 	return false;
 }
 
-export function installDatastoreRuntime(app: App, registry: RovyRegistry): DataStoreRuntime | undefined {
+function configureDatastoreRuntime(app: App, config: DataStoreRuntimeConfig): void {
+	const marked = app as App & Record<string, unknown>;
+	assert(marked[DATASTORE_PLUGIN_MARKER] !== true, "[rovy/datastore] DataStorePlugin must be added before datastore installs.");
+	marked[DATASTORE_CONFIG_MARKER] = config;
+}
+
+function datastoreConfigFor(app: App): DataStoreRuntimeConfig | undefined {
+	return (app as App & Record<string, unknown>)[DATASTORE_CONFIG_MARKER] as DataStoreRuntimeConfig | undefined;
+}
+
+function adapterForOptions(options: DataStorePluginOptions | undefined): DocumentServiceAdapter {
+	if (options?.adapter !== undefined) return options.adapter;
+	if (options?.mock !== undefined && options.mock !== false) {
+		return new MockDocumentServiceAdapter(options.mock === true ? undefined : options.mock);
+	}
+	return new InMemoryDocumentServiceAdapter();
+}
+
+export function installDatastoreRuntime(
+	app: App,
+	registry: RovyRegistry,
+	options?: DataStorePluginOptions,
+): DataStoreRuntime | undefined {
 	const marked = app as App & Record<string, unknown>;
 	if (marked[DATASTORE_PLUGIN_MARKER] === true) return undefined;
 	if (!registryNeedsDatastore(registry)) return undefined;
@@ -54,7 +110,9 @@ export function installDatastoreRuntime(app: App, registry: RovyRegistry): DataS
 		rovy.__event(rovyData.eventCtor("closed", doc.id), { label: `DocumentClosed<${doc.name}>` });
 	}
 
-	const runtime = new DataStoreRuntime(rovyData.documents(), app.eventRegistry);
+	const config = datastoreConfigFor(app);
+	const runtime = new DataStoreRuntime(rovyData.documents(), app.eventRegistry, adapterForOptions(options ?? config?.options));
+	config?.onInstall?.(runtime);
 	app.insertResource(runtime);
 	for (const doc of rovyData.documents()) {
 		app.insertParam(readerParamId(doc.id), new DocumentReaderHandle(runtime, doc.id));

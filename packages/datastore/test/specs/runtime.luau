@@ -17,6 +17,8 @@ return function(TS, t)
 	t.describe("@rovy/datastore exports", function()
 		t.it("exports registry and param helpers", function()
 			t.expect(type(datastore.rovyData)).toBe("table")
+			t.expect(datastore.DataStorePlugin).never.toBe(nil)
+			t.expect(datastore.MockDocumentServiceAdapter).never.toBe(nil)
 			t.expect(datastore.readerParamId("doc")).toBe("@rovy/datastore/reader:doc")
 			t.expect(datastore.writerParamId("doc")).toBe("@rovy/datastore/writer:doc")
 			t.expect(datastore.openerParamId("doc")).toBe("@rovy/datastore/opener:doc")
@@ -132,6 +134,82 @@ return function(TS, t)
 			t.expect(#seen).toBe(0)
 			app:runSchedule(Update)
 			t.expect(seen[1]).toBe(5)
+			datastore.rovyData:__reset()
+		end)
+
+		t.it("DataStorePlugin installs a runtime-only seeded mock backend", function()
+			rovy:__reset()
+			datastore.rovyData:__reset()
+			local Update = {}
+			local player = { UserId = 201 }
+			local docId = "test/Profile"
+			datastore.rovyData:__document({
+				id = docId,
+				kind = "player",
+				name = "Profile",
+				store = "PlayerData",
+				key = function(owner)
+					return tostring(owner.UserId)
+				end,
+				default = function()
+					return { coins = 0 }
+				end,
+				check = function(value)
+					return type(value) == "table" and type(value.coins) == "number"
+				end,
+				migrations = {},
+				session = {
+					lock = true,
+					stealOnSessionLocked = true,
+				},
+				lifecycle = {
+					autoOpen = false,
+					autoClose = false,
+					kickOnOpenFailure = false,
+				},
+				debug = {
+					printLifecycle = false,
+					printWrites = false,
+				},
+			})
+			rovy:__schedule(Update, { runOnStart = false })
+			local Open = sysClass(function(_, opener)
+				opener:open(player, { reason = "mock-open" })
+			end)
+			local seen = {}
+			local ReadOpened = sysClass(function(_, reader)
+				reader:forEach(function(event)
+					table.insert(seen, event.data.coins)
+				end)
+			end)
+			rovy:__system(Open, {
+				id = "test/MockOpen",
+				schedule = Update,
+				params = { { kind = "external", id = datastore.openerParamId(docId) } },
+			})
+			rovy:__system(ReadOpened, {
+				id = "test/ReadOpened",
+				schedule = Update,
+				after = { Open },
+				params = { { kind = "eventReader", ctor = datastore.rovyData:eventCtor("opened", docId) } },
+			})
+			local plugin = datastore.DataStorePlugin.new({
+				mock = {
+					data = {
+						[docId] = {
+							["201"] = { coins = 42 },
+						},
+					},
+				},
+			})
+			local app = App.new()
+			app:addPlugin(plugin)
+			app:start()
+			app:runSchedule(Update)
+			app:runSchedule(Update)
+
+			t.expect(plugin.runtime).never.toBe(nil)
+			t.expect(seen[1]).toBe(42)
 			datastore.rovyData:__reset()
 		end)
 	end)

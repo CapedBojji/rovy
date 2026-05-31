@@ -49,6 +49,38 @@ The transformer lowers declarations into `rovyData.__document(...)` metadata.
 At runtime, datastore auto-installs when registered documents or datastore
 injected params are present.
 
+## Runtime mock backend
+
+Use `DataStorePlugin` when a runtime should use an in-memory mock database
+instead of backend datastore calls. This is runtime-only configuration; document
+declarations do not change.
+
+```ts
+import { App } from "@rovy/core";
+import { DataStorePlugin } from "@rovy/datastore";
+import { Profile } from "./documents";
+
+const app = new App();
+
+app.addPlugin(
+  new DataStorePlugin({
+    mock: {
+      data: {
+        [Profile.id]: {
+          "123": { coins: 500, level: 4, inventory: [] },
+        },
+      },
+    },
+  }),
+);
+
+app.start();
+```
+
+Pass `mock: true` to use default document data without any seed rows. Tests and
+custom backends can also pass `adapter` to replace the backend boundary
+directly.
+
 ## Player profile
 
 ```ts
