@@ -15,3 +15,4 @@
 /build
 .studio.pid
 .studio*.pid
+.rovy
