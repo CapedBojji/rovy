@@ -1,4 +1,5 @@
 import { App, ParamDescriptor, markResourceCloneByReference, resolveParams, type ResolveCtx } from "@rovy/core";
+import { getDefaultRovyInputService, type RovyInputService } from "./input";
 import { HIT_TEST_PASS_THROUGH_ATTRIBUTE } from "./windowConstants";
 
 export interface WidgetMeta {
@@ -16,6 +17,7 @@ export interface Node {
 	instance?: Instance;
 	refs?: Record<string, Instance>;
 	containerInstance?: Instance;
+	inputService?: RovyInputService;
 	effects: Map<string, EffectSlot>;
 	states: Map<string, unknown>;
 	children: Map<string, Node>;
@@ -41,6 +43,10 @@ export type EventCallback = (
 export type StateSetter<T> = (nextValue: T | ((previous: T) => T)) => void;
 export type EffectCleanup = () => void;
 export type HoverSetter = (hovered: boolean) => void;
+
+export interface NewRootOptions {
+	inputService?: RovyInputService;
+}
 
 interface EffectSlot {
 	lastDependencies?: Array<unknown>;
@@ -74,9 +80,10 @@ export interface StackFrame {
 export const stack = new Array<StackFrame>();
 export const registry = new Array<WidgetReg>();
 
-export function newNode(instance?: Instance): Node {
+export function newNode(instance?: Instance, options: NewRootOptions = {}): Node {
 	return {
 		instance,
+		inputService: options.inputService,
 		effects: new Map(),
 		states: new Map(),
 		children: new Map(),
@@ -171,9 +178,9 @@ function isTopHoverTarget(rootNode: Node, guiObject: GuiObject): boolean {
 	const playerGui = findPlayerGui(rootInstance);
 	if (playerGui === undefined) return false;
 
-	const [inputOk, input] = pcall(() => game.GetService("UserInputService"));
-	if (!inputOk) return false;
-	const [mouseOk, mousePosition] = pcall(() => (input as UserInputService).GetMouseLocation());
+	const inputService = getRootInputService(rootNode);
+	if (inputService === undefined) return false;
+	const [mouseOk, mousePosition] = pcall(() => inputService.GetMouseLocation());
 	if (!mouseOk) return false;
 	const guiInset = getGuiInsetTopLeft();
 	const hitPosition = new Vector2(mousePosition.X - guiInset.X, mousePosition.Y - guiInset.Y);
@@ -355,8 +362,8 @@ export function provideContext<T>(context: Context<T>, value: T): void {
 	currentFrame().contextValues.set(context as Context<unknown>, value);
 }
 
-export function newRoot(rootInstance: Instance): Node {
-	return markResourceCloneByReference(newNode(rootInstance));
+export function newRoot(rootInstance: Instance, options: NewRootOptions = {}): Node {
+	return markResourceCloneByReference(newNode(rootInstance, options));
 }
 
 export { newRoot as new };
@@ -522,6 +529,14 @@ export function useKey(key: string | number): void {
 
 export function useRootInstance(): Instance | undefined {
 	return stack[0]?.node.instance;
+}
+
+export function getRootInputService(root?: Node): RovyInputService | undefined {
+	return root?.inputService ?? getDefaultRovyInputService();
+}
+
+export function useInputService(): RovyInputService | undefined {
+	return getRootInputService(stack[0]?.node);
 }
 
 export function useHoverTarget(guiObject: GuiObject | undefined, setHovered: HoverSetter, _name?: string): void {

@@ -29,6 +29,9 @@
 			},
 			"TS": {
 				"$path": "out/shared"
+			},
+			"Stories": {
+				"$path": "out/stories"
 			}
 		},
 		"StarterPlayer": {

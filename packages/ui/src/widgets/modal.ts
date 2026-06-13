@@ -1,4 +1,4 @@
-import { widget, __scope, __useInstance, __useState, __useEffect, useRootInstance } from "../runtime";
+import { widget, __scope, __useInstance, __useState, __useEffect, useInputService, useRootInstance } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim, udim2, v2 } from "../primitives";
@@ -27,6 +27,7 @@ export const modal = widget((options: string | ModalOptions, fn: () => void): Mo
 	const opts = typeIs(options, "string") ? ({ title: options } as ModalOptions) : (options ?? {});
 	const open = opts.open !== false;
 	const [closedSignal, setClosedSignal] = __useState("modal:closed", false);
+	const inputService = useInputService();
 
 	const refs = __useInstance("modal:instance", (rawRef) => {
 		return create("Frame", {
@@ -60,7 +61,7 @@ export const modal = widget((options: string | ModalOptions, fn: () => void): Mo
 			overlay.Visible = false;
 			markHitTestSurface(overlay);
 			markInputSink(overlay);
-			const unbindDefaultCursor = bindDefaultCursor(overlay);
+			const unbindDefaultCursor = bindDefaultCursor(overlay, inputService);
 			overlay.Parent = rootGui;
 
 		const dialog = new Instance("Frame");
@@ -121,7 +122,7 @@ export const modal = widget((options: string | ModalOptions, fn: () => void): Mo
 				closeBtn.Parent = titleBar;
 				const activatedSignal = (closeBtn as unknown as Record<string, RBXScriptSignal | undefined>).Activated;
 				activatedSignal?.Connect(() => {
-					if (!isTopGuiTarget(closeBtn)) return;
+					if (!isTopGuiTarget(closeBtn, undefined, undefined, inputService)) return;
 					setClosedSignal(true);
 				});
 		refs.closeBtn = closeBtn;

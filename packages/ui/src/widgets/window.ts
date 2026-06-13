@@ -7,6 +7,7 @@ import {
 	useRootInstance,
 	provideContext,
 	useHoverTarget,
+	useInputService,
 	usePointerDrag,
 } from "../runtime";
 import { useStyle } from "../style";
@@ -15,7 +16,7 @@ import { createConnect } from "../createConnect";
 import { c, udim, udim2, v2 } from "../primitives";
 import * as contexts from "../contexts";
 import { WINDOW_ATTRIBUTE } from "../windowConstants";
-import { isTopGuiTarget, makeCornerPerSide, makeShadow, markHitTestSurface } from "./shared";
+import { isTopGuiTarget, makeCornerPerSide, makeShadow, markHitTestSurface, pointInsideGuiObject } from "./shared";
 
 export interface WindowOptions {
 	title?: string;
@@ -44,6 +45,8 @@ interface WindowRefs {
 	close: TextButton;
 	container: ScrollingFrame;
 	resizeGrip: TextButton;
+	inputBeganConnection?: RBXScriptConnection;
+	inputEndedConnection?: RBXScriptConnection;
 	dragConnection?: RBXScriptConnection;
 	resizeConnection?: RBXScriptConnection;
 	lastTitleClickTime?: number;
@@ -63,18 +66,6 @@ function tryGetService(name: string): Instance | undefined {
 	return ok ? svc : undefined;
 }
 
-function pointInside(guiObject: GuiObject | undefined, position: Vector3): boolean {
-	if (guiObject === undefined || !guiObject.Visible) return false;
-	const absolutePosition = guiObject.AbsolutePosition;
-	const absoluteSize = guiObject.AbsoluteSize;
-	return (
-		position.X >= absolutePosition.X &&
-		position.X <= absolutePosition.X + absoluteSize.X &&
-		position.Y >= absolutePosition.Y &&
-		position.Y <= absolutePosition.Y + absoluteSize.Y
-	);
-}
-
 /** @widget */
 export const window = widget((options: string | WindowOptions, fn: () => void): WindowHandle => {
 	const opts = typeIs(options, "string") ? ({ title: options } as WindowOptions) : (options ?? {});
@@ -87,11 +78,13 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 		const style = useStyle();
 			const connectEvent = createConnect();
 			const GuiService = tryGetService("GuiService") as GuiService | undefined;
-			const UserInputService = tryGetService("UserInputService") as UserInputService | undefined;
+			const inputService = useInputService();
 			const pointerDrag = usePointerDrag();
 
 		ref.dragConnection = undefined;
 		ref.resizeConnection = undefined;
+		ref.inputBeganConnection = undefined;
+		ref.inputEndedConnection = undefined;
 		ref.lastTitleClickTime = 0;
 			ref.dragStartPosition = undefined;
 			ref.dragMoved = false;
@@ -110,6 +103,147 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 				ref.pointerDragging = false;
 				pointerDrag.end();
 			};
+
+			const finishTitleDrag = (inputObj: InputObject): void => {
+				if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
+				if (ref.dragStartPosition === undefined && ref.ignoreTitleClick !== true) return;
+
+				if (ref.dragConnection !== undefined) {
+					ref.dragConnection.Disconnect();
+					ref.dragConnection = undefined;
+				}
+				endPointerDrag();
+
+				if (ref.ignoreTitleClick === true) {
+					ref.ignoreTitleClick = false;
+					ref.dragStartPosition = undefined;
+					ref.dragMoved = false;
+					return;
+				}
+
+				if (ref.minimize.Visible && ref.dragMoved !== true) {
+					const now = os.clock();
+					if (now - (ref.lastTitleClickTime ?? 0) <= DOUBLE_CLICK_TIME) {
+						setMinimized((prev) => !prev);
+						ref.lastTitleClickTime = 0;
+					} else {
+						ref.lastTitleClickTime = now;
+					}
+				}
+
+				ref.dragStartPosition = undefined;
+				ref.dragMoved = false;
+			};
+
+			const finishResize = (inputObj: InputObject): void => {
+				if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
+				if (ref.resizeConnection !== undefined) {
+					ref.resizeConnection.Disconnect();
+					ref.resizeConnection = undefined;
+				}
+				endPointerDrag();
+			};
+
+			const beginTitleDrag = (clickInput: InputObject, requirePointInside = false): void => {
+				if (clickInput.UserInputType !== Enum.UserInputType.MouseButton1) return;
+				if (ref.dragStartPosition !== undefined) return;
+				if (requirePointInside && !pointInsideGuiObject(ref.titleBar, clickInput)) return;
+				if (!isTopGuiTarget(ref.titleBar, clickInput, undefined, inputService)) {
+					ref.ignoreTitleClick = true;
+					return;
+				}
+
+				if (pointInsideGuiObject(ref.minimize, clickInput) || pointInsideGuiObject(ref.close, clickInput)) {
+					ref.ignoreTitleClick = true;
+					return;
+				}
+
+				ref.ignoreTitleClick = false;
+				ref.dragStartPosition = clickInput.Position;
+				ref.dragMoved = false;
+
+				if (ref.frame.GetAttribute("movable") !== true) return;
+				if (inputService === undefined) return;
+				beginPointerDrag();
+
+				let lastMousePosition = clickInput.Position;
+
+				const parent = ref.frame.Parent;
+				if (
+					parent !== undefined &&
+					parent.FindFirstChildWhichIsA("UIGridStyleLayout") !== undefined &&
+					!parent.IsA("ScreenGui")
+				) {
+					const beforePosition = ref.frame.AbsolutePosition;
+					const screenGui = ref.frame.FindFirstAncestorOfClass("ScreenGui");
+					let bp = beforePosition;
+					if (screenGui !== undefined && screenGui.IgnoreGuiInset && GuiService !== undefined) {
+						const [guiInset] = GuiService.GetGuiInset();
+						bp = bp.add(guiInset);
+					}
+					if (screenGui !== undefined) {
+						ref.frame.Parent = screenGui;
+						ref.frame.Position = udim2(0, bp.X, 0, bp.Y);
+					}
+				}
+
+				if (ref.dragConnection !== undefined) ref.dragConnection.Disconnect();
+				ref.dragConnection = connectEvent(inputService, "InputChanged", (...moveArgs: ReadonlyArray<unknown>) => {
+					const moveInput = moveArgs[0] as InputObject;
+					if (moveInput.UserInputType !== Enum.UserInputType.MouseMovement) return;
+
+					if (ref.dragStartPosition !== undefined) {
+						const dragDistance = v2(
+							moveInput.Position.X - ref.dragStartPosition.X,
+							moveInput.Position.Y - ref.dragStartPosition.Y,
+						).Magnitude;
+						if (dragDistance > DRAG_THRESHOLD) ref.dragMoved = true;
+					}
+
+					const delta = lastMousePosition.sub(moveInput.Position);
+					lastMousePosition = moveInput.Position;
+					ref.frame.Position = ref.frame.Position.sub(new UDim2(0, delta.X, 0, delta.Y));
+				});
+			};
+
+			const beginResize = (clickInput: InputObject, requirePointInside = false): void => {
+				if (clickInput.UserInputType !== Enum.UserInputType.MouseButton1) return;
+				if (ref.resizeConnection !== undefined) return;
+				if (requirePointInside && !pointInsideGuiObject(ref.resizeGrip, clickInput)) return;
+				if (!isTopGuiTarget(ref.resizeGrip, clickInput, undefined, inputService)) return;
+				if (inputService === undefined) return;
+				beginPointerDrag();
+
+				const initMousePos = clickInput.Position;
+				const initSize = ref.frame.AbsoluteSize;
+
+				ref.resizeConnection = connectEvent(inputService, "InputChanged", (...moveArgs: ReadonlyArray<unknown>) => {
+					const moveInput = moveArgs[0] as InputObject;
+					if (moveInput.UserInputType !== Enum.UserInputType.MouseMovement) return;
+
+					const delta = v2(moveInput.Position.X - initMousePos.X, moveInput.Position.Y - initMousePos.Y);
+					let newSize = initSize.add(delta);
+					newSize = v2(math.max(MIN_SIZE.X, newSize.X), math.max(MIN_SIZE.Y, newSize.Y));
+
+					const tbh = useStyle().titleBarHeight;
+					ref.frame.Size = udim2(0, newSize.X, 0, newSize.Y);
+					ref.container.Size = udim2(1, 0, 0, newSize.Y - tbh);
+					setSize(newSize);
+				});
+			};
+
+			if (inputService !== undefined) {
+				ref.inputBeganConnection = connectEvent(inputService, "InputBegan", (...args: ReadonlyArray<unknown>) => {
+					const inputObj = args[0] as InputObject;
+					if (pointInsideGuiObject(ref.resizeGrip, inputObj)) beginResize(inputObj, true);
+					else beginTitleDrag(inputObj, true);
+				});
+				ref.inputEndedConnection = connectEvent(inputService, "InputEnded", (...args: ReadonlyArray<unknown>) => {
+					const inputObj = args[0] as InputObject;
+					finishTitleDrag(inputObj);
+					finishResize(inputObj);
+				});
+			}
 
 		const initialSize = opts.size ?? v2(300, 400);
 		const titleBarHeight = style.titleBarHeight;
@@ -199,7 +333,7 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 						Visible: false,
 						ZIndex: 102,
 							Activated: () => {
-								if (!isTopGuiTarget(ref.minimize)) return;
+								if (!isTopGuiTarget(ref.minimize, undefined, undefined, inputService)) return;
 								setMinimized((prev) => !prev);
 							},
 				}),
@@ -215,99 +349,14 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 						Visible: opts.closable ?? false,
 						ZIndex: 102,
 							Activated: () => {
-								if (!isTopGuiTarget(ref.close)) return;
+								if (!isTopGuiTarget(ref.close, undefined, undefined, inputService)) return;
 								setClosed(true);
 								opts.onClose?.();
 					},
 				}),
-					InputBegan: (...args: ReadonlyArray<unknown>) => {
-							const clickInput = args[0] as InputObject;
-							if (clickInput.UserInputType !== Enum.UserInputType.MouseButton1) return;
-							if (!isTopGuiTarget(ref.titleBar)) {
-								ref.ignoreTitleClick = true;
-								return;
-							}
-
-							if (pointInside(ref.minimize, clickInput.Position) || pointInside(ref.close, clickInput.Position)) {
-						ref.ignoreTitleClick = true;
-						return;
-					}
-
-					ref.ignoreTitleClick = false;
-					ref.dragStartPosition = clickInput.Position;
-					ref.dragMoved = false;
-
-						if (ref.frame.GetAttribute("movable") !== true) return;
-						if (UserInputService === undefined) return;
-						beginPointerDrag();
-
-						let lastMousePosition = clickInput.Position;
-
-					const parent = ref.frame.Parent;
-					if (
-						parent !== undefined &&
-						parent.FindFirstChildWhichIsA("UIGridStyleLayout") !== undefined &&
-						!parent.IsA("ScreenGui")
-					) {
-						const beforePosition = ref.frame.AbsolutePosition;
-						const screenGui = ref.frame.FindFirstAncestorOfClass("ScreenGui");
-						let bp = beforePosition;
-						if (screenGui !== undefined && screenGui.IgnoreGuiInset && GuiService !== undefined) {
-							const [guiInset] = GuiService.GetGuiInset();
-								bp = bp.add(guiInset);
-						}
-						if (screenGui !== undefined) {
-							ref.frame.Parent = screenGui;
-							ref.frame.Position = udim2(0, bp.X, 0, bp.Y);
-						}
-					}
-
-					ref.dragConnection = connectEvent(UserInputService, "InputChanged", (...moveArgs: ReadonlyArray<unknown>) => {
-						const moveInput = moveArgs[0] as InputObject;
-						if (moveInput.UserInputType !== Enum.UserInputType.MouseMovement) return;
-
-						if (ref.dragStartPosition !== undefined) {
-							const dragDistance = v2(
-								moveInput.Position.X - ref.dragStartPosition.X,
-								moveInput.Position.Y - ref.dragStartPosition.Y,
-							).Magnitude;
-							if (dragDistance > DRAG_THRESHOLD) ref.dragMoved = true;
-						}
-
-						const delta = lastMousePosition.sub(moveInput.Position);
-						lastMousePosition = moveInput.Position;
-						ref.frame.Position = ref.frame.Position.sub(new UDim2(0, delta.X, 0, delta.Y));
-					});
-				},
+					InputBegan: (...args: ReadonlyArray<unknown>) => beginTitleDrag(args[0] as InputObject),
 				InputEnded: (...args: ReadonlyArray<unknown>) => {
-					const inputObj = args[0] as InputObject;
-						if (ref.dragConnection !== undefined && inputObj.UserInputType === Enum.UserInputType.MouseButton1) {
-							ref.dragConnection.Disconnect();
-							ref.dragConnection = undefined;
-						}
-						endPointerDrag();
-
-						if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
-
-					if (ref.ignoreTitleClick === true) {
-						ref.ignoreTitleClick = false;
-						ref.dragStartPosition = undefined;
-						ref.dragMoved = false;
-						return;
-					}
-
-					if (ref.minimize.Visible && ref.dragMoved !== true) {
-						const now = os.clock();
-						if (now - (ref.lastTitleClickTime ?? 0) <= DOUBLE_CLICK_TIME) {
-							setMinimized((prev) => !prev);
-							ref.lastTitleClickTime = 0;
-						} else {
-							ref.lastTitleClickTime = now;
-						}
-					}
-
-					ref.dragStartPosition = undefined;
-					ref.dragMoved = false;
+					finishTitleDrag(args[0] as InputObject);
 				},
 			}),
 			3: create("ScrollingFrame", {
@@ -347,37 +396,9 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 				Size: udim2(0, 16, 0, 16),
 				Rotation: 0,
 				ZIndex: 102,
-					InputBegan: (...args: ReadonlyArray<unknown>) => {
-							const clickInput = args[0] as InputObject;
-							if (clickInput.UserInputType !== Enum.UserInputType.MouseButton1) return;
-							if (!isTopGuiTarget(ref.resizeGrip)) return;
-							if (UserInputService === undefined) return;
-						beginPointerDrag();
-
-						const initMousePos = clickInput.Position;
-					const initSize = ref.frame.AbsoluteSize;
-
-					ref.resizeConnection = connectEvent(UserInputService, "InputChanged", (...moveArgs: ReadonlyArray<unknown>) => {
-						const moveInput = moveArgs[0] as InputObject;
-						if (moveInput.UserInputType !== Enum.UserInputType.MouseMovement) return;
-
-						const delta = v2(moveInput.Position.X - initMousePos.X, moveInput.Position.Y - initMousePos.Y);
-						let newSize = initSize.add(delta);
-						newSize = v2(math.max(MIN_SIZE.X, newSize.X), math.max(MIN_SIZE.Y, newSize.Y));
-
-						const tbh = useStyle().titleBarHeight;
-						ref.frame.Size = udim2(0, newSize.X, 0, newSize.Y);
-						ref.container.Size = udim2(1, 0, 0, newSize.Y - tbh);
-						setSize(newSize);
-					});
-				},
+					InputBegan: (...args: ReadonlyArray<unknown>) => beginResize(args[0] as InputObject),
 				InputEnded: (...args: ReadonlyArray<unknown>) => {
-					const inputObj = args[0] as InputObject;
-						if (ref.resizeConnection !== undefined && inputObj.UserInputType === Enum.UserInputType.MouseButton1) {
-							ref.resizeConnection.Disconnect();
-							ref.resizeConnection = undefined;
-						}
-						endPointerDrag();
+					finishResize(args[0] as InputObject);
 					},
 			}),
 		});
@@ -395,6 +416,14 @@ export const window = widget((options: string | WindowOptions, fn: () => void): 
 				if (refs.resizeConnection !== undefined) {
 					refs.resizeConnection.Disconnect();
 					refs.resizeConnection = undefined;
+				}
+				if (refs.inputBeganConnection !== undefined) {
+					refs.inputBeganConnection.Disconnect();
+					refs.inputBeganConnection = undefined;
+				}
+				if (refs.inputEndedConnection !== undefined) {
+					refs.inputEndedConnection.Disconnect();
+					refs.inputEndedConnection = undefined;
 				}
 				if (refs.pointerDragging === true) {
 					refs.pointerDragging = false;

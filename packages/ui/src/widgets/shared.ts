@@ -1,6 +1,7 @@
 import { udim, udim2 } from "../primitives";
 import type { Style } from "../style";
 import { create } from "../create";
+import { getDefaultRovyInputService, type RovyInputService } from "../input";
 import {
 	HIT_TEST_PASS_THROUGH_ATTRIBUTE,
 	HIT_TEST_SURFACE_ATTRIBUTE,
@@ -47,9 +48,9 @@ export function basicHandle(
 	return handle as Record<string, () => boolean>;
 }
 
-function setDefaultCursor(): void {
-	const [inputOk, input] = pcall(() => game.GetService("UserInputService"));
-	if (inputOk) (input as UserInputService).MouseIcon = DEFAULT_CURSOR_ICON;
+function setDefaultCursor(inputService?: RovyInputService): void {
+	const input = inputService ?? getDefaultRovyInputService();
+	if (input !== undefined) input.MouseIcon = DEFAULT_CURSOR_ICON;
 
 	const [playersOk, players] = pcall(() => game.GetService("Players"));
 	if (!playersOk) return;
@@ -80,7 +81,7 @@ function stopDefaultCursorLoopIfIdle(): void {
 	defaultCursorHoldCount = 0;
 }
 
-export function defaultCursorHandlers(): {
+export function defaultCursorHandlers(inputService?: RovyInputService): {
 	MouseEnter: () => void;
 	MouseMoved: () => void;
 	MouseLeave: () => void;
@@ -92,7 +93,7 @@ export function defaultCursorHandlers(): {
 			defaultCursorHoldCount += 1;
 			ensureDefaultCursorLoop();
 		}
-		setDefaultCursor();
+		setDefaultCursor(inputService);
 	};
 	const leave = (): void => {
 		if (!hovering) return;
@@ -103,14 +104,14 @@ export function defaultCursorHandlers(): {
 	return {
 		MouseEnter: enter,
 		MouseMoved: () => {
-			if (hovering) setDefaultCursor();
+			if (hovering) setDefaultCursor(inputService);
 		},
 		MouseLeave: leave,
 	};
 }
 
-export function bindDefaultCursor(guiObject: GuiObject): () => void {
-	const handlers = defaultCursorHandlers();
+export function bindDefaultCursor(guiObject: GuiObject, inputService?: RovyInputService): () => void {
+	const handlers = defaultCursorHandlers(inputService);
 	const enterConnection = guiObject.MouseEnter.Connect(handlers.MouseEnter);
 	const moveConnection = guiObject.MouseMoved.Connect(handlers.MouseMoved);
 	const leaveConnection = guiObject.MouseLeave.Connect(handlers.MouseLeave);
@@ -177,7 +178,7 @@ function findScreenGui(guiObject: Instance): ScreenGui | undefined {
 	return undefined;
 }
 
-function inputPosition(inputOrX?: unknown, y?: unknown): Vector2 | undefined {
+function inputPosition(inputOrX?: unknown, y?: unknown, inputService?: RovyInputService): Vector2 | undefined {
 	if (typeIs(inputOrX, "number") && typeIs(y, "number")) {
 		return new Vector2(inputOrX, y);
 	}
@@ -186,9 +187,9 @@ function inputPosition(inputOrX?: unknown, y?: unknown): Vector2 | undefined {
 		const position = (inputOrX as { Position?: Vector3 }).Position;
 		if (position !== undefined) return new Vector2(position.X, position.Y);
 	}
-	const [inputOk, input] = pcall(() => game.GetService("UserInputService"));
-	if (!inputOk) return undefined;
-	const [mouseOk, location] = pcall(() => (input as UserInputService).GetMouseLocation());
+	const input = inputService ?? getDefaultRovyInputService();
+	if (input === undefined) return undefined;
+	const [mouseOk, location] = pcall(() => input.GetMouseLocation());
 	if (!mouseOk) return undefined;
 
 	const [serviceOk, service] = pcall(() => game.GetService("GuiService"));
@@ -202,6 +203,34 @@ function inputPosition(inputOrX?: unknown, y?: unknown): Vector2 | undefined {
 	return new Vector2(location.X - guiInset.X, location.Y - guiInset.Y);
 }
 
+function rawInputPosition(inputOrX?: unknown, y?: unknown): Vector2 | undefined {
+	if (typeIs(inputOrX, "number") && typeIs(y, "number")) {
+		return new Vector2(inputOrX, y);
+	}
+
+	if (inputOrX !== undefined && !typeIs(inputOrX, "number")) {
+		const vector = inputOrX as { X?: number; Y?: number; Position?: { X: number; Y: number } };
+		if (vector.Position !== undefined) return new Vector2(vector.Position.X, vector.Position.Y);
+		if (typeIs(vector.X, "number") && typeIs(vector.Y, "number")) return new Vector2(vector.X, vector.Y);
+	}
+
+	return undefined;
+}
+
+export function pointInsideGuiObject(guiObject: GuiObject | undefined, inputOrX?: unknown, y?: unknown): boolean {
+	if (guiObject === undefined || !guiObject.Visible) return false;
+	const position = rawInputPosition(inputOrX, y);
+	if (position === undefined) return false;
+	const absolutePosition = guiObject.AbsolutePosition;
+	const absoluteSize = guiObject.AbsoluteSize;
+	return (
+		position.X >= absolutePosition.X &&
+		position.X <= absolutePosition.X + absoluteSize.X &&
+		position.Y >= absolutePosition.Y &&
+		position.Y <= absolutePosition.Y + absoluteSize.Y
+	);
+}
+
 function guiObjectsAt(guiObject: Instance, position: Vector2): ReadonlyArray<GuiObject> | undefined {
 	const screenGui = findScreenGui(guiObject);
 	const root = parentOf(screenGui ?? guiObject);
@@ -210,8 +239,13 @@ function guiObjectsAt(guiObject: Instance, position: Vector2): ReadonlyArray<Gui
 	return ok ? (objects as ReadonlyArray<GuiObject>) : undefined;
 }
 
-export function isTopGuiTarget(guiObject: Instance, inputOrX?: unknown, y?: unknown): boolean {
-	const position = inputPosition(inputOrX, y);
+export function isTopGuiTarget(
+	guiObject: Instance,
+	inputOrX?: unknown,
+	y?: unknown,
+	inputService?: RovyInputService,
+): boolean {
+	const position = inputPosition(inputOrX, y, inputService);
 	if (position === undefined) return true;
 	const objects = guiObjectsAt(guiObject, position);
 	if (objects === undefined) return true;

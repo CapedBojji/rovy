@@ -1,9 +1,9 @@
-import { widget, __useInstance, __useState, __useEffect, useHoverTarget, usePointerDrag } from "../runtime";
+import { widget, __useInstance, __useState, __useEffect, useHoverTarget, useInputService, usePointerDrag } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
 import { createConnect } from "../createConnect";
 import { udim, udim2 } from "../primitives";
-import { isTopGuiTarget } from "./shared";
+import { isTopGuiTarget, pointInsideGuiObject } from "./shared";
 
 export interface DragValueOptions {
 	min?: number;
@@ -19,6 +19,8 @@ interface DragValueRefs {
 	stroke: UIStroke;
 	textBox: TextBox;
 	textStroke: UIStroke;
+	inputBeganConnection?: RBXScriptConnection;
+	inputEndedConnection?: RBXScriptConnection;
 	connection?: RBXScriptConnection;
 	endConnection?: RBXScriptConnection;
 	lastX?: number;
@@ -30,11 +32,6 @@ interface DragValueRefs {
 	isEditing?: boolean;
 	editStartText?: string;
 	endPointerDrag?: () => void;
-}
-
-function tryGetService(name: string): Instance | undefined {
-	const [ok, svc] = pcall(() => game.GetService(name as keyof Services));
-	return ok ? svc : undefined;
 }
 
 /** @widget */
@@ -86,13 +83,15 @@ export const dragValue = widget((options: DragValueOptions = {}): number => {
 	const refs = __useInstance("dragValue:instance", (rawRef) => {
 		const ref = rawRef as unknown as DragValueRefs;
 		const connectEvent = createConnect();
-		const UserInputService = tryGetService("UserInputService");
+		const inputService = useInputService();
 		const style = useStyle();
 		const pointerDrag = usePointerDrag();
 		ref.endPointerDrag = pointerDrag.end;
 
 		ref.connection = undefined;
 		ref.endConnection = undefined;
+		ref.inputBeganConnection = undefined;
+		ref.inputEndedConnection = undefined;
 		ref.lastX = undefined;
 		ref.startX = undefined;
 		ref.didDrag = false;
@@ -117,6 +116,59 @@ export const dragValue = widget((options: DragValueOptions = {}): number => {
 			if (ref.didDrag !== true) beginEdit(ref);
 		};
 
+		const beginDrag = (inputObj: InputObject, requirePointInside = false): void => {
+			if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
+			if (ref.pointerDown === true) return;
+			if (requirePointInside && !pointInsideGuiObject(ref.btn, inputObj)) return;
+			if (!isTopGuiTarget(ref.btn, inputObj, undefined, inputService)) return;
+			if (inputService === undefined) return;
+
+			ref.startX = inputObj.Position.X;
+			ref.lastX = inputObj.Position.X;
+			ref.didDrag = false;
+			ref.pointerDown = true;
+			pointerDrag.begin();
+
+			if (ref.connection !== undefined) ref.connection.Disconnect();
+			if (ref.endConnection !== undefined) ref.endConnection.Disconnect();
+
+			ref.connection = connectEvent(inputService, "InputChanged", (...moveArgs: ReadonlyArray<unknown>) => {
+				const moveInput = moveArgs[0] as InputObject;
+				if (moveInput.UserInputType !== Enum.UserInputType.MouseMovement) return;
+
+				const totalDx = moveInput.Position.X - (ref.startX ?? 0);
+				if (ref.didDrag !== true && math.abs(totalDx) < 4) return;
+
+				ref.didDrag = true;
+				setDragging(true);
+
+				const dx = moveInput.Position.X - (ref.lastX ?? 0);
+				ref.lastX = moveInput.Position.X;
+
+				setValue((current) => {
+					const steps = math.round(dx / 4);
+					const newVal = current + steps * step;
+					return math.clamp(newVal, min, max);
+				});
+			});
+			ref.endConnection = connectEvent(inputService, "InputEnded", (...endArgs: ReadonlyArray<unknown>) => {
+				const endInput = endArgs[0] as InputObject;
+				if (endInput.UserInputType !== Enum.UserInputType.MouseButton1) return;
+				finishDrag();
+			});
+		};
+
+		if (inputService !== undefined) {
+			ref.inputBeganConnection = connectEvent(inputService, "InputBegan", (...args: ReadonlyArray<unknown>) => {
+				beginDrag(args[0] as InputObject, true);
+			});
+			ref.inputEndedConnection = connectEvent(inputService, "InputEnded", (...args: ReadonlyArray<unknown>) => {
+				const inputObj = args[0] as InputObject;
+				if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
+				finishDrag();
+			});
+		}
+
 		return create("Frame", {
 			[rawRef as never]: "frame",
 			BackgroundTransparency: 1,
@@ -139,44 +191,7 @@ export const dragValue = widget((options: DragValueOptions = {}): number => {
 					Thickness: style.strokeThickness, ApplyStrokeMode: Enum.ApplyStrokeMode.Border,
 				}),
 					InputBegan: (...args: ReadonlyArray<unknown>) => {
-						const inputObj = args[0] as InputObject;
-						if (inputObj.UserInputType !== Enum.UserInputType.MouseButton1) return;
-						if (!isTopGuiTarget(ref.btn)) return;
-						if (UserInputService === undefined) return;
-
-					ref.startX = inputObj.Position.X;
-					ref.lastX = inputObj.Position.X;
-					ref.didDrag = false;
-					ref.pointerDown = true;
-					pointerDrag.begin();
-
-					if (ref.connection !== undefined) ref.connection.Disconnect();
-					if (ref.endConnection !== undefined) ref.endConnection.Disconnect();
-
-					ref.connection = connectEvent(UserInputService, "InputChanged", (...moveArgs: ReadonlyArray<unknown>) => {
-						const moveInput = moveArgs[0] as InputObject;
-						if (moveInput.UserInputType !== Enum.UserInputType.MouseMovement) return;
-
-						const totalDx = moveInput.Position.X - (ref.startX ?? 0);
-						if (ref.didDrag !== true && math.abs(totalDx) < 4) return;
-
-						ref.didDrag = true;
-						setDragging(true);
-
-						const dx = moveInput.Position.X - (ref.lastX ?? 0);
-						ref.lastX = moveInput.Position.X;
-
-						setValue((current) => {
-							const steps = math.round(dx / 4);
-							const newVal = current + steps * step;
-							return math.clamp(newVal, min, max);
-						});
-					});
-					ref.endConnection = connectEvent(UserInputService, "InputEnded", (...endArgs: ReadonlyArray<unknown>) => {
-						const endInput = endArgs[0] as InputObject;
-						if (endInput.UserInputType !== Enum.UserInputType.MouseButton1) return;
-						finishDrag();
-					});
+						beginDrag(args[0] as InputObject);
 				},
 				InputEnded: (...args: ReadonlyArray<unknown>) => {
 					const inputObj = args[0] as InputObject;
@@ -243,6 +258,14 @@ export const dragValue = widget((options: DragValueOptions = {}): number => {
 			if (refs.endConnection !== undefined) {
 				refs.endConnection.Disconnect();
 				refs.endConnection = undefined;
+			}
+			if (refs.inputBeganConnection !== undefined) {
+				refs.inputBeganConnection.Disconnect();
+				refs.inputBeganConnection = undefined;
+			}
+			if (refs.inputEndedConnection !== undefined) {
+				refs.inputEndedConnection.Disconnect();
+				refs.inputEndedConnection = undefined;
 			}
 		};
 	});

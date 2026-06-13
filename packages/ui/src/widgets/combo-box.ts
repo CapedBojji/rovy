@@ -1,4 +1,4 @@
-import { widget, __useInstance, __useState, __useEffect, useRootInstance, useHoverTarget } from "../runtime";
+import { widget, __useInstance, __useState, __useEffect, useRootInstance, useHoverTarget, useInputService } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim, udim2, v2 } from "../primitives";
@@ -27,11 +27,6 @@ interface ComboBoxRefs {
 const ARROW = "▼";
 const ITEM_HEIGHT = 22;
 const MAX_VISIBLE_ITEMS = 6;
-
-function tryGetService(name: string): Instance | undefined {
-	const [ok, svc] = pcall(() => game.GetService(name as keyof Services));
-	return ok ? svc : undefined;
-}
 
 function findDropdownParent(comboBtn: GuiObject | undefined, rootGui: Instance | undefined): Instance | undefined {
 	if (comboBtn !== undefined) {
@@ -72,6 +67,7 @@ export const comboBox = widget((options: ComboBoxOptions): ComboBoxHandle => {
 	const [changed, setChanged] = __useState("comboBox:changed", false);
 	const [isOpen, setIsOpen] = __useState("comboBox:open", false);
 	const [hovered, setHovered] = __useState("comboBox:hovered", false);
+	const inputService = useInputService();
 
 	if (opts.selected !== undefined && opts.selected !== selectedValue) {
 		for (let idx = 1; idx <= items.size(); idx++) {
@@ -121,7 +117,7 @@ export const comboBox = widget((options: ComboBoxOptions): ComboBoxHandle => {
 				ZIndex: 2,
 				}),
 				Activated: () => {
-					if (!isTopGuiTarget(targetRef.comboBtn)) return;
+					if (!isTopGuiTarget(targetRef.comboBtn, undefined, undefined, inputService)) return;
 					setIsOpen((v) => !v);
 				},
 		});
@@ -179,10 +175,9 @@ export const comboBox = widget((options: ComboBoxOptions): ComboBoxHandle => {
 
 			refs.keyFocusIndex = selectedIndex;
 
-			const UserInputService = tryGetService("UserInputService") as UserInputService | undefined;
-			if (UserInputService === undefined) return;
+			if (inputService === undefined) return;
 
-			const conn = UserInputService.InputBegan.Connect((...args: ReadonlyArray<unknown>) => {
+			const conn = inputService.InputBegan.Connect((...args: ReadonlyArray<unknown>) => {
 				const input = args[0] as InputObject;
 
 				if (
@@ -346,7 +341,7 @@ export const comboBox = widget((options: ComboBoxOptions): ComboBoxHandle => {
 						const capturedIndex = i;
 						const capturedItem = item;
 						itemBtn.Activated.Connect(() => {
-							if (!isTopGuiTarget(itemBtn)) return;
+							if (!isTopGuiTarget(itemBtn, undefined, undefined, inputService)) return;
 							setSelectedValue(capturedItem);
 							setSelectedIndex(capturedIndex);
 						setChanged(true);

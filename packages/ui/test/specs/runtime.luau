@@ -76,6 +76,55 @@ return function(TS, t)
 		return nil
 	end
 
+	local function makeSignal()
+		local listeners = {}
+		return {
+			Connect = function(_self, fn)
+				local connection = { Connected = true }
+				function connection:Disconnect()
+					self.Connected = false
+				end
+				table.insert(listeners, { fn = fn, connection = connection })
+				return connection
+			end,
+			Fire = function(_self, ...)
+				for _, listener in ipairs(listeners) do
+					if listener.connection.Connected then
+						listener.fn(...)
+					end
+				end
+			end,
+		}
+	end
+
+	local function makeInputService()
+		local service = {
+			InputBegan = makeSignal(),
+			InputChanged = makeSignal(),
+			InputEnded = makeSignal(),
+			MouseLocation = _G.Vector2.new(0, 0),
+		}
+		function service:GetMouseLocation()
+			return self.MouseLocation
+		end
+		return service
+	end
+
+	local function makeInput(userInputType, x, y, keyCode)
+		return {
+			UserInputType = userInputType,
+			KeyCode = keyCode or _G.Enum.KeyCode.Unknown,
+			Position = _G.Vector2.new(x or 0, y or 0),
+		}
+	end
+
+	local function firstDirectChild(instance, predicate)
+		for _, child in ipairs(instance:GetChildren()) do
+			if predicate(child) then return child end
+		end
+		return nil
+	end
+
 	t.describe("@rovy/ui runtime", function()
 		t.it("returns default active style", function()
 			RovyUi.__reset()
@@ -628,7 +677,7 @@ return function(TS, t)
 			})
 
 			t.expect(_G.__rovyTestRuntime.liveConnectionCount("UserInputService.InputChanged")).toBe(1)
-			t.expect(_G.__rovyTestRuntime.liveConnectionCount("UserInputService.InputEnded")).toBe(1)
+			t.expect(_G.__rovyTestRuntime.liveConnectionCount("UserInputService.InputEnded")).toBe(3)
 
 			RovyUi.start(node, function() end)
 			t.expect(_G.__rovyTestRuntime.liveConnectionCount()).toBe(0)
@@ -1008,6 +1057,244 @@ return function(TS, t)
 					detailsButton.Activated:Fire()
 					render()
 					t.expect(clicked).toBe(true)
+				end)
+
+				t.it("drags windows with an injected input service", function()
+					RovyUi.__reset()
+					local gui = root()
+					local inputService = makeInputService()
+					local node = RovyUi.new(gui, { inputService = inputService })
+
+					RovyUi.start(node, function()
+						RovyUi.window({ title = "Injected", position = _G.Vector2.new(10, 15) }, function() end)
+					end)
+
+					local windowFrame = findFirstDescendant(gui, function(instance)
+						return instance.ClassName == "Frame" and instance:GetAttribute("EgooEWindow") == true
+					end)
+					t.expect(windowFrame).toBeDefined()
+
+					local titleBar = firstDirectChild(windowFrame, function(instance)
+						return instance.ClassName == "TextButton" and instance.Text == ""
+					end)
+					t.expect(titleBar).toBeDefined()
+
+					titleBar.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 20, 20))
+					inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 45, 50))
+
+					t.expect(windowFrame.Position.X.Offset).toBe(35)
+					t.expect(windowFrame.Position.Y.Offset).toBe(45)
+				end)
+
+				t.it("resizes windows with an injected input service", function()
+					RovyUi.__reset()
+					local gui = root()
+					local inputService = makeInputService()
+					local node = RovyUi.new(gui, { inputService = inputService })
+
+					RovyUi.start(node, function()
+						RovyUi.window({ title = "Resize", size = _G.Vector2.new(160, 120) }, function() end)
+					end)
+
+					local windowFrame = findFirstDescendant(gui, function(instance)
+						return instance.ClassName == "Frame" and instance:GetAttribute("EgooEWindow") == true
+					end)
+					local resizeGrip = firstDirectChild(windowFrame, function(instance)
+						return instance.ClassName == "TextButton" and instance.Text == "⊿"
+					end)
+					t.expect(resizeGrip).toBeDefined()
+
+					windowFrame.AbsoluteSize = _G.Vector2.new(160, 120)
+					resizeGrip.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 0, 0))
+					inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 40, 25))
+
+					t.expect(windowFrame.Size.X.Offset).toBe(200)
+					t.expect(windowFrame.Size.Y.Offset).toBe(145)
+				end)
+
+				t.it("drives slider and dragValue widgets with an injected input service", function()
+					RovyUi.__reset()
+					local gui = root()
+					local inputService = makeInputService()
+					local node = RovyUi.new(gui, { inputService = inputService })
+					local sliderValue = 0
+					local dragValue = 0
+
+					local function render()
+						RovyUi.start(node, function()
+							sliderValue = RovyUi.slider({ min = 0, max = 100, initial = 0, showValueBox = false })
+							dragValue = RovyUi.dragValue({ min = 0, max = 100, initial = 0, step = 1 })
+						end)
+					end
+
+					render()
+					local sliderTrack = findFirstDescendant(gui, function(instance)
+						return instance.ClassName == "TextButton" and instance.Text == "" and instance.Size.Y.Offset == 10
+					end)
+					t.expect(sliderTrack).toBeDefined()
+					sliderTrack.AbsolutePosition = _G.Vector2.new(0, 0)
+					sliderTrack.AbsoluteSize = _G.Vector2.new(100, 10)
+
+					sliderTrack.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 25, 0))
+					inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 75, 0))
+					render()
+					t.expect(sliderValue).toBe(75)
+
+					local dragButton = findFirstDescendant(gui, function(instance)
+						return instance.ClassName == "TextButton" and instance.Text == "0"
+					end)
+					t.expect(dragButton).toBeDefined()
+
+					dragButton.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 0, 0))
+					inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 20, 0))
+					render()
+					t.expect(dragValue).toBe(5)
+				end)
+
+				t.it("adapts UI Labs MouseMoved signals into drag InputChanged events", function()
+					RovyUi.__reset()
+					local gui = root()
+					local inputSignals = {
+						InputBegan = makeSignal(),
+						InputChanged = makeSignal(),
+						InputEnded = makeSignal(),
+						MouseMoved = makeSignal(),
+						MouseLocation = _G.Vector2.new(0, 0),
+					}
+					function inputSignals:GetMouseLocation()
+						return self.MouseLocation
+					end
+
+					local inputService = RovyUi.createRovyInputServiceFromSignals(inputSignals)
+					local node = RovyUi.new(gui, { inputService = inputService })
+					local value = 0
+
+					local function render()
+						RovyUi.start(node, function()
+							value = RovyUi.slider({ min = 0, max = 100, initial = 0, showValueBox = false })
+						end)
+					end
+
+					render()
+					local sliderTrack = findFirstDescendant(gui, function(instance)
+						return instance.ClassName == "TextButton" and instance.Text == "" and instance.Size.Y.Offset == 10
+					end)
+					t.expect(sliderTrack).toBeDefined()
+					sliderTrack.AbsolutePosition = _G.Vector2.new(0, 0)
+					sliderTrack.AbsoluteSize = _G.Vector2.new(100, 10)
+
+					sliderTrack.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 10, 0))
+					inputSignals.MouseMoved:Fire(_G.Vector2.new(65, 0))
+					render()
+
+				t.expect(value).toBe(65)
+			end)
+
+			t.it("starts window drags from injected input began signals", function()
+				RovyUi.__reset()
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+
+				RovyUi.start(node, function()
+					RovyUi.window({ title = "Global Drag", position = _G.Vector2.new(10, 15) }, function() end)
+				end)
+
+				local windowFrame = findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "Frame" and instance:GetAttribute("EgooEWindow") == true
+				end)
+				local titleBar = firstDirectChild(windowFrame, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == ""
+				end)
+				local resizeGrip = firstDirectChild(windowFrame, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == "⊿"
+				end)
+				t.expect(windowFrame).toBeDefined()
+				t.expect(titleBar).toBeDefined()
+				t.expect(resizeGrip).toBeDefined()
+
+				titleBar.AbsolutePosition = _G.Vector2.new(10, 15)
+				titleBar.AbsoluteSize = _G.Vector2.new(200, 24)
+				resizeGrip.AbsolutePosition = _G.Vector2.new(280, 380)
+				resizeGrip.AbsoluteSize = _G.Vector2.new(16, 16)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 20, 20))
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 45, 50))
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 45, 50))
+
+				t.expect(windowFrame.Position.X.Offset).toBe(35)
+				t.expect(windowFrame.Position.Y.Offset).toBe(45)
+			end)
+
+			t.it("starts slider and dragValue drags from injected input began signals", function()
+				RovyUi.__reset()
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local sliderValue = 0
+				local dragValue = 0
+
+				local function render()
+					RovyUi.start(node, function()
+						sliderValue = RovyUi.slider({ min = 0, max = 100, initial = 0, showValueBox = false })
+						dragValue = RovyUi.dragValue({ min = 0, max = 100, initial = 0, step = 1 })
+					end)
+				end
+
+				render()
+				local sliderTrack = findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == "" and instance.Size.Y.Offset == 10
+				end)
+				t.expect(sliderTrack).toBeDefined()
+				sliderTrack.AbsolutePosition = _G.Vector2.new(0, 0)
+				sliderTrack.AbsoluteSize = _G.Vector2.new(100, 10)
+
+				local dragButton = findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == "0"
+				end)
+				t.expect(dragButton).toBeDefined()
+				dragButton.AbsolutePosition = _G.Vector2.new(0, 20)
+				dragButton.AbsoluteSize = _G.Vector2.new(80, 20)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 25, 5))
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 75, 5))
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 75, 5))
+				render()
+				t.expect(sliderValue).toBe(75)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 10, 25))
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 30, 25))
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 30, 25))
+				render()
+
+				t.expect(dragValue).toBe(5)
+			end)
+
+			t.it("falls back to the default UserInputService when no input service is injected", function()
+				RovyUi.__reset()
+					local gui = root()
+					local node = RovyUi.new(gui)
+					local value = 0
+
+					local function render()
+						RovyUi.start(node, function()
+							value = RovyUi.slider({ min = 0, max = 100, initial = 0, showValueBox = false })
+						end)
+					end
+
+					render()
+					local sliderTrack = findFirstDescendant(gui, function(instance)
+						return instance.ClassName == "TextButton" and instance.Text == "" and instance.Size.Y.Offset == 10
+					end)
+					t.expect(sliderTrack).toBeDefined()
+					sliderTrack.AbsolutePosition = _G.Vector2.new(0, 0)
+					sliderTrack.AbsoluteSize = _G.Vector2.new(100, 10)
+
+					sliderTrack.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 10, 0))
+					_G.__rovyTestServices.UserInputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 40, 0))
+					render()
+
+					t.expect(value).toBe(40)
 				end)
 
 				t.it("accepts TextButton mouse coordinate events", function()

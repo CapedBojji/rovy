@@ -27,6 +27,11 @@ const checks = [
 	["client render loop", /RenderStepped/],
 	["screen gui", /RovyUiTestPlace/],
 	["demo window usage", /demoWindow/],
+	["curve editor playground usage", /curveEditorPlayground/],
+	["curve editor preview", /Bezier curve playground/],
+	["ui labs demo story", /Demo Window/],
+	["ui labs generic story", /use = "Generic"/],
+	["ui labs injected input", /inputService = createStoryInputService/],
 	["shared module", /Rovy UI Test Place/],
 ];
 

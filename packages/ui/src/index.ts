@@ -19,6 +19,7 @@ import {
 	__useEffect,
 	useKey,
 	useRootInstance,
+	useInputService,
 	setEventCallback,
 	createContext,
 	useContext,
@@ -29,6 +30,8 @@ import {
 import { useStyle, getActiveStyle, setStyle, StyleScope, withStyleScope, __withStyleScope } from "./style";
 import { create } from "./create";
 import { createConnect } from "./createConnect";
+import { createRovyInputServiceFromSignals } from "./input";
+import { createRovyUiStory } from "./ui-labs";
 import { WINDOW_ATTRIBUTE } from "./windowConstants";
 import * as contexts from "./contexts";
 
@@ -64,6 +67,8 @@ import { demoWindow } from "./widgets/demo-window";
 import { errorWidget } from "./widgets/error";
 
 export * from "./runtime";
+export * from "./input";
+export * from "./ui-labs";
 export * from "./style";
 export * from "./create";
 export * from "./createConnect";
@@ -121,6 +126,7 @@ export const rovyUi = {
 	__useEffect,
 	useKey,
 	useRootInstance,
+	useInputService,
 	setEventCallback,
 	createContext,
 	useContext,
@@ -133,6 +139,8 @@ export const rovyUi = {
 	__withStyleScope,
 	create,
 	createConnect,
+	createRovyInputServiceFromSignals,
+	createRovyUiStory,
 	contexts,
 	WINDOW_ATTRIBUTE,
 	registry,
