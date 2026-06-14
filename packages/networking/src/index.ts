@@ -1,16 +1,33 @@
 export {
 	NET_CLIENT_PARAM,
 	NET_EVENT_CONTEXT_PARAM,
+	NET_FUNCTION_PARAM_PREFIX,
+	NET_FUNCTION_READER_PARAM_PREFIX,
+	NET_FUNCTION_RESPONDER_PARAM,
 	NET_RUNTIME_PARAM,
 	NET_SERVER_PARAM,
+	netFunctionParam,
+	netFunctionReaderParam,
 } from "./types";
 export type {
 	ClientToServerNetEvent,
+	ClientToServerNetFunction,
 	NetEventChannel,
 	NetEventDirection,
 	NetEventOptions,
 	NetEventReceiveMode,
 	NetEventReg,
+	NetCallHandle,
+	NetFunctionCall,
+	NetFunctionOptions,
+	NetFunctionReg,
+	NetFunctionCallResult,
+	NetFunctionRejected,
+	NetFunctionRequestEnvelope,
+	NetFunctionRequestOutboxItem,
+	NetFunctionResult,
+	NetFunctionResultEnvelope,
+	NetFunctionResultOutboxItem,
 	NetId,
 	NetInboundItem,
 	NetOutboxItem,
@@ -18,10 +35,17 @@ export type {
 	RuntimeBoundary,
 	ServerToClientNetEvent,
 } from "./types";
-export { netEvent, rovyNet } from "./registry";
+export { netEvent, netFunction, rovyNet } from "./registry";
 export { NetCodec, type NetPayload } from "./codec";
 export { NetEventContext } from "./context";
-export { NetClient, NetRuntime, NetServer } from "./runtime";
+export {
+	NetClient,
+	NetFunctionReader,
+	NetFunctionResponder,
+	NetFunc,
+	NetRuntime,
+	NetServer,
+} from "./runtime";
 export {
 	connectLoopback,
 	LoopbackTransport,

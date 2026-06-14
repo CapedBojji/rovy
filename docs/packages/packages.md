@@ -44,18 +44,21 @@ The runtime is _packaged inside_ `@rovy/core`. There is no separate runtime pack
 
 ## What lives in `@rovy/networking`
 
-Networking is separate from core. Import it only when a package needs net events:
+Networking is separate from core. Import it only when a package needs net events
+or non-blocking net functions:
 
-- **Decorator** — `@netEvent(...)`
-- **Runtime handles** — `NetClient`, `NetServer`, `NetEventContext`, `NetRuntime`, `NetPlugin`
-- **Registry** — `rovyNet.__netEvent(...)` is transformer-injected; users should not hand-call it
-- **Types** — `NetId`, `ClientToServerNetEvent`, `ServerToClientNetEvent`
+- **Decorators** — `@netEvent(...)` and `@netFunction(...)`
+- **Runtime handles** — `NetClient`, `NetServer`, `NetEventContext`, `NetFunc`, `NetFunctionReader`, `NetFunctionResponder`, `NetRuntime`, `NetPlugin`
+- **Registry** — `rovyNet.__netEvent(...)` and `rovyNet.__netFunction(...)` are transformer-injected; users should not hand-call them
+- **Types** — `NetId`, `ClientToServerNetEvent`, `ServerToClientNetEvent`, `ClientToServerNetFunction`
 
 ```ts
-import { NetClient, netEvent } from "@rovy/networking";
+import { NetClient, NetFunc, netEvent, netFunction } from "@rovy/networking";
 ```
 
 `@netEvent` implies a core `@event`: the transformer emits both `rovy.__event(...)` and `rovyNet.__netEvent(...)`.
+`@netFunction` is non-blocking request/response over the networking transport;
+it does not use Roblox `RemoteFunction`.
 
 ## What lives in `@rovy/datastore`
 

@@ -32,6 +32,7 @@ const DECORATORS = new Set([
 	"prefab",
 	"event",
 	"netEvent",
+	"netFunction",
 	"system",
 	"observer",
 	"monitor",
@@ -337,6 +338,18 @@ function transformCall(
 		return node;
 	}
 
+	if (isNetFunctionCallExpression(state, sourceFile, node)) {
+		return ts.factory.updateCallExpression(
+			node,
+			node.expression,
+			node.typeArguments,
+			[
+				...node.arguments.map((arg) => ts.visitNode(arg, visitor, ts.isExpression) ?? arg),
+				str(state.nextNetCallsiteKey(node)),
+			],
+		);
+	}
+
 	if (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "loadPaths") {
 		if (state.isRovyValue(sourceFile, node.expression.expression)) {
 			return ts.factory.updateCallExpression(
@@ -478,6 +491,16 @@ function transformClass(
 					regCall(state.addRovyNetImport(sourceFile), "__netEvent", [
 						className,
 						buildNetEventMeta(state, node, decorator, classId),
+					]),
+				);
+				break;
+			}
+			case "netFunction": {
+				validateNetFunction(state, node, decorator);
+				afterStatements.push(
+					regCall(state.addRovyNetImport(sourceFile), "__netFunction", [
+						className,
+						buildNetFunctionMeta(state, node, decorator, classId),
 					]),
 				);
 				break;
@@ -1301,6 +1324,43 @@ function buildNetEventMeta(
 	);
 }
 
+function buildNetFunctionMeta(
+	state: TransformState,
+	node: ts.ClassDeclaration,
+	decorator: DecoratorInfo,
+	classId: string,
+): ts.ObjectLiteralExpression {
+	const result = netFunctionResultExpression(state, decorator);
+	const resultClass = result !== undefined ? classDeclarationForExpression(state, result) : undefined;
+	const requestName = `${node.name?.text ?? "AnonymousNetFunction"}Request`;
+	const resultWireName = `${node.name?.text ?? "AnonymousNetFunction"}Result`;
+	return obj(
+		[
+			prop("id", str(classId)),
+			prop("name", str(node.name?.text ?? "AnonymousNetFunction")),
+			prop("direction", str("clientToServer")),
+			prop("fields", arr(constructorFieldNames(node).map(str), false)),
+			prop("result", result ?? id("undefined")),
+			prop("resultName", str(resultClass?.name?.text ?? "AnonymousNetFunctionResult")),
+			prop("resultFields", arr((resultClass !== undefined ? constructorFieldNames(resultClass) : []).map(str), false)),
+			prop("requestName", str(requestName)),
+			prop("resultWireName", str(resultWireName)),
+			prop("requestBlink", str(buildBlinkFunctionRequest(state, node, requestName))),
+			prop("resultBlink", str(buildBlinkFunctionResult(state, resultClass, resultWireName))),
+		],
+		true,
+	);
+}
+
+function constructorFieldNames(node: ts.ClassDeclaration): string[] {
+	const ctor = node.members.find(ts.isConstructorDeclaration);
+	const fields: string[] = [];
+	for (const param of ctor?.parameters ?? []) {
+		if (ts.isIdentifier(param.name)) fields.push(param.name.text);
+	}
+	return fields;
+}
+
 function buildWidgetMeta(classId: string, name: string): ts.ObjectLiteralExpression {
 	return obj([prop("id", str(classId)), prop("name", str(name))], true);
 }
@@ -1362,6 +1422,39 @@ function validateNetEvent(state: TransformState, node: ts.ClassDeclaration, deco
 	}
 }
 
+function validateNetFunction(state: TransformState, node: ts.ClassDeclaration, decorator: DecoratorInfo): void {
+	const options = objectArg(decorator);
+	if (!options) {
+		state.diagnostic(decorator.node, "@netFunction requires options");
+		return;
+	}
+	const direction = propertyValue(options, "direction");
+	if (!direction) state.diagnostic(decorator.node, "@netFunction requires direction");
+	validateStringOption(state, direction, ["clientToServer"], "@netFunction direction");
+	const result = propertyValue(options, "result");
+	if (result === undefined) {
+		state.diagnostic(decorator.node, "@netFunction requires result");
+	}
+	validateNetSerializableConstructor(state, node, "@netFunction constructor fields");
+	const resultClass = result !== undefined ? classDeclarationForExpression(state, result) : undefined;
+	if (result !== undefined && resultClass === undefined) {
+		state.diagnostic(result, "@netFunction result must reference a result class");
+		return;
+	}
+	if (resultClass !== undefined) validateNetSerializableConstructor(state, resultClass, "@netFunction result fields");
+}
+
+function validateNetSerializableConstructor(state: TransformState, node: ts.ClassDeclaration, label: string): void {
+	const ctor = node.members.find(ts.isConstructorDeclaration);
+	for (const param of ctor?.parameters ?? []) {
+		if (!param.type) {
+			state.diagnostic(param, `${label} require explicit serializable types`);
+			continue;
+		}
+		blinkTypeShapeFor(state, param.type, param.questionToken !== undefined);
+	}
+}
+
 function validateStringOption(
 	state: TransformState,
 	expression: ts.Expression | undefined,
@@ -1404,6 +1497,60 @@ function buildBlinkEvent(state: TransformState, node: ts.ClassDeclaration, decor
 		"\t}",
 		"}",
 	].join("\n");
+}
+
+function buildBlinkFunctionRequest(state: TransformState, node: ts.ClassDeclaration, name: string): string {
+	const fields = renderBlinkPayloadFields(state, node, 3);
+	return [
+		`event ${name} {`,
+		"\tFrom: Client,",
+		"\tType: Reliable,",
+		"\tCall: Polling,",
+		"\tData: struct {",
+		"\t\tcallSiteId: string,",
+		"\t\tsequence: f64,",
+		"\t\tpayload: struct {",
+		...fields,
+		"\t\t}",
+		"\t}",
+		"}",
+	].join("\n");
+}
+
+function buildBlinkFunctionResult(
+	state: TransformState,
+	resultClass: ts.ClassDeclaration | undefined,
+	name: string,
+): string {
+	const fields = resultClass !== undefined ? renderBlinkPayloadFields(state, resultClass, 3) : [];
+	return [
+		`event ${name} {`,
+		"\tFrom: Server,",
+		"\tType: Reliable,",
+		"\tCall: Polling,",
+		"\tData: struct {",
+		"\t\tcallSiteId: string,",
+		"\t\tsequence: f64,",
+		"\t\tok: boolean,",
+		"\t\terror: string?,",
+		"\t\tpayload: struct {",
+		...fields,
+		"\t\t}?",
+		"\t}",
+		"}",
+	].join("\n");
+}
+
+function renderBlinkPayloadFields(state: TransformState, node: ts.ClassDeclaration, indent: number): string[] {
+	const ctor = node.members.find(ts.isConstructorDeclaration);
+	const params = [...(ctor?.parameters ?? [])].filter((param) => ts.isIdentifier(param.name) && param.type !== undefined);
+	const fields: string[] = [];
+	for (let i = 0; i < params.length; i++) {
+		const param = params[i];
+		const comma = i < params.length - 1 ? "," : "";
+		fields.push(...renderBlinkField(state, (param.name as ts.Identifier).text, param.type!, param.questionToken !== undefined, indent, comma));
+	}
+	return fields;
 }
 
 function stringOptionValue(expression: ts.Expression | undefined): string | undefined {
@@ -1642,9 +1789,21 @@ function lowerParam(
 			validateNetworkingBoundary(state, sourceFile, type, "server", "NetServer");
 			return externalParam("@rovy/networking/NetServer");
 		}
-			if (isNetworkingType(state, sourceFile, type, "NetEventContext")) {
-				return externalParam("@rovy/networking/NetEventContext");
-			}
+		if (isNetworkingType(state, sourceFile, type, "NetEventContext")) {
+			return externalParam("@rovy/networking/NetEventContext");
+		}
+		if (isNetworkingType(state, sourceFile, type, "NetFunctionResponder")) {
+			validateNetworkingBoundary(state, sourceFile, type, "server", "NetFunctionResponder");
+			return externalParam("@rovy/networking/NetFunctionResponder");
+		}
+		if (isNetworkingType(state, sourceFile, type, "NetFunc")) {
+			validateNetworkingBoundary(state, sourceFile, type, "client", "NetFunc");
+			return externalParam(`@rovy/networking/NetFunc:${netFunctionIdFromTypeArg(state, type)}`);
+		}
+		if (isNetworkingType(state, sourceFile, type, "NetFunctionReader")) {
+			validateNetworkingBoundary(state, sourceFile, type, "server", "NetFunctionReader");
+			return externalParam(`@rovy/networking/NetFunctionReader:${netFunctionIdFromTypeArg(state, type)}`);
+		}
 			if (isDatastoreType(state, sourceFile, type, "DocumentReader")) {
 				const documentId = documentIdFromInjectedDocumentType(state, type);
 				return externalParam(`@rovy/datastore/reader:${documentId}`);
@@ -1892,6 +2051,38 @@ function isNetworkingType(
 	return ts.isIdentifier(name.left) && imports.namespaces.has(name.left.text) && name.right.text === exportName;
 }
 
+function isNetFunctionCallExpression(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.CallExpression,
+): boolean {
+	if (!ts.isPropertyAccessExpression(node.expression) || node.expression.name.text !== "call") return false;
+	const checker = state.typeChecker;
+	if (checker === undefined) return false;
+	const receiver = node.expression.expression;
+	if (ts.isIdentifier(receiver)) {
+		const symbol = checker.getSymbolAtLocation(receiver);
+		for (const declaration of symbol?.declarations ?? []) {
+			if (ts.isParameter(declaration) && declaration.type !== undefined && ts.isTypeReferenceNode(declaration.type)) {
+				if (isNetworkingType(state, sourceFile, declaration.type, "NetClient")) return true;
+				if (isNetworkingType(state, sourceFile, declaration.type, "NetFunc")) return true;
+			}
+		}
+	}
+	const type = checker.getTypeAtLocation(node.expression.expression);
+	const symbol = type.symbol ?? type.aliasSymbol;
+	if (symbol === undefined) return false;
+	const declarations = symbol.declarations ?? [];
+	return declarations.some((declaration) => {
+		if (!ts.isClassDeclaration(declaration)) return false;
+		if (declaration.name?.text !== "NetClient" && declaration.name?.text !== "NetFunc") return false;
+		const file = declaration.getSourceFile();
+		if (!file.fileName.includes("@rovy/networking") && !file.fileName.includes("packages/networking")) return false;
+		const imports = state.getNetworkingImports(sourceFile);
+		return imports.named.size > 0 || imports.namespaces.size > 0;
+	});
+}
+
 function isDatastoreType(
 	state: TransformState,
 	sourceFile: ts.SourceFile,
@@ -1902,6 +2093,36 @@ function isDatastoreType(
 	const name = type.typeName;
 	if (ts.isIdentifier(name)) return imports.named.get(name.text) === exportName;
 	return ts.isIdentifier(name.left) && imports.namespaces.has(name.left.text) && name.right.text === exportName;
+}
+
+function netFunctionResultExpression(state: TransformState, decorator: DecoratorInfo): ts.Expression | undefined {
+	const options = objectArg(decorator);
+	return options ? propertyValue(options, "result") : undefined;
+}
+
+function classDeclarationForExpression(state: TransformState, expression: ts.Expression): ts.ClassDeclaration | undefined {
+	const checker = state.typeChecker;
+	if (checker === undefined) return undefined;
+	const symbol = checker.getSymbolAtLocation(expression);
+	const resolved = symbol !== undefined && (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
+	for (const declaration of resolved?.declarations ?? []) {
+		if (ts.isClassDeclaration(declaration)) return declaration;
+	}
+	return undefined;
+}
+
+function netFunctionIdFromTypeArg(state: TransformState, node: ts.TypeReferenceNode): string {
+	const typeArg = node.typeArguments?.[0];
+	if (!typeArg || !ts.isTypeReferenceNode(typeArg)) {
+		state.diagnostic(node, `${lastTypeName(node.typeName)} requires @netFunction request type argument`);
+		return "unknown";
+	}
+	const declaration = typeDeclarationForTypeReference(state, typeArg);
+	if (declaration !== undefined && ts.isClassDeclaration(declaration) && declaration.name !== undefined) {
+		return classScopedId(state.stableIdForNode(declaration), declaration.name.text);
+	}
+	state.diagnostic(typeArg, `${lastTypeName(node.typeName)} requires an @netFunction request class`);
+	return "unknown";
 }
 
 function datastoreEventCtorArg(

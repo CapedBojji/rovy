@@ -54,8 +54,12 @@ import {
 		NetClient,
 		NetEventContext,
 		NetId,
+		NetFunctionReader,
+		NetFunctionResponder,
+		NetFunc,
 	NetServer,
 	netEvent,
+	netFunction,
 		rovyNet,
 	} from "@rovy/networking";
 	import {
@@ -372,6 +376,70 @@ class SendEffects {
 	assert.match(result.printed, /kind: "external", id: "@rovy\/networking\/NetEventContext"/);
 	assert.match(result.printed, /From: Server/);
 	assert.match(result.printed, /Type: Unreliable/);
+});
+
+runCase("netFunction injects metadata and function params", () => {
+	const result = compileFixture(
+		`
+${header}
+class FetchProfileResult {
+	constructor(public displayName: string, public coins: number) {}
+}
+@netFunction({ direction: "clientToServer", result: FetchProfileResult })
+class FetchProfile {
+	constructor(public userId: NetId, public key: string) {}
+}
+@schedule class Update {}
+@system({ schedule: Update })
+class SendFetch {
+	run(fetchProfile: NetFunc<FetchProfile, FetchProfileResult>, local: Local<{ result?: unknown }>) {
+		const handle = fetchProfile.call(new FetchProfile(1, "coins"));
+		const result = fetchProfile.getResult(handle);
+		if (result !== undefined && !("ok" in result)) local.result = result.coins;
+	}
+}
+@system({ schedule: Update })
+class HandleFetch {
+	run(reader: NetFunctionReader<FetchProfile>, responder: NetFunctionResponder) {}
+}
+`,
+		{
+			rovyConfig: {
+				current: "dev",
+				environments: {
+					dev: {
+						rojo: "test.project.json",
+						net: {
+							strictBoundaryChecks: false,
+						},
+					},
+				},
+			},
+		},
+	);
+	assertNoDiagnostics(result, "netFunction lowering");
+	assert.match(result.printed, /rovyNet\.__netFunction\(FetchProfile,/);
+	assert.match(result.printed, /result: FetchProfileResult/);
+	assert.match(result.printed, /fields: \["userId", "key"\]/);
+	assert.match(result.printed, /resultFields: \["displayName", "coins"\]/);
+	assert.match(result.printed, /event FetchProfileRequest/);
+	assert.match(result.printed, /event FetchProfileResult/);
+	assert.match(result.printed, /const handle = fetchProfile\.call\(new FetchProfile\(1, "coins"\), "src\/main:0"\)/);
+	assert.match(result.printed, /const result = fetchProfile\.getResult\(handle\)/);
+	assert.match(result.printed, /local\.result = result\.coins/);
+	assert.match(result.printed, /kind: "external", id: "@rovy\/networking\/NetFunc:src\/main@FetchProfile"/);
+	assert.match(result.printed, /kind: "external", id: "@rovy\/networking\/NetFunctionReader:src\/main@FetchProfile"/);
+	assert.match(result.printed, /kind: "external", id: "@rovy\/networking\/NetFunctionResponder"/);
+});
+
+runCase("netFunction validates v1 client-to-server only", () => {
+	const result = compileFixture(`
+${header}
+class Result {}
+@netFunction({ direction: "serverToClient", result: Result })
+class BadRequest {}
+`);
+	assert.match(result.diagnostics.join("\n"), /@netFunction direction must be one of: "clientToServer"/);
 });
 
 runCase("networking files emit runtime config from .rovy.json", () => {

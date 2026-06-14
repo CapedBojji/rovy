@@ -9,8 +9,13 @@ import type { NetTransport } from "./transport";
 import {
 	NET_CLIENT_PARAM,
 	NET_EVENT_CONTEXT_PARAM,
+	NET_FUNCTION_PARAM_PREFIX,
+	NET_FUNCTION_READER_PARAM_PREFIX,
+	NET_FUNCTION_RESPONDER_PARAM,
 	NET_RUNTIME_PARAM,
 	NET_SERVER_PARAM,
+	netFunctionParam,
+	netFunctionReaderParam,
 	type RuntimeBoundary,
 } from "./types";
 
@@ -69,9 +74,9 @@ export class NetPlugin {
 		this.transport =
 			options.transport ??
 			(options.blink !== undefined
-				? new BlinkTransport(options.blink, rovyNet.registry)
+				? new BlinkTransport(options.blink, rovyNet.registry, rovyNet.functions)
 				: rovyNet.runtimeConfig.transport === "blink" && this.boundary !== "unknown"
-					? new BlinkTransport(loadGeneratedBlinkModule(this.boundary) ?? {}, rovyNet.registry)
+					? new BlinkTransport(loadGeneratedBlinkModule(this.boundary) ?? {}, rovyNet.registry, rovyNet.functions)
 				: new RemoteEventTransport());
 	}
 
@@ -84,6 +89,11 @@ export class NetPlugin {
 		app.insertParam(NET_SERVER_PARAM, this.runtime.server);
 		app.insertParam(NET_EVENT_CONTEXT_PARAM, this.runtime.context);
 		app.insertParam(NET_RUNTIME_PARAM, this.runtime);
+		app.insertParam(NET_FUNCTION_RESPONDER_PARAM, this.runtime.responder);
+		for (const fn of rovyNet.functions) {
+			app.insertParam(netFunctionParam(fn.id), this.runtime.functionParam(fn.id));
+			app.insertParam(netFunctionReaderParam(fn.id), this.runtime.functionReader(fn.id));
+		}
 
 		const runtime = this.runtime;
 		const transport = this.transport;
@@ -98,6 +108,16 @@ export class NetPlugin {
 				if (meta === undefined) return;
 				runtime.receive(NetCodec.decode(meta, payload), commands, sender);
 			},
+			deliverFunctionRequest: (name, envelope, sender) => {
+				const meta = rovyNet.functionByName(name);
+				if (meta === undefined) return;
+				runtime.receiveFunctionRequest(meta, envelope, sender);
+			},
+			deliverFunctionResult: (name, envelope) => {
+				const meta = rovyNet.functionByName(name);
+				if (meta === undefined) return;
+				runtime.receiveFunctionResult(meta, envelope);
+			},
 		});
 
 		// Receive runs before gameplay so inbound events are readable the same
@@ -109,13 +129,22 @@ export class NetPlugin {
 			activeCommands = undefined;
 		};
 		const flush = (): void => {
-			const outbox =
-				this.boundary === "client" ? runtime.drainClientOutbox() : runtime.drainServerOutbox();
+			const outbox = this.boundary === "client" ? runtime.drainClientOutbox() : runtime.drainServerOutbox();
 			for (const item of outbox) {
 				transport.send(item, NetCodec.encode(item.meta, item.event));
 			}
+			if (this.boundary === "client") {
+				for (const item of runtime.drainFunctionRequestOutbox()) {
+					transport.sendFunctionRequest(item, runtime.encodeFunctionRequest(item));
+				}
+			} else if (this.boundary === "server") {
+				for (const item of runtime.drainFunctionResultOutbox()) {
+					transport.sendFunctionResult(item, runtime.encodeFunctionResult(item));
+				}
+			}
 			transport.commit?.();
 			runtime.context.clear();
+			runtime.endFrame();
 		};
 
 		const schedules =
@@ -170,7 +199,12 @@ function paramsNeedNetworking(params: ReadonlyArray<ParamDescriptor>): boolean {
 	return params.some(
 		(param) =>
 			param.kind === "external" &&
-			(param.id === NET_CLIENT_PARAM || param.id === NET_SERVER_PARAM || param.id === NET_EVENT_CONTEXT_PARAM),
+			(param.id === NET_CLIENT_PARAM ||
+				param.id === NET_SERVER_PARAM ||
+				param.id === NET_EVENT_CONTEXT_PARAM ||
+				param.id === NET_FUNCTION_RESPONDER_PARAM ||
+				param.id.sub(1, NET_FUNCTION_PARAM_PREFIX.size()) === NET_FUNCTION_PARAM_PREFIX ||
+				param.id.sub(1, NET_FUNCTION_READER_PARAM_PREFIX.size()) === NET_FUNCTION_READER_PARAM_PREFIX),
 	);
 }
 

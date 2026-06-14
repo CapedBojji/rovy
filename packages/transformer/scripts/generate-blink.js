@@ -54,7 +54,7 @@ function generateBlink(projectDir) {
 			);
 		}
 		const printed = printer.printFile(result.transformed[0]);
-		for (const match of printed.matchAll(/blink: ("(?:[^"\\]|\\.)*")/g)) {
+		for (const match of printed.matchAll(/(?:blink|requestBlink|resultBlink): ("(?:[^"\\]|\\.)*")/g)) {
 			schemas.push(JSON.parse(match[1]));
 		}
 		result.dispose();

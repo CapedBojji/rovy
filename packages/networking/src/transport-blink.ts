@@ -1,6 +1,14 @@
 import type { NetPayload } from "./codec";
 import type { NetTransport, NetTransportContext } from "./transport";
-import type { NetEventReg, NetOutboxItem } from "./types";
+import type {
+	NetEventReg,
+	NetFunctionReg,
+	NetFunctionRequestEnvelope,
+	NetFunctionRequestOutboxItem,
+	NetFunctionResultEnvelope,
+	NetFunctionResultOutboxItem,
+	NetOutboxItem,
+} from "./types";
 
 /**
  * Shape of one generated Blink polling event. Blink emits `Casing = Pascal`
@@ -31,6 +39,7 @@ export class BlinkTransport implements NetTransport {
 	constructor(
 		private readonly module: BlinkModule,
 		private readonly events: ReadonlyArray<NetEventReg>,
+		private readonly functions: ReadonlyArray<NetFunctionReg> = [],
 	) {}
 
 	start(ctx: NetTransportContext): void {
@@ -66,6 +75,18 @@ export class BlinkTransport implements NetTransport {
 		}
 	}
 
+	sendFunctionRequest(item: NetFunctionRequestOutboxItem, envelope: NetFunctionRequestEnvelope): void {
+		const blinkEvent = this.module[item.meta.requestName] as BlinkEvent | undefined;
+		assert(blinkEvent !== undefined, `[rovy-net] Blink module missing function request '${item.meta.requestName}'`);
+		if (this.ctx?.boundary === "client") blinkEvent.Fire(envelope);
+	}
+
+	sendFunctionResult(item: NetFunctionResultOutboxItem, envelope: NetFunctionResultEnvelope): void {
+		const blinkEvent = this.module[item.call.meta.resultWireName] as BlinkEvent | undefined;
+		assert(blinkEvent !== undefined, `[rovy-net] Blink module missing function result '${item.call.meta.resultWireName}'`);
+		if (this.ctx?.boundary === "server") blinkEvent.Fire(item.target.player, envelope);
+	}
+
 	pump(): void {
 		const ctx = this.ctx;
 		if (ctx === undefined) return;
@@ -81,6 +102,23 @@ export class BlinkTransport implements NetTransport {
 			} else {
 				for (const [, data] of blinkEvent.Iter()) {
 					ctx.deliver(meta.name, data as NetPayload);
+				}
+			}
+		}
+		if (ctx.boundary === "server") {
+			for (const meta of this.functions) {
+				const blinkEvent = this.module[meta.requestName] as BlinkEvent | undefined;
+				if (blinkEvent === undefined) continue;
+				for (const [, player, data] of blinkEvent.Iter()) {
+					ctx.deliverFunctionRequest?.(meta.name, data as NetFunctionRequestEnvelope, player as Player);
+				}
+			}
+		} else {
+			for (const meta of this.functions) {
+				const blinkEvent = this.module[meta.resultWireName] as BlinkEvent | undefined;
+				if (blinkEvent === undefined) continue;
+				for (const [, data] of blinkEvent.Iter()) {
+					ctx.deliverFunctionResult?.(meta.name, data as NetFunctionResultEnvelope);
 				}
 			}
 		}

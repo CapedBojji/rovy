@@ -1,4 +1,4 @@
-# Networking (`@netEvent`)
+# Networking (`@netEvent` and `@netFunction`)
 
 Status: MVP implementation in progress
 Target: Roblox-TS + Blink transport backend
@@ -6,7 +6,7 @@ Goal: add typed cross-network events without designing full entity/component rep
 
 This document defines the first networking API for Rovy.
 
-Package boundary: networking lives in `@rovy/networking`, separate from `@rovy/core`. The core package provides the ECS event model and a package-extension injection hook; `@rovy/networking` owns `@netEvent`, `NetClient`, `NetServer`, `NetEventContext`, `NetRuntime`, and `rovyNet`.
+Package boundary: networking lives in `@rovy/networking`, separate from `@rovy/core`. The core package provides the ECS event model and a package-extension injection hook; `@rovy/networking` owns `@netEvent`, `@netFunction`, `NetClient`, `NetServer`, `NetEventContext`, `NetFunc`, `NetFunctionReader`, `NetFunctionResponder`, `NetRuntime`, and `rovyNet`.
 
 It intentionally does **not** define automatic ECS entity/component replication yet. Component replication comes later once the ECS and network boundaries are clearer.
 
@@ -15,8 +15,11 @@ It intentionally does **not** define automatic ECS entity/component replication 
 This spec covers:
 
 - `@netEvent`
+- `@netFunction`
 - injected `NetServer` and `NetClient` system params
+- injected `NetFunc`, `NetFunctionReader`, and `NetFunctionResponder` params
 - `net.send(...)` and `net.trigger(...)`
+- non-blocking request/response calls
 - sender / receiver semantics
 - Blink as the generated transport backend
 - `package.json` `rovy-build` environment/project configuration
@@ -34,6 +37,58 @@ This spec does **not** cover:
 - prediction/interpolation
 - rollback
 - snapshot replication
+
+## Remote functions
+
+Remote functions are non-blocking. They do not use Roblox `RemoteFunction`, do
+not yield, and do not return a promise.
+
+Client code calls the same line every frame until a result exists:
+
+```ts
+class ProfileResult {
+	constructor(public coins: number) {}
+}
+
+@netFunction({ direction: "clientToServer", result: ProfileResult })
+class FetchProfile {
+	constructor(public userId: NetId) {}
+}
+
+@system({ schedule: Update })
+class FetchProfileSystem {
+	run(fetchProfile: NetFunc<FetchProfile, ProfileResult>, local: Local<{ done?: boolean }>) {
+		if (local.done) return;
+		const handle = fetchProfile.call(new FetchProfile(123));
+		if (!fetchProfile.hasResult(handle)) return;
+		const result = fetchProfile.getResult(handle);
+		if (!("ok" in result)) {
+			print(result.coins);
+			local.done = true;
+		}
+	}
+}
+```
+
+The transformer rewrites `fetchProfile.call(...)` with a stable compile-time
+call-site id. Runtime sends one request for that call site and returns the same
+handle until the result is consumed or the pending call expires.
+
+Server systems read and answer requests through ECS params:
+
+```ts
+@system({ schedule: Update })
+class HandleFetchProfile {
+	run(reader: NetFunctionReader<FetchProfile>, respond: NetFunctionResponder) {
+		reader.forEach((call) => {
+			respond.resolve(call, new ProfileResult(100));
+		});
+	}
+}
+```
+
+`respond.reject(call, message)` returns `{ ok: false, error: message }` from
+`getResult(handle)`.
 
 ## Core idea
 
