@@ -516,7 +516,9 @@ local services = {
 	AssetService = {
 		CreatedEditableImages = {},
 		FailCreate = false,
+		CreateEditableImageCalls = 0,
 		CreateEditableImage = function(self, options)
+			self.CreateEditableImageCalls += 1
 			if self.FailCreate then
 				error("CreateEditableImage failed", 2)
 			end

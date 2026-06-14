@@ -7,6 +7,8 @@ import { makeCorner, makeShadow, makeStroke, markHitTestSurface } from "./shared
 export interface PopupOptions {
 	open?: boolean;
 	position?: Vector2;
+	width?: number;
+	minWidth?: number;
 }
 
 interface PopupRefs {
@@ -21,6 +23,7 @@ const MIN_WIDTH = 120;
 export const popup = widget((options: PopupOptions, fn: () => void): void => {
 	const opts = options ?? {};
 	const open = opts.open ?? false;
+	const minWidth = opts.minWidth ?? MIN_WIDTH;
 
 	const refs = __useInstance("popup:instance", (rawRef) => {
 		const ref = rawRef as unknown as PopupRefs;
@@ -94,10 +97,10 @@ export const popup = widget((options: PopupOptions, fn: () => void): void => {
 		if (open) {
 			if (opts.position !== undefined) {
 				refs.popupPanel.Position = udim2(0, opts.position.X, 0, opts.position.Y);
-				refs.popupPanel.Size = udim2(0, math.max(MIN_WIDTH, refs.placeholder.AbsoluteSize.X), 0, 0);
+				refs.popupPanel.Size = udim2(0, math.max(minWidth, opts.width ?? refs.placeholder.AbsoluteSize.X), 0, 0);
 			} else {
 				const abs = refs.placeholder.AbsolutePosition;
-				const w = math.max(MIN_WIDTH, refs.placeholder.AbsoluteSize.X);
+				const w = math.max(minWidth, opts.width ?? refs.placeholder.AbsoluteSize.X);
 				refs.popupPanel.Position = udim2(0, abs.X, 0, abs.Y);
 				refs.popupPanel.Size = udim2(0, w, 0, 0);
 			}

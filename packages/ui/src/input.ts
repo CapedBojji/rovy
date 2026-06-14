@@ -45,11 +45,30 @@ function mouseMoveInput(mousePosition: Vector2): InputObject {
 	} as InputObject;
 }
 
-function combineInputChanged(inputSignals: RovyInputSignals): RovyInputSignal {
+function readInitialMouseLocation(inputSignals: RovyInputSignals): Vector2 {
+	const [ok, location] = pcall(() => inputSignals.GetMouseLocation());
+	return ok ? (location as Vector2) : new Vector2(0, 0);
+}
+
+function inputPosition(input: InputObject): Vector2 | undefined {
+	const position = (input as unknown as { Position?: { X: number; Y: number } }).Position;
+	if (position === undefined) return undefined;
+	return new Vector2(position.X, position.Y);
+}
+
+function combineInputChanged(
+	inputSignals: RovyInputSignals,
+	setMouseLocation: (mousePosition: Vector2) => void,
+	updateMouseLocationFromInput: (input: InputObject) => void,
+): RovyInputSignal {
 	return {
 		Connect(handler) {
-			const inputChangedConnection = inputSignals.InputChanged.Connect(handler);
+			const inputChangedConnection = inputSignals.InputChanged.Connect((input, gameProcessedEvent) => {
+				updateMouseLocationFromInput(input);
+				handler(input, gameProcessedEvent);
+			});
 			const mouseMovedConnection = inputSignals.MouseMoved?.Connect((mousePosition) => {
+				setMouseLocation(mousePosition);
 				handler(mouseMoveInput(mousePosition), false);
 			});
 
@@ -72,27 +91,37 @@ export function getDefaultRovyInputService(): RovyInputService | undefined {
 
 export function createRovyInputServiceFromSignals(inputSignals: RovyInputSignals): RovyInputService {
 	const pressedInputs = new Set<PressedInput>();
+	let mouseLocation = readInitialMouseLocation(inputSignals);
+	const setMouseLocation = (nextMouseLocation: Vector2): void => {
+		mouseLocation = nextMouseLocation;
+	};
+	const updateMouseLocationFromInput = (input: InputObject): void => {
+		const position = inputPosition(input);
+		if (position !== undefined) mouseLocation = position;
+	};
 
 	return {
 		InputBegan: {
 			Connect(handler) {
 				return inputSignals.InputBegan.Connect((input, gameProcessedEvent) => {
+					updateMouseLocationFromInput(input);
 					trackInput(pressedInputs, input, true);
 					handler(input, gameProcessedEvent);
 				});
 			},
 		},
-		InputChanged: combineInputChanged(inputSignals),
+		InputChanged: combineInputChanged(inputSignals, setMouseLocation, updateMouseLocationFromInput),
 		InputEnded: {
 			Connect(handler) {
 				return inputSignals.InputEnded.Connect((input, gameProcessedEvent) => {
+					updateMouseLocationFromInput(input);
 					trackInput(pressedInputs, input, false);
 					handler(input, gameProcessedEvent);
 				});
 			},
 		},
 		GetMouseLocation() {
-			return inputSignals.GetMouseLocation();
+			return mouseLocation;
 		},
 		IsKeyDown(key) {
 			return pressedInputs.has(key);

@@ -1,4 +1,4 @@
-import RovyUi, { demoWindow } from "@rovy/ui";
+import RovyUi, { createRovyInputServiceFromSignals, demoWindow } from "@rovy/ui";
 import { Boolean as BooleanControl, type InferGenericProps } from "@rbxts/ui-labs";
 
 const controls = {
@@ -28,38 +28,6 @@ interface DemoStoryProps {
 	subscribe: (listener: (values: DemoWindowControls, info: unknown) => void) => () => void;
 }
 
-function createStoryInputService(inputSignals: RovyInputSignals) {
-	return {
-		InputBegan: inputSignals.InputBegan,
-		InputChanged: {
-			Connect(handler: (input: InputObject, gameProcessedEvent: boolean) => void): RBXScriptConnection {
-				const inputChangedConnection = inputSignals.InputChanged.Connect(handler);
-				const mouseMovedConnection = inputSignals.MouseMoved?.Connect((mousePosition) => {
-					handler(
-						{
-							UserInputType: Enum.UserInputType.MouseMovement,
-							KeyCode: Enum.KeyCode.Unknown,
-							Position: new Vector3(mousePosition.X, mousePosition.Y, 0),
-						} as InputObject,
-						false,
-					);
-				});
-
-				return {
-					Connected: true,
-					Disconnect() {
-						inputChangedConnection.Disconnect();
-						mouseMovedConnection?.Disconnect();
-						(this as RBXScriptConnection).Connected = false;
-					},
-				} as RBXScriptConnection;
-			},
-		},
-		InputEnded: inputSignals.InputEnded,
-		GetMouseLocation: () => inputSignals.GetMouseLocation(),
-	};
-}
-
 const story = {
 	name: "Demo Window",
 	summary: "Renders the @rovy/ui demo window through a UI Labs generic story.",
@@ -73,7 +41,7 @@ const story = {
 		container.Parent = props.target;
 
 		const root = RovyUi.new(container, {
-			inputService: createStoryInputService(props.inputListener),
+			inputService: createRovyInputServiceFromSignals(props.inputListener),
 		});
 
 		let currentControls = props.controls;

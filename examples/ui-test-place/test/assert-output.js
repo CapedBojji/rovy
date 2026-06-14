@@ -28,10 +28,13 @@ const checks = [
 	["screen gui", /RovyUiTestPlace/],
 	["demo window usage", /demoWindow/],
 	["curve editor playground usage", /curveEditorPlayground/],
-	["curve editor preview", /Bezier curve playground/],
+	["curve editor widget", /curveEditor/],
+	["curve path scoped widget", /curvePath/],
+	["curve editor heading", /Infinite graph canvas/],
 	["ui labs demo story", /Demo Window/],
+	["ui labs curve editor story", /Infinite Canvas/],
 	["ui labs generic story", /use = "Generic"/],
-	["ui labs injected input", /inputService = createStoryInputService/],
+	["ui labs injected input", /inputService = createRovyInputServiceFromSignals/],
 	["shared module", /Rovy UI Test Place/],
 ];
 

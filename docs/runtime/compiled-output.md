@@ -10,7 +10,7 @@ roblox-ts compiles TS to Luau. Decorators and type annotations are erased. The t
 
 These calls run as **module side effects** when the module is required. `rovy.loadPaths(...)` forces the requires; `app.start()` finalizes. No central manifest module.
 
-`@rovy/ui` widget lowering follows the same idea: source authoring stays in TypeScript, the transformer injects registration/wrapping code, and later plain widget calls carry stable callsite identity. See [UI](/packages/ui.md).
+`@rovy/ui` widget lowering follows the same idea: source authoring stays in TypeScript, the transformer injects registration/wrapping code, and later plain widget calls carry stable callsite identity. See [Rovy UI](/packages/ui).
 
 ---
 

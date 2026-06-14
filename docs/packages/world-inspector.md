@@ -228,5 +228,5 @@ for the runnable project.
 
 - [Packages Overview](/packages/packages.md)
 - [Networking](/packages/networking.md)
-- [UI](/packages/ui.md)
+- [Rovy UI](/packages/ui)
 - [Examples](/examples/)
