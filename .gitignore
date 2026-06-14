@@ -16,3 +16,6 @@
 .studio.pid
 .studio*.pid
 .rovy
+**/**/.rovy-build
+**/**/sourcemap.json
+

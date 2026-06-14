@@ -90,6 +90,8 @@ document handle params to external package param ids.
 
 This package is meant to feel closer to EgooE's function-driven rendering style than to a React component tree, while still using Rovy's registration, identity, and injection machinery. Runtime does not use `debug.info(...)` for identity; transformer keys own that job.
 
+The full UI docs now live in the [Rovy UI section](/packages/ui), including [Built-in Widgets](/packages/ui/built-in-widgets), [Curve Editor](/packages/ui/curve-editor), [Styling](/packages/ui/styling), and [Custom Widgets](/packages/ui/custom-widgets).
+
 ## What lives in `@rovy/world-inspector`
 
 `@rovy/world-inspector` is an optional debug package built on top of
@@ -140,7 +142,7 @@ src/*.lua  (emitted)                     │
 
 The transformer↔runtime contract is the `rovy.__*` API exported by `@rovy/core`. Both sides are versioned together.
 
-For UI work, the equivalent boundary is the `RovyUi.__widget(...)` wrapping contract plus the lowered plain-call widget authoring described in [UI](/packages/ui.md).
+For UI work, the equivalent boundary is the `RovyUi.__widget(...)` wrapping contract plus the lowered plain-call widget authoring described in [Rovy UI](/packages/ui).
 
 ## Setup
 
@@ -318,5 +320,5 @@ So a missing/misconfigured transformer surfaces as an immediate, explicit error 
 - [API reference](/reference/api.md)
 - [Datastore](/packages/datastore.md)
 - [Prefabs](/concepts/prefabs.md)
-- [UI](/packages/ui.md)
+- [Rovy UI](/packages/ui)
 - [World Inspector](/packages/world-inspector.md)

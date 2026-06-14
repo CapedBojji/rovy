@@ -1,4 +1,5 @@
 import RovyUi, { demoWindow } from "@rovy/ui";
+import { curveEditorPlayground } from "./curve-editor-playground";
 import { UI_TEST_PLACE_NAME } from "shared/info";
 
 function createGui(): ScreenGui {
@@ -18,6 +19,7 @@ const RunService = game.GetService("RunService");
 RunService.RenderStepped.Connect(() => {
 	RovyUi.start(root, () => {
 		demoWindow();
+		curveEditorPlayground();
 	});
 });
 

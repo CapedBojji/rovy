@@ -7,6 +7,8 @@
 	"scripts": {
 		"compile": "node ../../packages/build/bin/rovy-build.js compile",
 		"build": "pnpm --filter rovy-build build && pnpm --filter @rovy/core build && pnpm --filter @rovy/ui build && node ../../packages/build/bin/rovy-build.js build",
+		"test": "pnpm run build && pnpm run test:output && pnpm run test:place",
+		"serve": "node scripts/serve-with-ui-watch.js",
 		"watch": "node ../../packages/build/bin/rovy-build.js watch",
 		"open": "node ../../packages/build/bin/rovy-build.js open",
 		"start": "node ../../packages/build/bin/rovy-build.js start",
@@ -21,6 +23,7 @@
 	"type": "module",
 	"dependencies": {
 		"@rbxts/better-janitor": "^0.4.0",
+		"@rbxts/ui-labs": "2.4.2",
 		"@rovy/core": "workspace:*",
 		"@rovy/jecs": "workspace:*",
 		"@rovy/ui": "workspace:*"

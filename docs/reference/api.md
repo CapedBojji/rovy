@@ -62,7 +62,7 @@ These come from `@rovy/networking`, not `@rovy/core`. Core provides the package-
 
 Planned prefab `build(...)` injection is narrower. See [Prefabs](/concepts/prefabs.md) for the proposed v1 allowed param list and exclusions.
 
-Widget functions in `@rovy/ui` also use injected params, but with a function-first public surface instead of a class-based one. See [UI](/packages/ui.md).
+Widget functions in `@rovy/ui` also use injected params, but with a function-first public surface instead of a class-based one. See [Rovy UI](/packages/ui).
 
 ## rovy (global registry)
 
@@ -543,5 +543,5 @@ and instance-expression syntax like `Workspace/Zombie/HumanoidRootPart`.
 - [Datastore](/packages/datastore.md)
 - [Networking](/packages/networking.md)
 - [Prefabs](/concepts/prefabs.md)
-- [UI](/packages/ui.md)
+- [Rovy UI](/packages/ui)
 - [World Inspector](/packages/world-inspector.md)

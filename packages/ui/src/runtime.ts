@@ -1,4 +1,5 @@
 import { App, ParamDescriptor, markResourceCloneByReference, resolveParams, type ResolveCtx } from "@rovy/core";
+import { getDefaultRovyInputService, type RovyInputService } from "./input";
 import { HIT_TEST_PASS_THROUGH_ATTRIBUTE } from "./windowConstants";
 
 export interface WidgetMeta {
@@ -16,6 +17,7 @@ export interface Node {
 	instance?: Instance;
 	refs?: Record<string, Instance>;
 	containerInstance?: Instance;
+	inputService?: RovyInputService;
 	effects: Map<string, EffectSlot>;
 	states: Map<string, unknown>;
 	children: Map<string, Node>;
@@ -42,6 +44,10 @@ export type StateSetter<T> = (nextValue: T | ((previous: T) => T)) => void;
 export type EffectCleanup = () => void;
 export type HoverSetter = (hovered: boolean) => void;
 
+export interface NewRootOptions {
+	inputService?: RovyInputService;
+}
+
 interface EffectSlot {
 	lastDependencies?: Array<unknown>;
 	cleanup?: EffectCleanup;
@@ -58,6 +64,7 @@ interface HoverTarget {
 interface PointerState {
 	hoverTargets: Map<GuiObject, HoverTarget>;
 	dragDepth: number;
+	inputChangedConnection?: RBXScriptConnection;
 }
 
 export interface StackFrame {
@@ -74,9 +81,10 @@ export interface StackFrame {
 export const stack = new Array<StackFrame>();
 export const registry = new Array<WidgetReg>();
 
-export function newNode(instance?: Instance): Node {
+export function newNode(instance?: Instance, options: NewRootOptions = {}): Node {
 	return {
 		instance,
+		inputService: options.inputService,
 		effects: new Map(),
 		states: new Map(),
 		children: new Map(),
@@ -140,19 +148,13 @@ function isPassThroughForTarget(blocker: Instance, target: Instance): boolean {
 	return false;
 }
 
-function findPlayerGui(rootInstance: Instance | undefined): PlayerGui | undefined {
+function findAncestorPlayerGui(rootInstance: Instance | undefined): PlayerGui | undefined {
 	let current: Instance | undefined = rootInstance;
 	while (current !== undefined) {
 		if (current.IsA("PlayerGui")) return current as PlayerGui;
 		current = parentOf(current);
 	}
-
-	const [ok, players] = pcall(() => game.GetService("Players"));
-	if (!ok) return undefined;
-	const localPlayer = (players as Players).LocalPlayer;
-	if (localPlayer === undefined) return undefined;
-	const [guiOk, playerGui] = pcall(() => localPlayer.WaitForChild("PlayerGui"));
-	return guiOk ? (playerGui as PlayerGui) : undefined;
+	return undefined;
 }
 
 function getGuiInsetTopLeft(): Vector2 {
@@ -166,17 +168,111 @@ function getGuiInsetTopLeft(): Vector2 {
 	return insetOk ? (topLeft as Vector2) : new Vector2(0, 0);
 }
 
+interface GuiHitCandidate {
+	object: GuiObject;
+	zIndex: number;
+	order: number;
+}
+
+function guiObjectVisible(guiObject: GuiObject): boolean {
+	const [ok, visible] = pcall(() => guiObject.Visible);
+	return ok && visible === true;
+}
+
+function guiObjectZIndex(guiObject: GuiObject): number {
+	const [ok, zIndex] = pcall(() => (guiObject as GuiObject & { ZIndex?: number }).ZIndex);
+	return ok && typeIs(zIndex, "number") ? zIndex : 1;
+}
+
+function pointInsideGuiObject(guiObject: GuiObject, point: Vector2): boolean {
+	const [ok, result] = pcall(() => {
+		const position = guiObject.AbsolutePosition;
+		const size = guiObject.AbsoluteSize;
+		return (
+			point.X >= position.X &&
+			point.Y >= position.Y &&
+			point.X < position.X + size.X &&
+			point.Y < position.Y + size.Y
+		);
+	});
+	return ok && result === true;
+}
+
+function collectGuiHitCandidates(
+	instance: Instance,
+	point: Vector2,
+	candidates: Array<GuiHitCandidate>,
+	nextOrder: { value: number },
+	ancestorsVisible = true,
+): void {
+	let subtreeVisible = ancestorsVisible;
+	if (instance.IsA("GuiObject")) {
+		const guiObject = instance as GuiObject;
+		subtreeVisible = ancestorsVisible && guiObjectVisible(guiObject);
+		if (!subtreeVisible) return;
+		if (pointInsideGuiObject(guiObject, point)) {
+			nextOrder.value += 1;
+			candidates.push({
+				object: guiObject,
+				zIndex: guiObjectZIndex(guiObject),
+				order: nextOrder.value,
+			});
+		}
+	}
+
+	for (const child of instance.GetChildren()) {
+		collectGuiHitCandidates(child, point, candidates, nextOrder, subtreeVisible);
+	}
+}
+
+function rootRelativeHitPosition(rootInstance: Instance, point: Vector2): Vector2 | undefined {
+	if (!rootInstance.IsA("GuiObject")) return undefined;
+	const [ok, position] = pcall(() => (rootInstance as GuiObject).AbsolutePosition);
+	return ok ? new Vector2(point.X + position.X, point.Y + position.Y) : undefined;
+}
+
+function collectRootTreeHitCandidates(rootInstance: Instance, point: Vector2): Array<GuiHitCandidate> {
+	const candidates = new Array<GuiHitCandidate>();
+	collectGuiHitCandidates(rootInstance, point, candidates, { value: 0 });
+	if (candidates.size() === 0) {
+		const relativePoint = rootRelativeHitPosition(rootInstance, point);
+		if (relativePoint !== undefined) {
+			collectGuiHitCandidates(rootInstance, relativePoint, candidates, { value: 0 });
+		}
+	}
+	return candidates;
+}
+
+function isTopHoverTargetInRootTree(rootNode: Node, guiObject: GuiObject, point: Vector2): boolean {
+	const rootInstance = rootNode.instance;
+	if (rootInstance === undefined) return false;
+	const candidates = collectRootTreeHitCandidates(rootInstance, point);
+	candidates.sort((left, right) => {
+		if (left.zIndex === right.zIndex) return left.order > right.order;
+		return left.zIndex > right.zIndex;
+	});
+
+	for (const candidate of candidates) {
+		const object = candidate.object;
+		if (object === guiObject || containsInstance(guiObject, object)) return true;
+		if (containsInstance(object, guiObject)) continue;
+		if (isPassThroughForTarget(object, guiObject)) continue;
+		return false;
+	}
+	return false;
+}
+
 function isTopHoverTarget(rootNode: Node, guiObject: GuiObject): boolean {
 	const rootInstance = rootNode.instance;
-	const playerGui = findPlayerGui(rootInstance);
-	if (playerGui === undefined) return false;
-
-	const [inputOk, input] = pcall(() => game.GetService("UserInputService"));
-	if (!inputOk) return false;
-	const [mouseOk, mousePosition] = pcall(() => (input as UserInputService).GetMouseLocation());
+	const inputService = getRootInputService(rootNode);
+	if (inputService === undefined) return false;
+	const [mouseOk, mousePosition] = pcall(() => inputService.GetMouseLocation());
 	if (!mouseOk) return false;
 	const guiInset = getGuiInsetTopLeft();
 	const hitPosition = new Vector2(mousePosition.X - guiInset.X, mousePosition.Y - guiInset.Y);
+
+	const playerGui = findAncestorPlayerGui(rootInstance);
+	if (playerGui === undefined) return isTopHoverTargetInRootTree(rootNode, guiObject, hitPosition);
 
 	const [guiOk, objects] = pcall(() =>
 		playerGui.GetGuiObjectsAtPosition(hitPosition.X, hitPosition.Y),
@@ -221,9 +317,16 @@ function clearAllHoverTargets(pointer: PointerState): void {
 	for (const [, target] of pointer.hoverTargets) target.setHovered(false);
 }
 
+function refreshAllHoverTargets(rootNode: Node): void {
+	const pointer = rootNode.pointer;
+	if (pointer === undefined) return;
+	for (const [guiObject] of pointer.hoverTargets) refreshHoverTarget(rootNode, guiObject);
+}
+
 function destroyPointerState(node: Node): void {
 	const pointer = node.pointer;
 	if (pointer === undefined) return;
+	pointer.inputChangedConnection?.Disconnect();
 	for (const [, target] of pointer.hoverTargets) disconnectHoverTarget(target);
 	pointer.hoverTargets.clear();
 	node.pointer = undefined;
@@ -243,6 +346,12 @@ function ensurePointerState(rootNode: Node): PointerState {
 	};
 	rootNode.pointer = pointer;
 
+	const inputService = getRootInputService(rootNode);
+	pointer.inputChangedConnection = inputService?.InputChanged.Connect((input) => {
+		if (input.UserInputType !== Enum.UserInputType.MouseMovement) return;
+		refreshAllHoverTargets(rootNode);
+	});
+
 	return pointer;
 }
 
@@ -260,6 +369,10 @@ function cleanupPointerTargets(rootNode: Node): void {
 			disconnectHoverTarget(target);
 			pointer.hoverTargets.delete(guiObject);
 		}
+	}
+	if (pointer.hoverTargets.size() === 0 && pointer.dragDepth === 0) {
+		pointer.inputChangedConnection?.Disconnect();
+		rootNode.pointer = undefined;
 	}
 }
 
@@ -355,8 +468,8 @@ export function provideContext<T>(context: Context<T>, value: T): void {
 	currentFrame().contextValues.set(context as Context<unknown>, value);
 }
 
-export function newRoot(rootInstance: Instance): Node {
-	return markResourceCloneByReference(newNode(rootInstance));
+export function newRoot(rootInstance: Instance, options: NewRootOptions = {}): Node {
+	return markResourceCloneByReference(newNode(rootInstance, options));
 }
 
 export { newRoot as new };
@@ -522,6 +635,14 @@ export function useKey(key: string | number): void {
 
 export function useRootInstance(): Instance | undefined {
 	return stack[0]?.node.instance;
+}
+
+export function getRootInputService(root?: Node): RovyInputService | undefined {
+	return root?.inputService ?? getDefaultRovyInputService();
+}
+
+export function useInputService(): RovyInputService | undefined {
+	return getRootInputService(stack[0]?.node);
 }
 
 export function useHoverTarget(guiObject: GuiObject | undefined, setHovered: HoverSetter, _name?: string): void {

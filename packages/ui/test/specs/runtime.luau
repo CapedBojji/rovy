@@ -76,6 +76,99 @@ return function(TS, t)
 		return nil
 	end
 
+	local function makeSignal()
+		local listeners = {}
+		return {
+			Connect = function(_self, fn)
+				local connection = { Connected = true }
+				function connection:Disconnect()
+					self.Connected = false
+				end
+				table.insert(listeners, { fn = fn, connection = connection })
+				return connection
+			end,
+			Fire = function(_self, ...)
+				for _, listener in ipairs(listeners) do
+					if listener.connection.Connected then
+						listener.fn(...)
+					end
+				end
+			end,
+		}
+	end
+
+	local function makeInputService()
+		local service = {
+			InputBegan = makeSignal(),
+			InputChanged = makeSignal(),
+			InputEnded = makeSignal(),
+			MouseLocation = _G.Vector2.new(0, 0),
+		}
+		function service:GetMouseLocation()
+			return self.MouseLocation
+		end
+		return service
+	end
+
+	local function makeInput(userInputType, x, y, keyCode)
+		return {
+			UserInputType = userInputType,
+			KeyCode = keyCode or _G.Enum.KeyCode.Unknown,
+			Position = _G.Vector2.new(x or 0, y or 0),
+		}
+	end
+
+	local function firstDirectChild(instance, predicate)
+		for _, child in ipairs(instance:GetChildren()) do
+			if predicate(child) then return child end
+		end
+		return nil
+	end
+
+	local function clickButtonText(rootInstance, text)
+		local button = findFirstDescendant(rootInstance, function(instance)
+			return instance.ClassName == "TextButton" and instance.Text == text
+		end)
+		t.expect(button).toBeDefined()
+		button.Activated:Fire()
+		return button
+	end
+
+	local function curveEditorOverlay(rootInstance, width, height)
+		width = width or 120
+		height = height or 80
+		local overlay = findFirstDescendant(rootInstance, function(instance)
+			return instance.Name == "CurveEditorInput"
+		end)
+		t.expect(overlay).toBeDefined()
+		overlay.AbsolutePosition = _G.Vector2.new(0, 0)
+		overlay.AbsoluteSize = _G.Vector2.new(width, height)
+		local graph = overlay.Parent
+		graph.AbsolutePosition = _G.Vector2.new(0, 0)
+		graph.AbsoluteSize = _G.Vector2.new(width, height)
+		return overlay
+	end
+
+	local function visiblePopupPanel(rootInstance)
+		return findFirstDescendant(rootInstance, function(instance)
+			return instance.Name == "PopupPanel" and instance.Visible == true
+		end)
+	end
+
+	local function graphInput(x, y)
+		local pad = 14
+		local width = 120 - pad * 2
+		local height = 80 - pad * 2
+		return makeInput(_G.Enum.UserInputType.MouseButton1, pad + x * width, pad + (1 - y) * height)
+	end
+
+	local function graphWheelInput(x, y, z)
+		local input = graphInput(x, y)
+		input.UserInputType = _G.Enum.UserInputType.MouseWheel
+		input.Position = { X = input.Position.X, Y = input.Position.Y, Z = z }
+		return input
+	end
+
 	t.describe("@rovy/ui runtime", function()
 		t.it("returns default active style", function()
 			RovyUi.__reset()
@@ -274,12 +367,13 @@ return function(TS, t)
 					must("dragValue", function() RovyUi.dragValue({ initial = 1 }) end)
 					must("toggle", function() RovyUi.toggle("Toggle") end)
 					must("radioButton", function() RovyUi.radioButton("Radio") end)
-					must("selectableLabel", function() RovyUi.selectableLabel("Select") end)
-					must("clickableLabel", function() RovyUi.clickableLabel("ClickLabel") end)
-					must("collapsingHeader", function() RovyUi.collapsingHeader("Header", function() end) end)
-					must("editableImage", function() RovyUi.editableImage({ size = _G.Vector2.new(2, 2) }) end)
+						must("selectableLabel", function() RovyUi.selectableLabel("Select") end)
+						must("clickableLabel", function() RovyUi.clickableLabel("ClickLabel") end)
+						must("collapsingHeader", function() RovyUi.collapsingHeader("Header", function() end) end)
+						must("editableImage", function() RovyUi.editableImage({ size = _G.Vector2.new(2, 2) }) end)
+						must("curveEditor", function() RovyUi.curveEditor({ width = 120, height = 80 }) end)
+					end)
 				end)
-			end)
 			local hasChildren = false
 			for _ in pairs(node.children) do
 				hasChildren = true
@@ -409,9 +503,9 @@ return function(TS, t)
 			t.expect(created.Destroyed).toBeTruthy()
 		end)
 
-		t.it("renders editableImage fallback when EditableImage creation fails", function()
-			RovyUi.__reset()
-			local services = _G.__rovyTestServices
+			t.it("renders editableImage fallback when EditableImage creation fails", function()
+				RovyUi.__reset()
+				local services = _G.__rovyTestServices
 			services.AssetService.FailCreate = true
 			local gui = root()
 			local node = RovyUi.new(gui)
@@ -427,12 +521,865 @@ return function(TS, t)
 			local fallback = findFirstDescendant(gui, function(instance)
 				return instance.ClassName == "TextLabel" and instance.Visible == true and tostring(instance.Text):find("editableImage") ~= nil
 			end)
-			t.expect(fallback).toBeDefined()
-			services.AssetService.FailCreate = false
-		end)
+				t.expect(fallback).toBeDefined()
+				services.AssetService.FailCreate = false
+			end)
 
-		t.it("creates and reuses the expected instance tree across manual frames", function()
-			RovyUi.__reset()
+			t.it("samples Bezier curves and renders an infinite editable-image canvas", function()
+				RovyUi.__reset()
+				_G.__rovyTestRuntime.resetConnections()
+				local samples = RovyUi.sampleBezierCurve({
+					anchors = {
+						{ x = 0, y = 0, outHandle = { x = 0.25, y = 0 } },
+						{ x = 1, y = 1, inHandle = { x = 0.75, y = 1 } },
+					},
+				}, 5)
+
+				t.expect(#samples).toBe(5)
+				t.expect(samples[1].X).toBe(0)
+				t.expect(samples[1].Y).toBe(0)
+				t.expect(samples[5].X).toBe(1)
+				t.expect(samples[5].Y).toBe(1)
+
+				local services = _G.__rovyTestServices
+				table.clear(services.AssetService.CreatedEditableImages)
+				local gui = root()
+				local node = RovyUi.new(gui)
+				local handle
+				RovyUi.start(node, function()
+					handle = RovyUi.curveEditor({ width = 120, height = 80 })
+				end)
+
+				local curve = handle.curve()
+				t.expect(#curve.anchors).toBe(2)
+				t.expect(curve.anchors[1].x).toBe(0)
+				t.expect(curve.anchors[1].y).toBe(0)
+				t.expect(curve.anchors[2].x).toBe(1)
+				t.expect(curve.anchors[2].y).toBe(1)
+				t.expect(handle.viewportOffset().X).toBe(60)
+				t.expect(handle.viewportOffset().Y).toBe(40)
+				t.expect(#services.AssetService.CreatedEditableImages).toBe(1)
+				local createdImage = services.AssetService.CreatedEditableImages[1]
+				t.expect(#createdImage.Writes > 0).toBeTruthy()
+				local initialWrites = #createdImage.Writes
+				RovyUi.start(node, function()
+					handle = RovyUi.curveEditor({ width = 120, height = 80 })
+				end)
+				t.expect(#services.AssetService.CreatedEditableImages).toBe(1)
+				t.expect(#createdImage.Writes).toBe(initialWrites)
+				RovyUi.start(node, function() end)
+				t.expect(createdImage.Destroyed).toBeTruthy()
+				t.expect(_G.__rovyTestRuntime.liveConnectionCount()).toBe(0)
+			end)
+
+			t.it("does not retry failed curve editor image creation on unchanged frames", function()
+				RovyUi.__reset()
+				_G.__rovyTestRuntime.resetConnections()
+				local services = _G.__rovyTestServices
+				table.clear(services.AssetService.CreatedEditableImages)
+				services.AssetService.CreateEditableImageCalls = 0
+				services.AssetService.FailCreate = true
+				local gui = root()
+				local node = RovyUi.new(gui)
+				local handle
+
+				local function render()
+					RovyUi.start(node, function()
+						handle = RovyUi.curveEditor({ width = 120, height = 80 })
+					end)
+				end
+
+				render()
+				render()
+				t.expect(handle).toBeDefined()
+				t.expect(#services.AssetService.CreatedEditableImages).toBe(0)
+				t.expect(services.AssetService.CreateEditableImageCalls).toBe(1)
+				RovyUi.start(node, function() end)
+				t.expect(_G.__rovyTestRuntime.liveConnectionCount()).toBe(0)
+				services.AssetService.FailCreate = false
+			end)
+
+			t.it("grows the canvas with its widget unless fixed dimensions are provided", function()
+				RovyUi.__reset()
+				_G.__rovyTestRuntime.resetConnections()
+				local services = _G.__rovyTestServices
+				table.clear(services.AssetService.CreatedEditableImages)
+				local gui = root()
+				local node = RovyUi.new(gui)
+				local flexibleHandle
+
+				local function renderFlexible()
+					RovyUi.start(node, function()
+						flexibleHandle = RovyUi.curveEditor({ showReadout = false })
+					end)
+				end
+
+				renderFlexible()
+				curveEditorOverlay(gui, 220, 140)
+				renderFlexible()
+				local flexibleImage = services.AssetService.CreatedEditableImages[#services.AssetService.CreatedEditableImages]
+				t.expect(flexibleImage.Size.X).toBe(220)
+				t.expect(flexibleImage.Size.Y).toBe(140)
+				t.expect(flexibleHandle.viewportOffset().X).toBe(110)
+				t.expect(flexibleHandle.viewportOffset().Y).toBe(70)
+				local flexibleImageCount = #services.AssetService.CreatedEditableImages
+				local flexibleWrites = #flexibleImage.Writes
+				renderFlexible()
+				t.expect(#services.AssetService.CreatedEditableImages).toBe(flexibleImageCount)
+				t.expect(#flexibleImage.Writes).toBe(flexibleWrites)
+				RovyUi.start(node, function() end)
+				t.expect(flexibleImage.Destroyed).toBeTruthy()
+
+				RovyUi.__reset()
+				table.clear(services.AssetService.CreatedEditableImages)
+				gui = root()
+				node = RovyUi.new(gui)
+				local fixedHandle
+
+				local function renderFixed()
+					RovyUi.start(node, function()
+						fixedHandle = RovyUi.curveEditor({ width = 120, height = 80, showReadout = false })
+					end)
+				end
+
+				renderFixed()
+				curveEditorOverlay(gui, 220, 140)
+				renderFixed()
+				local fixedImage = services.AssetService.CreatedEditableImages[#services.AssetService.CreatedEditableImages]
+				t.expect(fixedImage.Size.X).toBe(120)
+				t.expect(fixedImage.Size.Y).toBe(80)
+				t.expect(fixedHandle.viewportOffset().X).toBe(60)
+				t.expect(fixedHandle.viewportOffset().Y).toBe(40)
+				local fixedImageCount = #services.AssetService.CreatedEditableImages
+				local fixedWrites = #fixedImage.Writes
+				renderFixed()
+				t.expect(#services.AssetService.CreatedEditableImages).toBe(fixedImageCount)
+				t.expect(#fixedImage.Writes).toBe(fixedWrites)
+				RovyUi.start(node, function() end)
+				t.expect(fixedImage.Destroyed).toBeTruthy()
+				t.expect(_G.__rovyTestRuntime.liveConnectionCount()).toBe(0)
+			end)
+
+			t.it("pans the infinite curve editor canvas from drag input and ignores wheel scrolling", function()
+				RovyUi.__reset()
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local handle
+				local returnToOriginKey = nil
+
+				local function render()
+					RovyUi.start(node, function()
+						handle = RovyUi.curveEditor({
+							width = 120,
+							height = 80,
+							returnToOriginKey = returnToOriginKey,
+						})
+					end)
+				end
+
+				render()
+				curveEditorOverlay(gui)
+				local before = handle.viewportOffset()
+				inputService.InputChanged:Fire(graphWheelInput(0.5, 0.5, -1))
+				render()
+				local afterIgnoredWheel = handle.viewportOffset()
+				t.expect(afterIgnoredWheel.X).toBe(before.X)
+				t.expect(afterIgnoredWheel.Y).toBe(before.Y)
+				t.expect(handle.changed()).toBe(false)
+
+				inputService.InputBegan:Fire(graphInput(0.5, 0.5))
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 78, 55))
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 78, 55))
+				render()
+
+				local afterDrag = handle.viewportOffset()
+				t.expect(afterDrag.X).toBe(before.X + 18)
+				t.expect(afterDrag.Y).toBe(before.Y + 15)
+				t.expect(handle.changed()).toBeTruthy()
+				t.expect(#handle.curve().anchors).toBe(2)
+				t.expect(handle.selectedAnchor()).toBe(nil)
+
+				inputService.InputChanged:Fire(graphWheelInput(0.5, 0.5, -1))
+				render()
+				local afterWheel = handle.viewportOffset()
+				t.expect(afterWheel.X).toBe(afterDrag.X)
+				t.expect(afterWheel.Y).toBe(afterDrag.Y)
+
+				handle.returnToOrigin()
+				local immediateReturn = handle.viewportOffset()
+				t.expect(immediateReturn.X).toBe(60)
+				t.expect(immediateReturn.Y).toBe(40)
+				render()
+				local afterReturn = handle.viewportOffset()
+				t.expect(afterReturn.X).toBe(60)
+				t.expect(afterReturn.Y).toBe(40)
+
+				inputService.InputBegan:Fire(graphInput(0.5, 0.5))
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 70, 50))
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 70, 50))
+				render()
+				t.expect(handle.viewportOffset().X).toBe(70)
+				t.expect(handle.viewportOffset().Y).toBe(50)
+				returnToOriginKey = (returnToOriginKey or 0) + 1
+				render()
+				t.expect(handle.viewportOffset().X).toBe(60)
+				t.expect(handle.viewportOffset().Y).toBe(40)
+
+				inputService.InputBegan:Fire(graphInput(0.5, 0.5))
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 75, 50))
+				render()
+				local afterOpenDrag = handle.viewportOffset()
+				t.expect(afterOpenDrag.X).toBe(75)
+				t.expect(afterOpenDrag.Y).toBe(50)
+
+				inputService.InputChanged:Fire(graphWheelInput(0.5, 0.5, -1))
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 95, 70))
+				render()
+				local afterWheelCancelledDrag = handle.viewportOffset()
+				t.expect(afterWheelCancelledDrag.X).toBe(afterOpenDrag.X)
+				t.expect(afterWheelCancelledDrag.Y).toBe(afterOpenDrag.Y)
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 95, 70))
+				RovyUi.start(node, function() end)
+			end)
+
+			t.it("returns flexible curve editor canvases to the measured origin", function()
+				RovyUi.__reset()
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local handle
+				local returnToOriginKey = nil
+
+				local function render()
+					RovyUi.start(node, function()
+						handle = RovyUi.curveEditor({
+							height = 80,
+							showReadout = false,
+							returnToOriginKey = returnToOriginKey,
+						})
+					end)
+				end
+
+				render()
+				curveEditorOverlay(gui, 220, 80)
+				render()
+				t.expect(handle.viewportOffset().X).toBe(110)
+				t.expect(handle.viewportOffset().Y).toBe(40)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 110, 40))
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 145, 65))
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 145, 65))
+				render()
+				t.expect(handle.viewportOffset().X).toBe(145)
+				t.expect(handle.viewportOffset().Y).toBe(65)
+
+				handle.returnToOrigin()
+				t.expect(handle.viewportOffset().X).toBe(110)
+				t.expect(handle.viewportOffset().Y).toBe(40)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 110, 40))
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 130, 55))
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 130, 55))
+				render()
+				t.expect(handle.viewportOffset().X).toBe(130)
+				t.expect(handle.viewportOffset().Y).toBe(55)
+
+				returnToOriginKey = 1
+				render()
+				t.expect(handle.viewportOffset().X).toBe(110)
+				t.expect(handle.viewportOffset().Y).toBe(40)
+				RovyUi.start(node, function() end)
+			end)
+
+			t.it("keeps built-in and provided curve presets available while canvas editing is disabled", function()
+				RovyUi.__reset()
+				local gui = root()
+				local node = RovyUi.new(gui)
+				local handle
+
+				RovyUi.start(node, function()
+					handle = RovyUi.curveEditor({
+						width = 120,
+						height = 80,
+						presets = {
+							{ name = "Spec Curve", curve = { anchors = { { x = 0, y = 0 }, { x = 1, y = 1 } } } },
+						},
+					})
+				end)
+
+				local foundLine = false
+				local foundSpec = false
+				for _, preset in ipairs(handle.presets()) do
+					if preset.name == "Line" then foundLine = true end
+					if preset.name == "Spec Curve" then foundSpec = true end
+				end
+				t.expect(foundLine).toBeTruthy()
+				t.expect(foundSpec).toBeTruthy()
+				t.expect(handle.selectedPreset()).toBe("Line")
+				RovyUi.start(node, function() end)
+			end)
+
+			t.it("registers scoped curve paths and returns deep-cloned segment snapshots", function()
+				RovyUi.__reset()
+				local gui = root()
+				local node = RovyUi.new(gui)
+				local handle
+				local linePathHandle
+
+				RovyUi.start(node, function()
+					handle = RovyUi.curveEditor({ width = 120, height = 80 }, function()
+						linePathHandle = RovyUi.curvePath({
+							id = "line",
+							revision = 1,
+							commands = {
+								{ kind = "M", point = { x = 0, y = 0 } },
+								{ kind = "L", point = { x = 40, y = 0 } },
+							},
+						})
+						RovyUi.curvePath({
+							id = "curve",
+							revision = 1,
+							commands = {
+								{ kind = "M", point = { x = 0, y = 20 } },
+								{
+									kind = "C",
+									control1 = { x = 20, y = -20 },
+									control2 = { x = 50, y = 60 },
+									point = { x = 80, y = 20 },
+								},
+							},
+						})
+					end)
+				end)
+
+				local segments = handle.getSegments()
+				t.expect(#segments).toBe(2)
+				t.expect(segments[1].id).toBe("line")
+				t.expect(#segments[1].points).toBe(2)
+				t.expect(segments[2].points[2].inHandle.x).toBe(50)
+				t.expect(segments[2].points[1].outHandle.x).toBe(20)
+				t.expect(#linePathHandle.getPoints()).toBe(2)
+				t.expect(linePathHandle.getSnapshot().id).toBe("line")
+				t.expect(linePathHandle.getCommands()[2].point.x).toBe(40)
+
+				segments[1].commands[2].point.x = 999
+				local fresh = handle.getSegments()
+				t.expect(fresh[1].commands[2].point.x).toBe(40)
+
+				RovyUi.start(node, function()
+					handle = RovyUi.curveEditor({ width = 120, height = 80 }, function()
+						RovyUi.curvePath({
+							id = "curve",
+							revision = 1,
+							commands = {
+								{ kind = "M", point = { x = 0, y = 20 } },
+								{ kind = "L", point = { x = 80, y = 20 } },
+							},
+						})
+					end)
+				end)
+				segments = handle.getSegments()
+				t.expect(#segments).toBe(1)
+				t.expect(segments[1].id).toBe("curve")
+				RovyUi.start(node, function() end)
+			end)
+
+			t.it("writes scoped path edits into caller-owned command arrays", function()
+				RovyUi.__reset()
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local handle
+				local pathHandle
+				local commands = {
+					{ kind = "M", point = { x = 0, y = 0 } },
+					{ kind = "L", point = { x = 40, y = 0 } },
+				}
+
+				local function render()
+					RovyUi.start(node, function()
+						handle = RovyUi.curveEditor({ width = 120, height = 80 }, function()
+							pathHandle = RovyUi.curvePath({
+								id = "line",
+								commands = commands,
+							})
+						end)
+					end)
+				end
+
+				render()
+				t.expect(pathHandle.getCommands()).toBe(commands)
+				curveEditorOverlay(gui)
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 100, 40))
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 105, 45))
+				t.expect(commands[2].point.x).toBe(45)
+				t.expect(commands[2].point.y).toBe(5)
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 105, 45))
+				render()
+
+				local moved = handle.getSegments()[1]
+				t.expect(moved.commands[2].point.x).toBe(45)
+				t.expect(moved.commands[2].point.y).toBe(5)
+				t.expect(commands[2].point.x).toBe(45)
+				t.expect(commands[2].point.y).toBe(5)
+				t.expect(pathHandle.getCommands()[2].point.x).toBe(45)
+				t.expect(handle.changed()).toBeTruthy()
+
+				commands = {
+					{ kind = "M", point = { x = 0, y = 0 } },
+					{ kind = "L", point = { x = 80, y = 0 } },
+				}
+				render()
+				t.expect(handle.getSegments()[1].commands[2].point.x).toBe(80)
+				t.expect(pathHandle.getCommands()).toBe(commands)
+				RovyUi.start(node, function() end)
+			end)
+
+			t.it("inserts path points by clicking line and cubic segments", function()
+				RovyUi.__reset()
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local handle
+				local lineCommands = {
+					{ kind = "M", point = { x = 0, y = 0 } },
+					{ kind = "L", point = { x = 40, y = 0 } },
+				}
+
+				local function renderLine()
+					RovyUi.start(node, function()
+						handle = RovyUi.curveEditor({ width = 120, height = 80, allowScroll = false }, function()
+							RovyUi.curvePath({
+								id = "line",
+								revision = 1,
+								commands = lineCommands,
+							})
+						end)
+					end)
+				end
+
+				renderLine()
+				curveEditorOverlay(gui)
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 80, 40))
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 80, 40))
+				renderLine()
+				local line = handle.getSegments()[1]
+				t.expect(#line.points).toBe(3)
+				t.expect(#lineCommands).toBe(3)
+				t.expect(math.abs(line.commands[2].point.x - 20) < 0.1).toBeTruthy()
+				t.expect(handle.selectedPoint().pointIndex).toBe(1)
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.Keyboard, 0, 0, _G.Enum.KeyCode.Delete), true)
+				renderLine()
+				t.expect(#lineCommands).toBe(3)
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.Keyboard, 0, 0, _G.Enum.KeyCode.Delete))
+				renderLine()
+				t.expect(#handle.getSegments()[1].points).toBe(2)
+				t.expect(#lineCommands).toBe(2)
+				t.expect(handle.deleteSelectedPoint()).toBe(false)
+
+				RovyUi.__reset()
+				gui = root()
+				inputService = makeInputService()
+				node = RovyUi.new(gui, { inputService = inputService })
+				local cubicCommands = {
+					{ kind = "M", point = { x = -30, y = 0 } },
+					{
+						kind = "C",
+						control1 = { x = -10, y = -30 },
+						control2 = { x = 20, y = 30 },
+						point = { x = 50, y = 0 },
+					},
+				}
+				local function renderCubic()
+					RovyUi.start(node, function()
+						handle = RovyUi.curveEditor({ width = 120, height = 80, allowScroll = false }, function()
+							RovyUi.curvePath({
+								id = "cubic",
+								revision = 1,
+								commands = cubicCommands,
+							})
+						end)
+					end)
+				end
+
+				renderCubic()
+				curveEditorOverlay(gui)
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 70, 40))
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 70, 40))
+				renderCubic()
+				local cubic = handle.getSegments()[1]
+				t.expect(#cubic.points).toBe(3)
+				t.expect(#cubicCommands).toBe(3)
+				t.expect(cubic.commands[2].kind).toBe("C")
+				t.expect(cubic.commands[3].kind).toBe("C")
+				RovyUi.start(node, function() end)
+			end)
+
+			t.it("drags selected Bezier handles without changing sibling handles", function()
+				RovyUi.__reset()
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local handle
+				local cubicCommands = {
+					{ kind = "M", point = { x = -30, y = 0 } },
+					{
+						kind = "C",
+						control1 = { x = -10, y = -30 },
+						control2 = { x = 20, y = 30 },
+						point = { x = 50, y = 0 },
+					},
+					{ kind = "L", point = { x = 58, y = 20 } },
+				}
+
+				local function render()
+					RovyUi.start(node, function()
+						handle = RovyUi.curveEditor({ width = 120, height = 80 }, function()
+							RovyUi.curvePath({
+								id = "cubic",
+								revision = 1,
+								commands = cubicCommands,
+							})
+						end)
+					end)
+				end
+
+				render()
+				curveEditorOverlay(gui)
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 110, 40))
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 110, 40))
+				render()
+				t.expect(handle.selectedPoint().pointIndex).toBe(1)
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 80, 70))
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 85, 75))
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 85, 75))
+				render()
+
+				local command = handle.getSegments()[1].commands[2]
+				t.expect(command.control1.x).toBe(-10)
+				t.expect(command.control1.y).toBe(-30)
+				t.expect(command.control2.x).toBe(25)
+				t.expect(command.control2.y).toBe(35)
+				t.expect(cubicCommands[2].control2.x).toBe(25)
+				t.expect(cubicCommands[2].control2.y).toBe(35)
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.Keyboard, 0, 0, _G.Enum.KeyCode.Backspace))
+				render()
+				t.expect(#cubicCommands).toBe(2)
+				t.expect(handle.selectedPoint()).toBe(nil)
+				RovyUi.start(node, function() end)
+			end)
+
+			t.it("does not edit locked paths and avoids redraws for unchanged scoped paths", function()
+				RovyUi.__reset()
+				local services = _G.__rovyTestServices
+				table.clear(services.AssetService.CreatedEditableImages)
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local handle
+
+				local function render()
+					RovyUi.start(node, function()
+						handle = RovyUi.curveEditor({ width = 120, height = 80, allowScroll = false }, function()
+							RovyUi.curvePath({
+								id = "locked",
+								revision = 1,
+								locked = true,
+								commands = {
+									{ kind = "M", point = { x = 0, y = 0 } },
+									{ kind = "L", point = { x = 40, y = 0 } },
+								},
+							})
+						end)
+					end)
+				end
+
+				render()
+				curveEditorOverlay(gui)
+				local createdImage = services.AssetService.CreatedEditableImages[#services.AssetService.CreatedEditableImages]
+				local initialWrites = #createdImage.Writes
+				render()
+				t.expect(#createdImage.Writes).toBe(initialWrites)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 80, 40))
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 80, 40))
+				render()
+				t.expect(#handle.getSegments()[1].points).toBe(2)
+				t.expect(handle.selectedPoint()).toBe(nil)
+				RovyUi.start(node, function() end)
+			end)
+
+			t.it("converts curve path commands in the caller-owned table", function()
+				RovyUi.__reset()
+				local gui = root()
+				local node = RovyUi.new(gui)
+				local pathHandle
+				local commands = {
+					{ kind = "M", point = { x = 0, y = 0 } },
+					{ kind = "L", point = { x = 90, y = 0 } },
+				}
+
+				RovyUi.start(node, function()
+					RovyUi.curveEditor({ width = 120, height = 80 }, function()
+						pathHandle = RovyUi.curvePath({
+							id = "convert",
+							commands = commands,
+						})
+					end)
+				end)
+
+				t.expect(pathHandle:convertCommand(1, "C")).toBeTruthy()
+				t.expect(commands[2].kind).toBe("C")
+				t.expect(commands[2].control1.x).toBe(30)
+				t.expect(commands[2].control2.x).toBe(60)
+				t.expect(commands[2].point.x).toBe(90)
+
+				commands[2] = {
+					kind = "Q",
+					control = { x = 45, y = 30 },
+					point = { x = 90, y = 0 },
+				}
+				RovyUi.start(node, function()
+					RovyUi.curveEditor({ width = 120, height = 80 }, function()
+						pathHandle = RovyUi.curvePath({
+							id = "convert",
+							commands = commands,
+						})
+					end)
+				end)
+				t.expect(pathHandle:convertCommand(1, "C")).toBeTruthy()
+				t.expect(commands[2].control1.x).toBe(30)
+				t.expect(commands[2].control1.y).toBe(20)
+				t.expect(commands[2].control2.x).toBe(60)
+				t.expect(commands[2].control2.y).toBe(20)
+
+				t.expect(pathHandle:convertCommand(1, "Q")).toBeTruthy()
+				t.expect(math.abs(commands[2].control.x - 45) < 0.001).toBeTruthy()
+				t.expect(math.abs(commands[2].control.y - 30) < 0.001).toBeTruthy()
+
+				t.expect(pathHandle:convertCommand(1, "L")).toBeTruthy()
+				t.expect(commands[2].kind).toBe("L")
+				t.expect(commands[2].control).toBe(nil)
+				t.expect(commands[2].control1).toBe(nil)
+				t.expect(commands[2].point.x).toBe(90)
+				RovyUi.start(node, function() end)
+			end)
+
+			t.it("opens point context controls from MouseButton2 and mutates commands through buttons", function()
+				RovyUi.__reset()
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local handle
+				local commands = {
+					{ kind = "M", point = { x = -30, y = 0 } },
+					{ kind = "L", point = { x = 50, y = 0 } },
+					{ kind = "L", point = { x = 70, y = 20 } },
+				}
+
+				local function render()
+					RovyUi.start(node, function()
+						handle = RovyUi.curveEditor({ width = 120, height = 80, allowScroll = true }, function()
+							RovyUi.curvePath({
+								id = "menu",
+								commands = commands,
+							})
+						end)
+					end)
+				end
+
+				render()
+				curveEditorOverlay(gui)
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton2, 110, 40))
+				render()
+				t.expect(handle.selectedPoint().pointIndex).toBe(1)
+				t.expect(findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == "Delete Point"
+				end)).toBeDefined()
+
+				clickButtonText(gui, "Cubic")
+				render()
+				t.expect(commands[2].kind).toBe("C")
+				t.expect(math.abs(commands[2].control1.x - (-30 + 80 / 3)) < 0.001).toBeTruthy()
+				t.expect(math.abs(commands[2].control2.x - (-30 + 160 / 3)) < 0.001).toBeTruthy()
+				t.expect(commands[2].point.x).toBe(50)
+				t.expect(findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == "Delete Point"
+				end)).toBeDefined()
+
+				local before = handle.viewportOffset()
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton2, 5, 5))
+				render()
+				t.expect(findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == "Delete Point"
+				end)).toBe(nil)
+				t.expect(handle.viewportOffset().X).toBe(before.X)
+				t.expect(handle.viewportOffset().Y).toBe(before.Y)
+				RovyUi.start(node, function() end)
+			end)
+
+			t.it("opens point context controls from handles and deletes the owning point", function()
+				RovyUi.__reset()
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local handle
+				local commands = {
+					{ kind = "M", point = { x = -30, y = 0 } },
+					{
+						kind = "C",
+						control1 = { x = -10, y = -30 },
+						control2 = { x = 20, y = 30 },
+						point = { x = 50, y = 0 },
+					},
+					{ kind = "L", point = { x = 70, y = 20 } },
+				}
+
+				local function render()
+					RovyUi.start(node, function()
+						handle = RovyUi.curveEditor({ width = 120, height = 80, allowScroll = false }, function()
+							RovyUi.curvePath({
+								id = "handles",
+								commands = commands,
+							})
+						end)
+					end)
+				end
+
+				render()
+				curveEditorOverlay(gui)
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 110, 40))
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 110, 40))
+				render()
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton2, 80, 70))
+				render()
+				t.expect(handle.selectedPoint().pointIndex).toBe(1)
+				local popupPanel = visiblePopupPanel(gui)
+				t.expect(popupPanel).toBeDefined()
+				t.expect(popupPanel.Position.X.Offset).toBe(92)
+				t.expect(popupPanel.Position.Y.Offset).toBe(70)
+				t.expect(popupPanel.Size.X.Offset).toBe(158)
+				t.expect(findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == "Delete Point"
+				end)).toBeDefined()
+
+				local popupHeader = findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextButton" and instance.Name == "CurveEditorContextHeader"
+				end)
+				t.expect(popupHeader).toBeDefined()
+				popupHeader.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 92, 70))
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 105, 82))
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 105, 82))
+				t.expect(popupPanel.Position.X.Offset).toBe(105)
+				t.expect(popupPanel.Position.Y.Offset).toBe(82)
+				render()
+				popupPanel = visiblePopupPanel(gui)
+				t.expect(popupPanel.Position.X.Offset).toBe(105)
+				t.expect(popupPanel.Position.Y.Offset).toBe(82)
+
+				clickButtonText(gui, "Delete Point")
+				render()
+				render()
+				t.expect(#commands).toBe(2)
+				t.expect(commands[2].point.x).toBe(70)
+				t.expect(handle.selectedPoint()).toBe(nil)
+				t.expect(findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == "Delete Point"
+				end)).toBe(nil)
+				RovyUi.start(node, function() end)
+			end)
+
+			t.it("places context controls like a right-click menu and disables impossible deletes", function()
+				RovyUi.__reset()
+				local gui = _G.Instance.new("Frame")
+				gui.Name = "CurveEditorBounds"
+				gui.AbsolutePosition = _G.Vector2.new(0, 0)
+				gui.AbsoluteSize = _G.Vector2.new(260, 220)
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local handle
+				local commands = {
+					{ kind = "M", point = { x = 0, y = 0 } },
+					{ kind = "L", point = { x = 100, y = 0 } },
+					{ kind = "L", point = { x = 120, y = 20 } },
+				}
+
+				local function render()
+					RovyUi.start(node, function()
+						handle = RovyUi.curveEditor({ width = 260, height = 120, allowScroll = false }, function()
+							RovyUi.curvePath({
+								id = "bounded-menu",
+								commands = commands,
+							})
+						end)
+					end)
+				end
+
+				render()
+				curveEditorOverlay(gui, 260, 120)
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton2, 230, 60))
+				render()
+				local popupPanel = visiblePopupPanel(gui)
+				t.expect(popupPanel).toBeDefined()
+				t.expect(popupPanel.Position.X.Offset).toBe(60)
+				t.expect(popupPanel.Position.Y.Offset).toBe(60)
+
+				commands = {
+					{ kind = "M", point = { x = 0, y = 0 } },
+					{ kind = "L", point = { x = 40, y = 0 } },
+				}
+				render()
+				curveEditorOverlay(gui, 260, 120)
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton2, 170, 60))
+				render()
+				local deleteButton = findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == "Delete Point"
+				end)
+				t.expect(deleteButton).toBeDefined()
+				t.expect(deleteButton.TextColor3).toBe(RovyUi.getActiveStyle().textDisabledColor)
+				clickButtonText(gui, "Delete Point")
+				render()
+				t.expect(#commands).toBe(2)
+				t.expect(handle.selectedPoint().pointIndex).toBe(1)
+				RovyUi.start(node, function() end)
+			end)
+
+			t.it("does not open context controls for locked paths", function()
+				RovyUi.__reset()
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local handle
+
+				local function render()
+					RovyUi.start(node, function()
+						handle = RovyUi.curveEditor({ width = 120, height = 80, allowScroll = false }, function()
+							RovyUi.curvePath({
+								id = "locked-menu",
+								locked = true,
+								commands = {
+									{ kind = "M", point = { x = 0, y = 0 } },
+									{ kind = "L", point = { x = 40, y = 0 } },
+								},
+							})
+						end)
+					end)
+				end
+
+				render()
+				curveEditorOverlay(gui)
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton2, 100, 40))
+				render()
+				t.expect(handle.selectedPoint()).toBe(nil)
+				t.expect(findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == "Delete Point"
+				end)).toBe(nil)
+				RovyUi.start(node, function() end)
+			end)
+
+			t.it("creates and reuses the expected instance tree across manual frames", function()
+				RovyUi.__reset()
 			local gui = root()
 			local node = RovyUi.new(gui)
 
@@ -627,8 +1574,8 @@ return function(TS, t)
 				Position = { X = 0, Y = 0, Z = 0 },
 			})
 
-			t.expect(_G.__rovyTestRuntime.liveConnectionCount("UserInputService.InputChanged")).toBe(1)
-			t.expect(_G.__rovyTestRuntime.liveConnectionCount("UserInputService.InputEnded")).toBe(1)
+			t.expect(_G.__rovyTestRuntime.liveConnectionCount("UserInputService.InputChanged")).toBe(2)
+			t.expect(_G.__rovyTestRuntime.liveConnectionCount("UserInputService.InputEnded")).toBe(3)
 
 			RovyUi.start(node, function() end)
 			t.expect(_G.__rovyTestRuntime.liveConnectionCount()).toBe(0)
@@ -1008,6 +1955,344 @@ return function(TS, t)
 					detailsButton.Activated:Fire()
 					render()
 					t.expect(clicked).toBe(true)
+				end)
+
+				t.it("drags windows with an injected input service", function()
+					RovyUi.__reset()
+					local gui = root()
+					local inputService = makeInputService()
+					local node = RovyUi.new(gui, { inputService = inputService })
+
+					RovyUi.start(node, function()
+						RovyUi.window({ title = "Injected", position = _G.Vector2.new(10, 15) }, function() end)
+					end)
+
+					local windowFrame = findFirstDescendant(gui, function(instance)
+						return instance.ClassName == "Frame" and instance:GetAttribute("EgooEWindow") == true
+					end)
+					t.expect(windowFrame).toBeDefined()
+
+					local titleBar = firstDirectChild(windowFrame, function(instance)
+						return instance.ClassName == "TextButton" and instance.Text == ""
+					end)
+					t.expect(titleBar).toBeDefined()
+
+					titleBar.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 20, 20))
+					inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 45, 50))
+
+					t.expect(windowFrame.Position.X.Offset).toBe(35)
+					t.expect(windowFrame.Position.Y.Offset).toBe(45)
+				end)
+
+				t.it("resizes windows with an injected input service", function()
+					RovyUi.__reset()
+					local gui = root()
+					local inputService = makeInputService()
+					local node = RovyUi.new(gui, { inputService = inputService })
+
+					RovyUi.start(node, function()
+						RovyUi.window({ title = "Resize", size = _G.Vector2.new(160, 120) }, function() end)
+					end)
+
+					local windowFrame = findFirstDescendant(gui, function(instance)
+						return instance.ClassName == "Frame" and instance:GetAttribute("EgooEWindow") == true
+					end)
+					local resizeGrip = firstDirectChild(windowFrame, function(instance)
+						return instance.ClassName == "TextButton" and instance.Text == "⊿"
+					end)
+					t.expect(resizeGrip).toBeDefined()
+
+					windowFrame.AbsoluteSize = _G.Vector2.new(160, 120)
+					resizeGrip.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 0, 0))
+					inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 40, 25))
+
+					t.expect(windowFrame.Size.X.Offset).toBe(200)
+					t.expect(windowFrame.Size.Y.Offset).toBe(145)
+				end)
+
+				t.it("drives slider and dragValue widgets with an injected input service", function()
+					RovyUi.__reset()
+					local gui = root()
+					local inputService = makeInputService()
+					local node = RovyUi.new(gui, { inputService = inputService })
+					local sliderValue = 0
+					local dragValue = 0
+
+					local function render()
+						RovyUi.start(node, function()
+							sliderValue = RovyUi.slider({ min = 0, max = 100, initial = 0, showValueBox = false })
+							dragValue = RovyUi.dragValue({ min = 0, max = 100, initial = 0, step = 1 })
+						end)
+					end
+
+					render()
+					local sliderTrack = findFirstDescendant(gui, function(instance)
+						return instance.ClassName == "TextButton" and instance.Text == "" and instance.Size.Y.Offset == 10
+					end)
+					t.expect(sliderTrack).toBeDefined()
+					sliderTrack.AbsolutePosition = _G.Vector2.new(0, 0)
+					sliderTrack.AbsoluteSize = _G.Vector2.new(100, 10)
+
+					sliderTrack.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 25, 0))
+					inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 75, 0))
+					render()
+					t.expect(sliderValue).toBe(75)
+
+					local dragButton = findFirstDescendant(gui, function(instance)
+						return instance.ClassName == "TextButton" and instance.Text == "0"
+					end)
+					t.expect(dragButton).toBeDefined()
+
+					dragButton.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 0, 0))
+					inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 20, 0))
+					render()
+					t.expect(dragValue).toBe(5)
+				end)
+
+				t.it("adapts UI Labs MouseMoved signals into drag InputChanged events", function()
+					RovyUi.__reset()
+					local gui = root()
+					local inputSignals = {
+						InputBegan = makeSignal(),
+						InputChanged = makeSignal(),
+						InputEnded = makeSignal(),
+						MouseMoved = makeSignal(),
+						MouseLocation = _G.Vector2.new(0, 0),
+					}
+					function inputSignals:GetMouseLocation()
+						return self.MouseLocation
+					end
+
+					local inputService = RovyUi.createRovyInputServiceFromSignals(inputSignals)
+					local node = RovyUi.new(gui, { inputService = inputService })
+					local value = 0
+
+					local function render()
+						RovyUi.start(node, function()
+							value = RovyUi.slider({ min = 0, max = 100, initial = 0, showValueBox = false })
+						end)
+					end
+
+					render()
+					local sliderTrack = findFirstDescendant(gui, function(instance)
+						return instance.ClassName == "TextButton" and instance.Text == "" and instance.Size.Y.Offset == 10
+					end)
+					t.expect(sliderTrack).toBeDefined()
+					sliderTrack.AbsolutePosition = _G.Vector2.new(0, 0)
+					sliderTrack.AbsoluteSize = _G.Vector2.new(100, 10)
+
+					sliderTrack.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 10, 0))
+					inputSignals.MouseMoved:Fire(_G.Vector2.new(65, 0))
+					render()
+
+					t.expect(value).toBe(65)
+					t.expect(inputService:GetMouseLocation().X).toBe(65)
+					t.expect(inputService:GetMouseLocation().Y).toBe(0)
+				end)
+
+				t.it("updates hover from injected mouse movement signals", function()
+					RovyUi.__reset()
+					local playerGui = _G.Instance.new("PlayerGui")
+					local gui = root()
+					gui.Parent = playerGui
+					local inputSignals = {
+						InputBegan = makeSignal(),
+						InputChanged = makeSignal(),
+						InputEnded = makeSignal(),
+						MouseMoved = makeSignal(),
+						MouseLocation = _G.Vector2.new(0, 0),
+					}
+					function inputSignals:GetMouseLocation()
+						return self.MouseLocation
+					end
+
+					local inputService = RovyUi.createRovyInputServiceFromSignals(inputSignals)
+					local node = RovyUi.new(gui, { inputService = inputService })
+
+					local function render()
+						RovyUi.start(node, function()
+							RovyUi.window({ title = "Injected Hover" }, function()
+								RovyUi.button("Hover Me")
+							end)
+						end)
+					end
+
+					render()
+					local hoverButton = findFirstDescendant(gui, function(instance)
+						return instance.ClassName == "TextButton" and instance.Text == "Hover Me"
+					end)
+					t.expect(hoverButton).toBeDefined()
+					local hoverStroke = findChildByClass(hoverButton, "UIStroke")
+					t.expect(hoverStroke).toBeDefined()
+					playerGui.__guiObjectsAtPositionByPosition = {
+						["10,12"] = { hoverButton },
+					}
+
+					inputSignals.MouseMoved:Fire(_G.Vector2.new(10, 12))
+					render()
+
+					t.expect(inputService:GetMouseLocation().X).toBe(10)
+					t.expect(inputService:GetMouseLocation().Y).toBe(12)
+					t.expect(hoverStroke.Color).toBe(RovyUi.getActiveStyle().strokeHoveredColor)
+				end)
+
+				t.it("updates injected hover without a PlayerGui ancestor", function()
+					RovyUi.__reset()
+					local gui = root()
+					gui.AbsolutePosition = _G.Vector2.new(50, 30)
+					gui.AbsoluteSize = _G.Vector2.new(300, 200)
+					local services = _G.__rovyTestServices
+					local oldWaitForChild = services.Players.LocalPlayer.WaitForChild
+					local strayPlayerGui = _G.Instance.new("PlayerGui")
+					services.Players.LocalPlayer.WaitForChild = function(name)
+						if name == "PlayerGui" then return strayPlayerGui end
+						return nil
+					end
+					local inputSignals = {
+						InputBegan = makeSignal(),
+						InputChanged = makeSignal(),
+						InputEnded = makeSignal(),
+						MouseMoved = makeSignal(),
+						MouseLocation = _G.Vector2.new(0, 0),
+					}
+					function inputSignals:GetMouseLocation()
+						return self.MouseLocation
+					end
+
+					local inputService = RovyUi.createRovyInputServiceFromSignals(inputSignals)
+					local node = RovyUi.new(gui, { inputService = inputService })
+
+					local function render()
+						RovyUi.start(node, function()
+							RovyUi.button("Hover Me")
+						end)
+					end
+
+					render()
+					local hoverButton = findFirstDescendant(gui, function(instance)
+						return instance.ClassName == "TextButton" and instance.Text == "Hover Me"
+					end)
+					t.expect(hoverButton).toBeDefined()
+					local hoverStroke = findChildByClass(hoverButton, "UIStroke")
+					t.expect(hoverStroke).toBeDefined()
+					hoverButton.AbsolutePosition = _G.Vector2.new(50, 30)
+					hoverButton.AbsoluteSize = _G.Vector2.new(100, 24)
+
+					inputSignals.MouseMoved:Fire(_G.Vector2.new(10, 12))
+					render()
+					t.expect(hoverStroke.Color).toBe(RovyUi.getActiveStyle().strokeHoveredColor)
+
+					inputSignals.MouseMoved:Fire(_G.Vector2.new(130, 12))
+					render()
+					t.expect(hoverStroke.Color).toBe(RovyUi.getActiveStyle().strokeInactiveColor)
+					services.Players.LocalPlayer.WaitForChild = oldWaitForChild
+				end)
+
+			t.it("starts window drags from injected input began signals", function()
+				RovyUi.__reset()
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+
+				RovyUi.start(node, function()
+					RovyUi.window({ title = "Global Drag", position = _G.Vector2.new(10, 15) }, function() end)
+				end)
+
+				local windowFrame = findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "Frame" and instance:GetAttribute("EgooEWindow") == true
+				end)
+				local titleBar = firstDirectChild(windowFrame, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == ""
+				end)
+				local resizeGrip = firstDirectChild(windowFrame, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == "⊿"
+				end)
+				t.expect(windowFrame).toBeDefined()
+				t.expect(titleBar).toBeDefined()
+				t.expect(resizeGrip).toBeDefined()
+
+				titleBar.AbsolutePosition = _G.Vector2.new(10, 15)
+				titleBar.AbsoluteSize = _G.Vector2.new(200, 24)
+				resizeGrip.AbsolutePosition = _G.Vector2.new(280, 380)
+				resizeGrip.AbsoluteSize = _G.Vector2.new(16, 16)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 20, 20))
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 45, 50))
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 45, 50))
+
+				t.expect(windowFrame.Position.X.Offset).toBe(35)
+				t.expect(windowFrame.Position.Y.Offset).toBe(45)
+			end)
+
+			t.it("starts slider and dragValue drags from injected input began signals", function()
+				RovyUi.__reset()
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local sliderValue = 0
+				local dragValue = 0
+
+				local function render()
+					RovyUi.start(node, function()
+						sliderValue = RovyUi.slider({ min = 0, max = 100, initial = 0, showValueBox = false })
+						dragValue = RovyUi.dragValue({ min = 0, max = 100, initial = 0, step = 1 })
+					end)
+				end
+
+				render()
+				local sliderTrack = findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == "" and instance.Size.Y.Offset == 10
+				end)
+				t.expect(sliderTrack).toBeDefined()
+				sliderTrack.AbsolutePosition = _G.Vector2.new(0, 0)
+				sliderTrack.AbsoluteSize = _G.Vector2.new(100, 10)
+
+				local dragButton = findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == "0"
+				end)
+				t.expect(dragButton).toBeDefined()
+				dragButton.AbsolutePosition = _G.Vector2.new(0, 20)
+				dragButton.AbsoluteSize = _G.Vector2.new(80, 20)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 25, 5))
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 75, 5))
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 75, 5))
+				render()
+				t.expect(sliderValue).toBe(75)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 10, 25))
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 30, 25))
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 30, 25))
+				render()
+
+				t.expect(dragValue).toBe(5)
+			end)
+
+			t.it("falls back to the default UserInputService when no input service is injected", function()
+				RovyUi.__reset()
+					local gui = root()
+					local node = RovyUi.new(gui)
+					local value = 0
+
+					local function render()
+						RovyUi.start(node, function()
+							value = RovyUi.slider({ min = 0, max = 100, initial = 0, showValueBox = false })
+						end)
+					end
+
+					render()
+					local sliderTrack = findFirstDescendant(gui, function(instance)
+						return instance.ClassName == "TextButton" and instance.Text == "" and instance.Size.Y.Offset == 10
+					end)
+					t.expect(sliderTrack).toBeDefined()
+					sliderTrack.AbsolutePosition = _G.Vector2.new(0, 0)
+					sliderTrack.AbsoluteSize = _G.Vector2.new(100, 10)
+
+					sliderTrack.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 10, 0))
+					_G.__rovyTestServices.UserInputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 40, 0))
+					render()
+
+					t.expect(value).toBe(40)
 				end)
 
 				t.it("accepts TextButton mouse coordinate events", function()

@@ -19,6 +19,7 @@ import {
 	__useEffect,
 	useKey,
 	useRootInstance,
+	useInputService,
 	setEventCallback,
 	createContext,
 	useContext,
@@ -29,6 +30,8 @@ import {
 import { useStyle, getActiveStyle, setStyle, StyleScope, withStyleScope, __withStyleScope } from "./style";
 import { create } from "./create";
 import { createConnect } from "./createConnect";
+import { createRovyInputServiceFromSignals } from "./input";
+import { createRovyUiStory } from "./ui-labs";
 import { WINDOW_ATTRIBUTE } from "./windowConstants";
 import * as contexts from "./contexts";
 
@@ -56,6 +59,7 @@ import { progressBar } from "./widgets/progress-bar";
 import { collapsingHeader } from "./widgets/collapsing-header";
 import { editableImage } from "./widgets/editable-image";
 import { EditableImageBuffer } from "./editable-image-buffer";
+import { curveEditor, curveEditorBuiltInPresets, curvePath, sampleBezierCurve } from "./widgets/curve-editor";
 import { uiTable as _table } from "./widgets/table";
 import { tableRow } from "./widgets/table-row";
 import { tableCell } from "./widgets/table-cell";
@@ -64,6 +68,8 @@ import { demoWindow } from "./widgets/demo-window";
 import { errorWidget } from "./widgets/error";
 
 export * from "./runtime";
+export * from "./input";
+export * from "./ui-labs";
 export * from "./style";
 export * from "./create";
 export * from "./createConnect";
@@ -95,6 +101,7 @@ export * from "./widgets/progress-bar";
 export * from "./widgets/collapsing-header";
 export * from "./widgets/editable-image";
 export * from "./editable-image-buffer";
+export * from "./widgets/curve-editor";
 export * from "./widgets/table";
 export * from "./widgets/table-row";
 export * from "./widgets/table-cell";
@@ -121,6 +128,7 @@ export const rovyUi = {
 	__useEffect,
 	useKey,
 	useRootInstance,
+	useInputService,
 	setEventCallback,
 	createContext,
 	useContext,
@@ -133,6 +141,8 @@ export const rovyUi = {
 	__withStyleScope,
 	create,
 	createConnect,
+	createRovyInputServiceFromSignals,
+	createRovyUiStory,
 	contexts,
 	WINDOW_ATTRIBUTE,
 	registry,
@@ -156,6 +166,10 @@ export const rovyUi = {
 	collapsingHeader,
 	editableImage,
 	EditableImageBuffer,
+	curveEditor,
+	curvePath,
+	curveEditorBuiltInPresets,
+	sampleBezierCurve,
 	toggle,
 	clickableLabel,
 	modal,

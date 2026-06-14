@@ -258,6 +258,59 @@ local signalKeys = {
 	InputChanged = true,
 	InputEnded = true,
 }
+
+local function newVector2(x, y)
+	local vector = {}
+	vector.X = x
+	vector.Y = y
+	vector.Magnitude = math.sqrt(x * x + y * y)
+	function vector:add(other)
+		return newVector2(self.X + other.X, self.Y + other.Y)
+	end
+	function vector:sub(other)
+		return newVector2(self.X - other.X, self.Y - other.Y)
+	end
+	return setmetatable(vector, {
+		__add = function(left, right)
+			return newVector2(left.X + right.X, left.Y + right.Y)
+		end,
+		__sub = function(left, right)
+			return newVector2(left.X - right.X, left.Y - right.Y)
+		end,
+	})
+end
+
+local function newVector3(x, y, z)
+	local vector = {}
+	vector.X = x
+	vector.Y = y
+	vector.Z = z
+	vector.Magnitude = math.sqrt(x * x + y * y + z * z)
+	return vector
+end
+
+local function newUDim2(xs, xo, ys, yo)
+	local value = { X = { Scale = xs, Offset = xo }, Y = { Scale = ys, Offset = yo } }
+	function value:sub(other)
+		return newUDim2(
+			self.X.Scale - other.X.Scale,
+			self.X.Offset - other.X.Offset,
+			self.Y.Scale - other.Y.Scale,
+			self.Y.Offset - other.Y.Offset
+		)
+	end
+	return setmetatable(value, {
+		__sub = function(left, right)
+			return newUDim2(
+				left.X.Scale - right.X.Scale,
+				left.X.Offset - right.X.Offset,
+				left.Y.Scale - right.Y.Scale,
+				left.Y.Offset - right.Y.Offset
+			)
+		end,
+	})
+end
+
 FakeInstance.__index = function(self, key)
 	local value = rawget(FakeInstance, key)
 	if value ~= nil then
@@ -342,6 +395,12 @@ function FakeInstance:FindFirstChildOfClass(className)
 	end
 	return nil
 end
+function FakeInstance:FindFirstChildWhichIsA(className)
+	for _, child in ipairs(self:GetChildren()) do
+		if child:IsA(className) then return child end
+	end
+	return nil
+end
 function FakeInstance:GetGuiObjectsAtPosition(x, y)
 	local byPosition = self.__guiObjectsAtPositionByPosition
 	if byPosition ~= nil then
@@ -373,8 +432,8 @@ local function newInstance(className)
 		__attributes = {},
 		__isGui = true,
 		LayoutOrder = 0,
-		AbsolutePosition = { X = 0, Y = 0 },
-		AbsoluteSize = { X = 100, Y = 100 },
+		AbsolutePosition = newVector2(0, 0),
+		AbsoluteSize = newVector2(100, 100),
 		Visible = true,
 	}, FakeInstance)
 	table.insert(allInstances, instance)
@@ -457,7 +516,9 @@ local services = {
 	AssetService = {
 		CreatedEditableImages = {},
 		FailCreate = false,
+		CreateEditableImageCalls = 0,
 		CreateEditableImage = function(self, options)
+			self.CreateEditableImageCalls += 1
 			if self.FailCreate then
 				error("CreateEditableImage failed", 2)
 			end
@@ -476,8 +537,9 @@ local fakeGlobals = {
 			return { R = r / 255, G = g / 255, B = b / 255 }
 		end,
 	},
-	Vector2 = { new = function(x, y) return { X = x, Y = y } end },
-	UDim2 = { new = function(xs, xo, ys, yo) return { X = { Scale = xs, Offset = xo }, Y = { Scale = ys, Offset = yo } } end },
+	Vector2 = { new = newVector2 },
+	Vector3 = { new = newVector3 },
+	UDim2 = { new = newUDim2 },
 	UDim = { new = function(scale, offset) return { Scale = scale, Offset = offset } end },
 	Instance = { new = newInstance },
 	Content = {

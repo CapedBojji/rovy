@@ -1,4 +1,4 @@
-import { widget, __useInstance, __useState, useContext, useHoverTarget } from "../runtime";
+import { widget, __useInstance, __useState, useContext, useHoverTarget, useInputService } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
 import { udim, udim2 } from "../primitives";
@@ -18,6 +18,7 @@ export const button = widget((text: string, options: ButtonOptions = {}): Button
 	const [clicked, setClicked] = __useState("button:clicked", false);
 	const [hovered, setHovered] = __useState("button:hovered", false);
 	const [pressing, setPressing] = __useState("button:pressing", false);
+	const inputService = useInputService();
 
 	const refs = __useInstance("button:instance", (ref) => {
 		const style = useStyle();
@@ -44,14 +45,14 @@ export const button = widget((text: string, options: ButtonOptions = {}): Button
 				Thickness: style.strokeThickness, ApplyStrokeMode: Enum.ApplyStrokeMode.Border,
 			}),
 				MouseButton1Down: () => {
-					if (!isTopGuiTarget(targetRef.button)) return;
+					if (!isTopGuiTarget(targetRef.button, undefined, undefined, inputService)) return;
 					setPressing(true);
 				},
 			MouseButton1Up: () => {
 				setPressing(false);
 			},
 				Activated: () => {
-					if (options.disabled === true || !isTopGuiTarget(targetRef.button)) return;
+					if (options.disabled === true || !isTopGuiTarget(targetRef.button, undefined, undefined, inputService)) return;
 					setClicked(true);
 				},
 		});

@@ -21,7 +21,7 @@ The networking layer adds more transformer duties: detect `@netEvent` from `@rov
 
 Datastore work adds another compile-time path: detect `playerDocument<T>()`, `document<T, Owner>()`, and `sharedDocument<T>()` from `@rovy/datastore`, require explicit data types, generate datastore-safe `@rbxts/t` validators from TypeScript data shapes, lower declarations into `rovyData.__document(...)`, generate lifecycle event constructors, and lower `DocumentReader` / `DocumentWriter` / `DocumentOpener` params through core's package-extension injection hook. See [Datastore](/packages/datastore.md).
 
-UI work adds another compile-time path: detect JSDoc `@widget` functions, require a same-file implementation, hoist a module-level `const __rovyWidgetMeta_X = { id, name } as const` per widget, wrap the function through `RovyUi.__widget(fn, __rovyWidgetMeta_X)`, lower later plain widget calls and built-in `@rovy/ui` widget calls through `RovyUi.__scope("module:key", () => Widget(args))`, erase leading `style: Style` authoring sugar into `RovyUi.getActiveStyle()`, lower storage helpers like `useState` / `useEffect` / `useInstance` to keyed internals, and lower `StyleScope(...)` / `scope(...)` as keyed callback-bounded runtime scopes. See [UI](/packages/ui.md).
+UI work adds another compile-time path: detect JSDoc `@widget` functions, require a same-file implementation, hoist a module-level `const __rovyWidgetMeta_X = { id, name } as const` per widget, wrap the function through `RovyUi.__widget(fn, __rovyWidgetMeta_X)`, lower later plain widget calls and built-in `@rovy/ui` widget calls through `RovyUi.__scope("module:key", () => Widget(args))`, erase leading `style: Style` authoring sugar into `RovyUi.getActiveStyle()`, lower storage helpers like `useState` / `useEffect` / `useInstance` to keyed internals, and lower `StyleScope(...)` / `scope(...)` as keyed callback-bounded runtime scopes. See [Rovy UI](/packages/ui).
 
 ## Transformer config
 
@@ -322,4 +322,4 @@ Reason: avoid collisions across files that happen to share a type name. Same rul
 - [Monitors](/concepts/monitors.md)
 - [Packages](/packages/packages.md)
 - [Networking](/packages/networking.md)
-- [UI](/packages/ui.md)
+- [Rovy UI](/packages/ui)
