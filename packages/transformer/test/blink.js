@@ -9,9 +9,13 @@ import { schedule, system } from "@rovy/core";
 import {
 	NetClient,
 	NetEventContext,
+	NetFunc,
+	NetFunctionReader,
+	NetFunctionResponder,
 	NetId,
 	NetServer,
 	netEvent,
+	netFunction,
 	rovyNet,
 } from "@rovy/networking";
 
@@ -32,10 +36,22 @@ class PlayHitEffect {
 	) {}
 }
 
+class FetchProfileResult {
+	constructor(
+		public displayName: string,
+		public coins: number,
+	) {}
+}
+
+@netFunction({ direction: "clientToServer", result: FetchProfileResult })
+class FetchProfile {
+	constructor(public userId: NetId) {}
+}
+
 @schedule class Update {}
 @system({ schedule: Update })
 class NetParams {
-	run(_client: NetClient, _server: NetServer, _context: NetEventContext) {}
+	run(_client: NetClient, _server: NetServer, _context: NetEventContext, _fetch: NetFunc<FetchProfile, FetchProfileResult>, _reader: NetFunctionReader<FetchProfile>, _responder: NetFunctionResponder) {}
 }
 `;
 
@@ -67,8 +83,8 @@ const result = compileFixture(source, {
 });
 assertNoDiagnostics(result, "blink integration fixture");
 
-const schemas = [...result.printed.matchAll(/blink: ("(?:[^"\\]|\\.)*")/g)].map((match) => JSON.parse(match[1]));
-assert.equal(schemas.length, 2, "expected two generated Blink event declarations");
+const schemas = [...result.printed.matchAll(/(?:blink|requestBlink|resultBlink): ("(?:[^"\\]|\\.)*")/g)].map((match) => JSON.parse(match[1]));
+assert.equal(schemas.length, 4, "expected four generated Blink event/function declarations");
 
 const temp = result.temp;
 fs.writeFileSync(
@@ -115,7 +131,9 @@ for (const output of [clientOutput, serverOutput, typesOutput]) {
 const server = fs.readFileSync(serverOutput, "utf8");
 const client = fs.readFileSync(clientOutput, "utf8");
 assert.match(server, /CastAbilityIntent/);
+assert.match(server, /FetchProfileRequest/);
 assert.match(client, /PlayHitEffect/);
+assert.match(client, /FetchProfileResult/);
 
 fs.rmSync(temp, { recursive: true, force: true });
 

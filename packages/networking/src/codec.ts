@@ -11,9 +11,13 @@ export type NetPayload = Record<string, unknown>;
 export const NetCodec = {
 	/** Class instance → flat payload table keyed by registered field names. */
 	encode(meta: NetEventReg, event: object): NetPayload {
-		const source = event as Record<string, unknown>;
+		return this.encodeFields(meta.fields, event);
+	},
+
+	encodeFields(fields: ReadonlyArray<string>, value: object): NetPayload {
+		const source = value as Record<string, unknown>;
 		const payload: NetPayload = {};
-		for (const field of meta.fields) {
+		for (const field of fields) {
 			payload[field] = source[field];
 		}
 		return payload;
@@ -21,11 +25,15 @@ export const NetCodec = {
 
 	/** Payload table → new event instance via the registered constructor. */
 	decode(meta: NetEventReg, payload: NetPayload): object {
+		return this.decodeFields(meta.ctor, meta.fields, payload);
+	},
+
+	decodeFields(ctor: NetEventReg["ctor"], fields: ReadonlyArray<string>, payload: NetPayload): object {
 		const args = new Array<defined>();
-		for (const field of meta.fields) {
+		for (const field of fields) {
 			args.push(payload[field] as defined);
 		}
-		const factory = meta.ctor as unknown as new (...rest: Array<defined>) => object;
+		const factory = ctor as unknown as new (...rest: Array<defined>) => object;
 		return new factory(...args);
 	},
 };

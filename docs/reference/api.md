@@ -49,13 +49,16 @@ Datastore params:
 
 These come from `@rovy/datastore`, not `@rovy/core`. Core provides the package-extension injection hook; the datastore package owns document runtime handles and lifecycle events.
 
-Draft networking params:
+Networking params:
 
 | Param type | Injected value |
 |------------|----------------|
 | `NetClient` | client-only outbound net handle |
 | `NetServer` | server-only outbound net handle |
 | `NetEventContext` | sender lookup for received client-to-server events |
+| `NetFunc<F, R>` | client-only non-blocking request handle for a registered `@netFunction` |
+| `NetFunctionReader<F>` | server-only reader for inbound function calls |
+| `NetFunctionResponder` | server-only responder for function calls |
 
 These come from `@rovy/networking`, not `@rovy/core`. Core provides the package-extension injection hook; the networking package owns the net handles.
 `App.start()` auto-installs networking when `@netEvent` metadata or injected net params are present, so normal user code does not add `NetPlugin` manually.
@@ -340,15 +343,28 @@ Decorators replace the old functional wrappers. There is no `system(fn)`, `obser
 
 ## Networking (`@rovy/networking`)
 
-Networking lives in a separate package. The current MVP public surface is:
+Networking lives in a separate package. The current public surface is:
 
 ```ts
-import { NetClient, NetServer, netEvent } from "@rovy/networking";
+import {
+  NetClient,
+  NetFunc,
+  NetFunctionReader,
+  NetFunctionResponder,
+  NetServer,
+  netEvent,
+  netFunction,
+} from "@rovy/networking";
 
 @netEvent(options: {
 	direction: "clientToServer" | "serverToClient";
 	channel?: "reliable" | "unreliable";
 	receive?: "send" | "trigger";
+})
+
+@netFunction(options: {
+  direction: "clientToServer";
+  result: ResultCtor;
 })
 
 class NetClient {
@@ -366,9 +382,27 @@ class NetServer {
 	broadcastExcept<E extends ServerToClientNetEvent>(except: Player, event: E): void;
 	broadcastTriggerExcept<E extends ServerToClientNetEvent>(except: Player, event: E): void;
 }
+
+class NetFunc<F extends ClientToServerNetFunction, R extends object> {
+  call(request: F): NetCallHandle<F>;
+  hasResult(handle: NetCallHandle<F>): boolean;
+  getResult(handle: NetCallHandle<F>): R | { ok: false; error: string } | undefined;
+}
+
+class NetFunctionReader<F extends object> {
+  forEach(cb: (call: NetFunctionCall<F>) => void): void;
+}
+
+class NetFunctionResponder {
+  resolve<F extends object, R extends object>(call: NetFunctionCall<F>, result: R): void;
+  reject(call: NetFunctionCall, message: string): void;
+}
 ```
 
-See [Networking](/packages/networking.md) for the full spec, current package boundary, explicit Blink generation, `rovy-build` config shape, scheduling, and boundary checks.
+`@netFunction` is non-blocking and does not use Roblox `RemoteFunction`; calls
+are request/response messages over the selected networking transport.
+
+See [Networking](/packages/networking.md) for the full spec, current package boundary, explicit Blink generation, `rovy-build` config shape, scheduling, function calls, and boundary checks.
 
 ## Datastore (`@rovy/datastore`)
 

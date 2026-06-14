@@ -54,6 +54,7 @@ export class TransformState {
 	private readonly pendingTImports = new Map<string, ts.Identifier>();
 	private readonly pendingPluginImports = new Map<string, Map<string, ts.Identifier>>();
 	private readonly widgetCallsiteCounters = new Map<string, number>();
+	private readonly netCallsiteCounters = new Map<string, number>();
 	private uiWidgetExportNames?: Set<string>;
 	private readonly rojoResolver?: RojoResolver;
 
@@ -431,7 +432,7 @@ export class TransformState {
 	}
 
 	shouldGenerateNetArtifacts(): boolean {
-		return this.classInfoHasDecorator("netEvent");
+		return this.classInfoHasDecorator("netEvent") || this.classInfoHasDecorator("netFunction");
 	}
 
 	classInfoHasDecorator(decorator: string): boolean {
@@ -517,6 +518,13 @@ export class TransformState {
 		const moduleId = this.stableIdForNode(node);
 		const used = this.widgetCallsiteCounters.get(moduleId) ?? 0;
 		this.widgetCallsiteCounters.set(moduleId, used + 1);
+		return `${moduleId}:${used}`;
+	}
+
+	nextNetCallsiteKey(node: ts.Node): string {
+		const moduleId = this.stableIdForNode(node);
+		const used = this.netCallsiteCounters.get(moduleId) ?? 0;
+		this.netCallsiteCounters.set(moduleId, used + 1);
 		return `${moduleId}:${used}`;
 	}
 

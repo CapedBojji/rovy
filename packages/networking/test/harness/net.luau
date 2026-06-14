@@ -33,6 +33,23 @@ function M.reg(ctor, opts)
 	}
 end
 
+function M.fnReg(ctor, resultCtor, opts)
+	return {
+		ctor = ctor,
+		id = opts.id or opts.name,
+		name = opts.name,
+		direction = opts.direction or "clientToServer",
+		fields = opts.fields,
+		result = resultCtor,
+		resultName = opts.resultName or "Result",
+		resultFields = opts.resultFields,
+		requestName = opts.requestName or (opts.name .. "Request"),
+		resultWireName = opts.resultWireName or (opts.name .. "Result"),
+		requestBlink = opts.requestBlink,
+		resultBlink = opts.resultBlink,
+	}
+end
+
 -- Minimal Commands stand-in capturing send/trigger calls.
 function M.commands()
 	local rec = { sent = {}, triggered = {} }
