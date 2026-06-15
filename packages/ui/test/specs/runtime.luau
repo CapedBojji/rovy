@@ -367,19 +367,183 @@ return function(TS, t)
 					must("dragValue", function() RovyUi.dragValue({ initial = 1 }) end)
 					must("toggle", function() RovyUi.toggle("Toggle") end)
 					must("radioButton", function() RovyUi.radioButton("Radio") end)
-						must("selectableLabel", function() RovyUi.selectableLabel("Select") end)
-						must("clickableLabel", function() RovyUi.clickableLabel("ClickLabel") end)
-						must("collapsingHeader", function() RovyUi.collapsingHeader("Header", function() end) end)
-						must("editableImage", function() RovyUi.editableImage({ size = _G.Vector2.new(2, 2) }) end)
-						must("curveEditor", function() RovyUi.curveEditor({ width = 120, height = 80 }) end)
+					must("selectableLabel", function() RovyUi.selectableLabel("Select") end)
+					must("clickableLabel", function() RovyUi.clickableLabel("ClickLabel") end)
+					must("collapsingHeader", function() RovyUi.collapsingHeader("Header", function() end) end)
+					must("editableImage", function() RovyUi.editableImage({ size = _G.Vector2.new(2, 2) }) end)
+					must("curveEditor", function() RovyUi.curveEditor({ width = 120, height = 80 }) end)
+					must("viewportFrame", function()
+						local part = _G.Instance.new("Part")
+						RovyUi.viewportFrame({ width = 120, height = 80, camera = { cframe = _G.CFrame.new(0, 0, 8) } }, function()
+							RovyUi.viewportItem({ source = part })
+						end)
 					end)
 				end)
+			end)
 			local hasChildren = false
 			for _ in pairs(node.children) do
 				hasChildren = true
 				break
 			end
 			t.expect(hasChildren).toBeTruthy()
+			end)
+
+			t.it("renders portal children into the target instance and cleans them up", function()
+				RovyUi.__reset()
+				local gui = root()
+				local target = _G.Instance.new("Frame")
+				target.Name = "PortalTarget"
+				target.Parent = gui
+				local node = RovyUi.new(gui)
+
+				RovyUi.start(node, function()
+					RovyUi.window({ title = "Portal Host" }, function()
+						RovyUi.label("Host Label")
+						RovyUi.portal(target, function()
+							RovyUi.label("Portaled Label")
+						end)
+					end)
+				end)
+
+				local portaledLabel = findFirstDescendant(target, function(instance)
+					return instance.ClassName == "TextLabel" and instance.Text == "Portaled Label"
+				end)
+				local hostLabel = findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextLabel" and instance.Text == "Host Label"
+				end)
+
+				t.expect(portaledLabel).toBeDefined()
+				t.expect(portaledLabel.Parent).toBe(target)
+				t.expect(hostLabel).toBeDefined()
+				t.expect(hostLabel.Parent).never.toBe(target)
+
+				RovyUi.start(node, function()
+					RovyUi.window({ title = "Portal Host" }, function()
+						RovyUi.label("Host Label")
+					end)
+				end)
+
+				t.expect(portaledLabel.Destroyed).toBe(true)
+				t.expect(target.Destroyed).toBe(false)
+				t.expect(findFirstDescendant(target, function(instance)
+					return instance.ClassName == "TextLabel" and instance.Text == "Portaled Label"
+				end)).toBe(nil)
+			end)
+
+			t.it("renders cloned viewport items with a controlled camera", function()
+				RovyUi.__reset()
+				local gui = root()
+				local node = RovyUi.new(gui)
+				local source = _G.Instance.new("Part")
+				source.Name = "PreviewPart"
+				source.Size = _G.Vector3.new(2, 3, 4)
+				local cameraCFrame = _G.CFrame.new(1, 2, 12)
+				local frameHandle
+				local itemHandle
+
+				RovyUi.start(node, function()
+					frameHandle = RovyUi.viewportFrame({
+						width = 180,
+						height = 100,
+						camera = { cframe = cameraCFrame, fieldOfView = 42 },
+					}, function()
+						itemHandle = RovyUi.viewportItem({
+							source = source,
+							pivot = _G.CFrame.new(5, 6, 7),
+							scale = 2,
+						})
+					end)
+				end)
+
+				local viewport = frameHandle.instance()
+				local worldModel = frameHandle.worldModel()
+				local camera = frameHandle.camera()
+				local clone = itemHandle.clone()
+				t.expect(viewport).toBeDefined()
+				t.expect(worldModel).toBeDefined()
+				t.expect(camera).toBeDefined()
+				t.expect(clone).toBeDefined()
+				t.expect(viewport.ClassName).toBe("ViewportFrame")
+				t.expect(worldModel.ClassName).toBe("WorldModel")
+				t.expect(camera.ClassName).toBe("Camera")
+				t.expect(viewport.CurrentCamera).toBe(camera)
+				t.expect(camera.CFrame).toBe(cameraCFrame)
+				t.expect(camera.FieldOfView).toBe(42)
+				t.expect(clone).never.toBe(source)
+				t.expect(clone.Name).toBe("PreviewPart")
+				t.expect(clone.Parent).toBe(worldModel)
+				t.expect(source.Parent).toBe(nil)
+				t.expect(clone.CFrame.Position.X).toBe(5)
+				t.expect(clone.Size.X).toBe(4)
+				t.expect(frameHandle.itemCount()).toBe(1)
+			end)
+
+			t.it("reconciles dynamic viewport item scopes and destroys stale clones", function()
+				RovyUi.__reset()
+				local gui = root()
+				local node = RovyUi.new(gui)
+				local first = _G.Instance.new("Part")
+				first.Name = "First"
+				local second = _G.Instance.new("Part")
+				second.Name = "Second"
+				local items = { first, second }
+				local frameHandle
+				local secondHandle
+
+				local function render()
+					RovyUi.start(node, function()
+						frameHandle = RovyUi.viewportFrame({ camera = { cframe = _G.CFrame.new(0, 0, 10) } }, function()
+							for _, item in ipairs(items) do
+								RovyUi.useKey(item.Name)
+								local handle = RovyUi.viewportItem({ source = item })
+								if item == second then secondHandle = handle end
+							end
+						end)
+					end)
+				end
+
+				render()
+				local firstClone = frameHandle.worldModel():FindFirstChild("First")
+				local secondClone = secondHandle.clone()
+				t.expect(frameHandle.itemCount()).toBe(2)
+				t.expect(firstClone).toBeDefined()
+				t.expect(secondClone).toBeDefined()
+
+				items = { second }
+				render()
+				t.expect(frameHandle.itemCount()).toBe(1)
+				t.expect(firstClone.Destroyed).toBe(true)
+				t.expect(secondHandle.clone()).toBe(secondClone)
+				t.expect(secondClone.Parent).toBe(frameHandle.worldModel())
+			end)
+
+			t.it("uses an auto fallback camera when viewport items omit camera options", function()
+				RovyUi.__reset()
+				local gui = root()
+				local node = RovyUi.new(gui)
+				local source = _G.Instance.new("Part")
+				source.Size = _G.Vector3.new(4, 4, 4)
+				local frameHandle
+
+				RovyUi.start(node, function()
+					frameHandle = RovyUi.viewportFrame(function()
+						RovyUi.viewportItem({ source = source })
+					end)
+				end)
+
+				t.expect(frameHandle.itemCount()).toBe(1)
+				t.expect(frameHandle.camera().CFrame).toBeDefined()
+				t.expect(frameHandle.camera().FieldOfView).toBe(35)
+			end)
+
+			t.it("requires viewportItem to be rendered inside viewportFrame", function()
+				RovyUi.__reset()
+				local source = _G.Instance.new("Part")
+				t.expect(function()
+					run(function()
+						RovyUi.viewportItem({ source = source })
+					end)
+				end).toThrow()
 			end)
 
 			t.it("snaps slider value to configured step", function()

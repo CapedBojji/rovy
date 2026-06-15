@@ -12,10 +12,11 @@
 *.rbxl.lock
 /examples/**/**/node_modules
 /examples/**/**/out
+/tests/**/**/node_modules
+/tests/**/**/out
 /build
 .studio.pid
 .studio*.pid
 .rovy
 **/**/.rovy-build
 **/**/sourcemap.json
-

@@ -1,5 +1,5 @@
 {
-	"name": "@rovy/example-ui-test-place",
+	"name": "@rovy/ui-test-place",
 	"private": true,
 	"version": "1.0.0",
 	"description": "Full Roblox place for manually testing @rovy/ui widgets.",

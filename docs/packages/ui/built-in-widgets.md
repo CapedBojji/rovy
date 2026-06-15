@@ -296,6 +296,45 @@ interface EditableImageOptions {
 
 `EditableImageBuffer` provides `setPixel`, `fillRect`, `drawLine`, `drawCircle`, `drawPolygon`, `clear`, and `getBuffer`.
 
+## Viewport Frames
+
+`viewportFrame` renders cloned Roblox instances inside a managed `ViewportFrame`.
+
+```ts
+const camera = new CFrame(new Vector3(0, 2, 10), new Vector3(0, 0, 0));
+
+viewportFrame({ width: 240, height: 160, camera: { cframe: camera, fieldOfView: 35 } }, () => {
+	for (const item of previewItems) {
+		useKey(item.id);
+		viewportItem({
+			source: item.model,
+			pivot: item.pivot,
+			scale: item.scale,
+		});
+	}
+});
+```
+
+```ts
+interface ViewportFrameOptions {
+	width?: number;
+	height?: number;
+	backgroundColor?: Color3;
+	backgroundTransparency?: number;
+	border?: boolean;
+	camera?: { cframe: CFrame; fieldOfView?: number };
+}
+
+interface ViewportItemOptions {
+	source: Instance;
+	pivot?: CFrame;
+	scale?: number;
+	visible?: boolean;
+}
+```
+
+`viewportFrame` uses the supplied camera exactly. If items are rendered without camera options, it warns once and uses an auto-framed fallback camera.
+
 ## Demo Window
 
 ```ts
