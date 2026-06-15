@@ -430,6 +430,125 @@ return function(TS, t)
 				end)).toBe(nil)
 			end)
 
+			t.it("skips portal children after an externally managed target is destroyed", function()
+				RovyUi.__reset()
+				local gui = root()
+				local target = _G.Instance.new("Frame")
+				target.Name = "ExternalPortalTarget"
+				target.Parent = gui
+				local node = RovyUi.new(gui)
+				local childRuns = 0
+
+				RovyUi.start(node, function()
+					RovyUi.portal(target, function()
+						childRuns += 1
+						RovyUi.label("Live Portal Child")
+					end)
+				end)
+
+				local portaledLabel = findFirstDescendant(target, function(instance)
+					return instance.ClassName == "TextLabel" and instance.Text == "Live Portal Child"
+				end)
+				t.expect(childRuns).toBe(1)
+				t.expect(portaledLabel).toBeDefined()
+				t.expect(portaledLabel.Parent).toBe(target)
+
+				target:Destroy()
+				RovyUi.start(node, function()
+					RovyUi.portal(target, function()
+						childRuns += 1
+						RovyUi.label("Should Not Render")
+					end)
+				end)
+
+				t.expect(childRuns).toBe(1)
+				t.expect(portaledLabel.Destroyed).toBe(true)
+				t.expect(findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextLabel" and instance.Text == "Should Not Render"
+				end)).toBe(nil)
+			end)
+
+			t.it("cleans general UI, viewport, and curve editor resources on unmount", function()
+				RovyUi.__reset()
+				_G.__rovyTestRuntime.resetConnections()
+				local services = _G.__rovyTestServices
+				table.clear(services.AssetService.CreatedEditableImages)
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local source = _G.Instance.new("Part")
+				source.Name = "CleanupPreviewPart"
+				local viewportHandle
+				local itemHandle
+				local curveHandle
+
+				RovyUi.start(node, function()
+					RovyUi.window({ title = "Cleanup Host" }, function()
+						RovyUi.label("General Cleanup Label")
+						RovyUi.button("General Cleanup Button")
+						viewportHandle = RovyUi.viewportFrame({
+							width = 120,
+							height = 80,
+							camera = { cframe = _G.CFrame.new(0, 0, 8) },
+						}, function()
+							itemHandle = RovyUi.viewportItem({ source = source })
+						end)
+						curveHandle = RovyUi.curveEditor({ width = 120, height = 80 }, function()
+							RovyUi.curvePath({
+								id = "cleanup-path",
+								commands = {
+									{ kind = "M", point = { x = 0, y = 0 } },
+									{ kind = "L", point = { x = 64, y = 32 } },
+								},
+							})
+						end)
+					end)
+				end)
+
+				local generalLabel = findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextLabel" and instance.Text == "General Cleanup Label"
+				end)
+				local generalButton = findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == "General Cleanup Button"
+				end)
+				local viewport = viewportHandle.instance()
+				local worldModel = viewportHandle.worldModel()
+				local camera = viewportHandle.camera()
+				local clone = itemHandle.clone()
+				local curveOverlay = findFirstDescendant(gui, function(instance)
+					return instance.Name == "CurveEditorInput"
+				end)
+				local curveCanvas = findFirstDescendant(gui, function(instance)
+					return instance.Name == "CurveEditorCanvas"
+				end)
+				local curveImage = services.AssetService.CreatedEditableImages[#services.AssetService.CreatedEditableImages]
+
+				t.expect(generalLabel).toBeDefined()
+				t.expect(generalButton).toBeDefined()
+				t.expect(viewport).toBeDefined()
+				t.expect(worldModel).toBeDefined()
+				t.expect(camera).toBeDefined()
+				t.expect(clone).toBeDefined()
+				t.expect(curveHandle).toBeDefined()
+				t.expect(curveOverlay).toBeDefined()
+				t.expect(curveCanvas).toBeDefined()
+				t.expect(curveImage).toBeDefined()
+
+				RovyUi.start(node, function() end)
+
+				t.expect(generalLabel.Destroyed).toBe(true)
+				t.expect(generalButton.Destroyed).toBe(true)
+				t.expect(viewport.Destroyed).toBe(true)
+				t.expect(worldModel.Destroyed).toBe(true)
+				t.expect(camera.Destroyed).toBe(true)
+				t.expect(clone.Destroyed).toBe(true)
+				t.expect(curveOverlay.Destroyed).toBe(true)
+				t.expect(curveCanvas.Destroyed).toBe(true)
+				t.expect(curveImage.Destroyed).toBe(true)
+				t.expect(source.Destroyed).toBe(false)
+				t.expect(_G.__rovyTestRuntime.liveConnectionCount()).toBe(0)
+			end)
+
 			t.it("renders cloned viewport items with a controlled camera", function()
 				RovyUi.__reset()
 				local gui = root()

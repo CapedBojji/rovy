@@ -37,6 +37,7 @@ const checks = [
 	["ui labs curve editor story", /Infinite Canvas/],
 	["ui labs viewport frame story", /Viewport Frame/],
 	["ui labs portal story", /Portal Proof/],
+	["ui labs portal deleted target branch", /external target was deleted/],
 	["portal widget usage", /portal/],
 	["ui labs generic story", /use = "Generic"/],
 	["ui labs injected input", /inputService = createRovyInputServiceFromSignals/],

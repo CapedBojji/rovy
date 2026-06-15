@@ -135,7 +135,8 @@ const story = {
 		container.Parent = props.target;
 
 		createClippedHost(container);
-		const portalTarget = createPortalTarget(container);
+		let portalTarget = createPortalTarget(container);
+		let targetDeleted = false;
 
 		const root = RovyUi.new(container, {
 			inputService: createRovyInputServiceFromSignals(props.inputListener),
@@ -146,7 +147,7 @@ const story = {
 		let count = 0;
 
 		const render = (): void => {
-			portalTarget.Visible = currentControls.Visible;
+			if (!targetDeleted) portalTarget.Visible = currentControls.Visible;
 
 			RovyUi.start(root, () => {
 				if (!currentControls.Visible) return;
@@ -169,13 +170,29 @@ const story = {
 						if (enabled.clicked()) renderPortalContent = !renderPortalContent;
 
 						if (button("Increment counter").clicked()) count += 1;
+						if (button("Delete external target").clicked() && !targetDeleted) {
+							portalTarget.Destroy();
+							targetDeleted = true;
+						}
+						if (button("Recreate target").clicked() && targetDeleted) {
+							portalTarget = createPortalTarget(container);
+							targetDeleted = false;
+						}
 
 						separator();
 						label("The red frame below clips ordinary children. The green frame receives live Rovy widgets from portal.", {
 							wrapped: true,
 						});
 
-						if (renderPortalContent && currentControls.PortalContent) {
+						if (targetDeleted) {
+							portal(portalTarget, () => {
+								heading("This should not render");
+								label("Portal target is destroyed");
+							});
+							label("The external target was deleted; portal children are skipped until it is recreated.", {
+								wrapped: true,
+							});
+						} else if (renderPortalContent && currentControls.PortalContent) {
 							portal(portalTarget, () => {
 								heading("Portaled Widgets");
 								label(`Parent target: ${portalTarget.Name}`);
