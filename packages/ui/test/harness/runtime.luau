@@ -287,10 +287,22 @@ local function newVector3(x, y, z)
 	vector.Y = y
 	vector.Z = z
 	vector.Magnitude = math.sqrt(x * x + y * y + z * z)
+	function vector:add(other)
+		return newVector3(self.X + other.X, self.Y + other.Y, self.Z + other.Z)
+	end
+	function vector:sub(other)
+		return newVector3(self.X - other.X, self.Y - other.Y, self.Z - other.Z)
+	end
 	function vector:mul(value)
 		return newVector3(self.X * value, self.Y * value, self.Z * value)
 	end
 	return setmetatable(vector, {
+		__add = function(left, right)
+			return newVector3(left.X + right.X, left.Y + right.Y, left.Z + right.Z)
+		end,
+		__sub = function(left, right)
+			return newVector3(left.X - right.X, left.Y - right.Y, left.Z - right.Z)
+		end,
 		__mul = function(left, right)
 			if type(left) == "number" then
 				return newVector3(right.X * left, right.Y * left, right.Z * left)
@@ -508,6 +520,7 @@ function newInstance(className)
 		__propertyEvents = {},
 		__attributes = {},
 		__isGui = guiClasses[className] == true,
+		Destroyed = false,
 		LayoutOrder = 0,
 		AbsolutePosition = newVector2(0, 0),
 		AbsoluteSize = newVector2(100, 100),
@@ -573,6 +586,23 @@ local function makeEditableImage(size)
 end
 
 local services = {
+	ContextActionService = {
+		BoundActions = {},
+		BindActionAtPriority = function(self, actionName, callback, createTouchButton, priority, ...)
+			self.BoundActions[actionName] = {
+				callback = callback,
+				createTouchButton = createTouchButton,
+				priority = priority,
+				inputs = { ... },
+			}
+		end,
+		UnbindAction = function(self, actionName)
+			self.BoundActions[actionName] = nil
+		end,
+		Reset = function(self)
+			table.clear(self.BoundActions)
+		end,
+	},
 	UserInputService = {
 		InputBegan = signal("UserInputService.InputBegan"),
 		InputChanged = signal("UserInputService.InputChanged"),

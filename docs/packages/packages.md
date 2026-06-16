@@ -201,6 +201,11 @@ Then keep build, environment, Rojo, boundary, and Blink settings in `package.jso
   "rovy-build": {
     "current": "dev",
     "placeFile": "game.rbxl",
+    "publish": {
+      "universeId": "1234567890",
+      "placeId": "9876543210",
+      "versionType": "Published"
+    },
     "rbxtscArgs": ["--type", "game"],
     "rojoBuildArgs": ["build", "default.project.json", "-o", "game.rbxl"],
     "watchOnOpen": true,
@@ -229,7 +234,7 @@ Then keep build, environment, Rojo, boundary, and Blink settings in `package.jso
 }
 ```
 
-That is the only transformer touchpoint in `tsconfig.json`. `rovy-build` handles compile, generation, Rojo build, open, and watch. When networking is enabled, it generates Blink files into `out/shared/net/generated/*`, so users only author decorators and injected params.
+That is the only transformer touchpoint in `tsconfig.json`. `rovy-build` handles compile, generation, Rojo build, open, watch, and optional Open Cloud place publishing. When networking is enabled, it generates Blink files into `out/shared/net/generated/*`, so users only author decorators and injected params.
 
 ## What `rovy-build` does
 
@@ -249,7 +254,8 @@ Typical package scripts:
     "watch": "rovy watch",
     "open": "rovy open",
     "start": "rovy start",
-    "stop": "rovy stop"
+    "stop": "rovy stop",
+    "publish": "rovy publish"
   }
 }
 ```
@@ -263,6 +269,7 @@ Typical package scripts:
 | `rovy open`     | Opens `placeFile` in Studio; starts watch too unless `watchOnOpen` is `false`.                                          |
 | `rovy start`    | Runs `build`, then `open`.                                                                                              |
 | `rovy stop`     | Kills tracked watch/Studio processes from `.rovy-build/*.pid`.                                                          |
+| `rovy publish`  | Publishes the existing `placeFile` to `rovy-build.publish` through Roblox Open Cloud.                                   |
 | `rovy init`     | Adds default `rovy-build` config and scripts to the current package.                                                    |
 
 Important config fields:
@@ -275,12 +282,17 @@ Important config fields:
 | `rojoBuildArgs`             | Args passed to `rojo` during `rovy build`.                          |
 | `watchOnOpen`               | Whether `rovy open` also starts watch mode.                         |
 | `generateBlink`             | Whether compile/watch should run Blink generation.                  |
+| `publish`                   | Open Cloud `universeId`, `placeId`, and optional `versionType`.     |
 | `environments.*.rojo`       | Rojo project used by watch, sourcemap, and path lowering.           |
 | `environments.*.boundaries` | Source roots for server/client/shared boundary checks.              |
 | `environments.*.net`        | Networking transport and Blink settings.                            |
 
 Set `ROVY_ENV=prod` or another environment name to select a different
 `environments` entry for one command.
+
+`rovy publish` expects `ROBLOX_API_KEY`, or `ROBLOX_OPEN_CLOUD_API_KEY` as a
+fallback. The key needs the Roblox Open Cloud `universe-places:write` scope for
+the configured experience. IDs are safe to commit; API keys are not.
 
 ## Macro / decorator stubs (transformer-not-run guard)
 

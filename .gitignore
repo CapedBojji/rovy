@@ -8,6 +8,7 @@
 /packages/*/include
 *.tsbuildinfo
 .DS_Store
+.secrets/
 **/*/**.rbxl
 *.rbxl.lock
 /examples/**/**/node_modules

@@ -22,20 +22,19 @@ assert.ok(fs.existsSync(outDir), "ui-test-place out/ missing; run build first");
 
 const files = walk(outDir);
 const output = files.map((file) => fs.readFileSync(file, "utf8")).join("\n");
+const mainClient = fs.readFileSync(path.join(outDir, "client", "main.client.luau"), "utf8");
 
 const checks = [
 	["client render loop", /RenderStepped/],
 	["screen gui", /RovyUiTestPlace/],
-	["demo window usage", /demoWindow/],
-	["curve editor playground usage", /curveEditorPlayground/],
 	["curve editor widget", /curveEditor/],
 	["curve path scoped widget", /curvePath/],
 	["viewport frame widget", /viewportFrame/],
 	["viewport item scoped widget", /viewportItem/],
-	["curve editor heading", /Infinite graph canvas/],
 	["ui labs demo story", /Demo Window/],
 	["ui labs curve editor story", /Infinite Canvas/],
 	["ui labs viewport frame story", /Viewport Frame/],
+	["ui labs viewport free camera story", /Ctrl\+Shift click/],
 	["ui labs portal story", /Portal Proof/],
 	["ui labs portal deleted target branch", /external target was deleted/],
 	["portal widget usage", /portal/],
@@ -47,5 +46,12 @@ const checks = [
 for (const [label, pattern] of checks) {
 	assert.match(output, pattern, `missing ${label}`);
 }
+
+assert.match(mainClient, /viewportFrame/, "playtest client should mount viewportFrame");
+assert.match(mainClient, /viewportItem/, "playtest client should mount viewportItem");
+assert.match(mainClient, /Ctrl\+Shift click/, "playtest client should explain single-click viewport capture");
+assert.doesNotMatch(mainClient, /demoWindow/, "playtest client should not mount demoWindow");
+assert.doesNotMatch(mainClient, /curveEditorPlayground/, "playtest client should not mount curveEditorPlayground");
+assert.doesNotMatch(mainClient, /curvePath/, "playtest client should not mount curvePath");
 
 console.log(`ok  ui test place output (${files.length} files)`);

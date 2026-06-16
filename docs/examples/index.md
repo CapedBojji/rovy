@@ -22,6 +22,10 @@ pnpm build:ui-inventory # UI inventory example
 pnpm dev:ui-inventory
 pnpm open:ui-inventory
 
+pnpm build:ui-test     # UI widget test place
+pnpm publish:ui-test   # build + publish for MCP workflows
+pnpm open:ui-test      # local Studio loop still available
+
 pnpm build:zombie       # zombie game example
 pnpm dev:zombie
 pnpm open:zombie
@@ -45,6 +49,7 @@ pnpm generate # runs Rovy generators only
 pnpm watch # runs rovy watch
 pnpm open  # runs rovy open
 pnpm start # runs rovy build, then rovy open/watch
+pnpm publish # runs rovy publish when publish IDs are configured
 pnpm stop  # stops tracked watch/Studio processes
 ```
 
@@ -52,6 +57,11 @@ pnpm stop  # stops tracked watch/Studio processes
 such as Blink output when enabled, then runs Rojo with the package's
 `rovy-build.rojoBuildArgs`. `rovy start` is the full local loop: build the place,
 open Studio, and keep `rojo serve` / `rbxtsc -w` running.
+
+For published-place tooling such as Roblox Studio MCP workflows, use
+`pnpm publish:ui-test`. It publishes the configured UI test place through Roblox
+Open Cloud using `ROBLOX_API_KEY`, or `ROBLOX_OPEN_CLOUD_API_KEY` as a fallback.
+The key needs the `universe-places:write` scope.
 
 ## The examples
 

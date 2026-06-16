@@ -13,6 +13,7 @@
 		"open": "node ../../packages/build/bin/rovy-build.js open",
 		"start": "node ../../packages/build/bin/rovy-build.js start",
 		"stop": "node ../../packages/build/bin/rovy-build.js stop",
+		"publish": "pnpm run build && node ../../packages/build/bin/rovy-build.js publish",
 		"build:place": "pnpm run build",
 		"test:output": "node test/assert-output.js",
 		"test:place": "node test/assert-place.js"
@@ -39,6 +40,11 @@
 		"$schema": "../../packages/core/schema/rovy-build.schema.json",
 		"current": "dev",
 		"placeFile": "../../build/rovy-ui-test-place.rbxl",
+		"publish": {
+			"universeId": "10335309698",
+			"placeId": "107039625110623",
+			"versionType": "Published"
+		},
 		"rbxtscArgs": [
 			"--type",
 			"game"

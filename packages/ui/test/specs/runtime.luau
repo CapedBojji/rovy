@@ -103,19 +103,31 @@ return function(TS, t)
 			InputChanged = makeSignal(),
 			InputEnded = makeSignal(),
 			MouseLocation = _G.Vector2.new(0, 0),
+			PressedKeys = {},
+			MouseBehavior = _G.Enum.MouseBehavior.Default,
 		}
 		function service:GetMouseLocation()
 			return self.MouseLocation
 		end
+		function service:IsKeyDown(key)
+			return self.PressedKeys[key] == true
+		end
+		function service:SetKeyDown(key, down)
+			self.PressedKeys[key] = down == true
+		end
 		return service
 	end
 
-	local function makeInput(userInputType, x, y, keyCode)
-		return {
+	local function makeInput(userInputType, x, y, keyCode, deltaX, deltaY)
+		local input = {
 			UserInputType = userInputType,
 			KeyCode = keyCode or _G.Enum.KeyCode.Unknown,
 			Position = _G.Vector2.new(x or 0, y or 0),
 		}
+		if deltaX ~= nil or deltaY ~= nil then
+			input.Delta = _G.Vector2.new(deltaX or 0, deltaY or 0)
+		end
+		return input
 	end
 
 	local function firstDirectChild(instance, predicate)
@@ -663,6 +675,241 @@ return function(TS, t)
 						RovyUi.viewportItem({ source = source })
 					end)
 				end).toThrow()
+			end)
+
+			t.it("captures viewport frame input, reports drag deltas, and releases on mouse up", function()
+				RovyUi.__reset()
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local captureEvents = {}
+				local dragEvents = {}
+				local frameHandle
+
+				RovyUi.start(node, function()
+					frameHandle = RovyUi.viewportFrame({
+						width = 120,
+						height = 80,
+						captureInput = true,
+						camera = { cframe = _G.CFrame.new(0, 0, 8) },
+						onCaptureChanged = function(captured)
+							table.insert(captureEvents, captured)
+						end,
+						onDrag = function(delta, total)
+							table.insert(dragEvents, { delta = delta, total = total })
+						end,
+					})
+				end)
+
+				local capture = findFirstDescendant(gui, function(instance)
+					return instance.Name == "ViewportFrameInput"
+				end)
+				t.expect(capture).toBeDefined()
+				t.expect(capture.Visible).toBe(true)
+				t.expect(capture.InputSink).toBe(_G.Enum.InputSink.All)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 10, 12))
+				t.expect(frameHandle.captured()).toBe(true)
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 18, 17))
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 25, 19))
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 25, 19))
+				t.expect(frameHandle.captured()).toBe(false)
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 40, 40))
+
+				t.expect(#captureEvents).toBe(2)
+				t.expect(captureEvents[1]).toBe(true)
+				t.expect(captureEvents[2]).toBe(false)
+				t.expect(#dragEvents).toBe(2)
+				t.expect(dragEvents[1].delta.X).toBe(8)
+				t.expect(dragEvents[1].delta.Y).toBe(5)
+				t.expect(dragEvents[1].total.X).toBe(8)
+				t.expect(dragEvents[1].total.Y).toBe(5)
+				t.expect(dragEvents[2].delta.X).toBe(7)
+				t.expect(dragEvents[2].delta.Y).toBe(2)
+				t.expect(dragEvents[2].total.X).toBe(15)
+				t.expect(dragEvents[2].total.Y).toBe(7)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 20, 20))
+				t.expect(frameHandle.captured()).toBe(true)
+				frameHandle.releaseInput()
+				t.expect(frameHandle.captured()).toBe(false)
+			end)
+
+			t.it("uncaptures viewport frame input when the widget unmounts mid-drag", function()
+				RovyUi.__reset()
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local captureEvents = {}
+
+				RovyUi.start(node, function()
+					RovyUi.viewportFrame({
+						captureInput = true,
+						camera = { cframe = _G.CFrame.new(0, 0, 8) },
+						onCaptureChanged = function(captured)
+							table.insert(captureEvents, captured)
+						end,
+					})
+				end)
+
+				local capture = findFirstDescendant(gui, function(instance)
+					return instance.Name == "ViewportFrameInput"
+				end)
+				t.expect(capture).toBeDefined()
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 10, 12))
+				t.expect(captureEvents[1]).toBe(true)
+
+				RovyUi.start(node, function() end)
+
+				t.expect(captureEvents[2]).toBe(false)
+				t.expect(capture.Destroyed).toBe(true)
+			end)
+
+			t.it("toggles viewport free camera with Ctrl+Shift click and moves while captured", function()
+				RovyUi.__reset()
+				_G.__rovyTestServices.ContextActionService:Reset()
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local captureEvents = {}
+				local frameHandle
+
+				local function render()
+					RovyUi.start(node, function()
+						frameHandle = RovyUi.viewportFrame({
+							width = 120,
+							height = 80,
+							freeCamera = { speed = 60, lookSensitivity = 0.2 },
+							camera = { cframe = _G.CFrame.new(0, 2, 8) },
+							onCaptureChanged = function(captured)
+								table.insert(captureEvents, captured)
+							end,
+						})
+					end)
+				end
+
+				render()
+				local capture = findFirstDescendant(gui, function(instance)
+					return instance.Name == "ViewportFrameInput"
+				end)
+				t.expect(capture).toBeDefined()
+				t.expect(capture.Visible).toBe(true)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 10, 12))
+				t.expect(frameHandle.captured()).toBe(false)
+
+				inputService:SetKeyDown(_G.Enum.KeyCode.LeftControl, true)
+				inputService:SetKeyDown(_G.Enum.KeyCode.LeftShift, true)
+				capture.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 10, 12))
+				t.expect(frameHandle.captured()).toBe(true)
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 10, 12))
+				t.expect(frameHandle.captured()).toBe(true)
+				t.expect(#captureEvents).toBe(1)
+				t.expect(captureEvents[1]).toBe(true)
+				t.expect(countMap(_G.__rovyTestServices.ContextActionService.BoundActions)).toBe(1)
+				capture.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 10, 12))
+				t.expect(frameHandle.captured()).toBe(true)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 20, 12))
+				t.expect(frameHandle.captured()).toBe(false)
+				t.expect(captureEvents[2]).toBe(false)
+				t.expect(countMap(_G.__rovyTestServices.ContextActionService.BoundActions)).toBe(0)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 30, 12))
+				t.expect(frameHandle.captured()).toBe(true)
+				t.expect(captureEvents[3]).toBe(true)
+				t.expect(countMap(_G.__rovyTestServices.ContextActionService.BoundActions)).toBe(1)
+				local boundAction = firstMapValue(_G.__rovyTestServices.ContextActionService.BoundActions)
+				t.expect(boundAction.priority).toBe(10000)
+				t.expect(boundAction.callback("free-camera", _G.Enum.UserInputState.Begin, makeInput(_G.Enum.UserInputType.Keyboard, 0, 0, _G.Enum.KeyCode.W))).toBe(_G.Enum.ContextActionResult.Sink)
+				local hasWKey = false
+				local hasForwardAction = false
+				for _, input in ipairs(boundAction.inputs) do
+					if input == _G.Enum.KeyCode.W then hasWKey = true end
+					if input == _G.Enum.PlayerActions.CharacterForward then hasForwardAction = true end
+				end
+				t.expect(hasWKey).toBe(true)
+				t.expect(hasForwardAction).toBe(true)
+
+				local startZ = frameHandle.camera().CFrame.Position.Z
+				inputService:SetKeyDown(_G.Enum.KeyCode.W, true)
+				inputService:SetKeyDown(_G.Enum.KeyCode.LeftShift, false)
+				render()
+				local movedZ = frameHandle.camera().CFrame.Position.Z
+				t.expect(movedZ < startZ).toBeTruthy()
+
+				inputService:SetKeyDown(_G.Enum.KeyCode.W, false)
+				inputService:SetKeyDown(_G.Enum.KeyCode.LeftShift, true)
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 40, 12))
+				t.expect(frameHandle.captured()).toBe(false)
+				t.expect(captureEvents[4]).toBe(false)
+				t.expect(countMap(_G.__rovyTestServices.ContextActionService.BoundActions)).toBe(0)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 50, 12))
+				t.expect(frameHandle.captured()).toBe(true)
+				t.expect(countMap(_G.__rovyTestServices.ContextActionService.BoundActions)).toBe(1)
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.Keyboard, 0, 0, _G.Enum.KeyCode.Escape))
+				t.expect(frameHandle.captured()).toBe(false)
+				t.expect(countMap(_G.__rovyTestServices.ContextActionService.BoundActions)).toBe(0)
+			end)
+
+			t.it("captures viewport free camera from a control and releases with Escape", function()
+				RovyUi.__reset()
+				_G.__rovyTestServices.ContextActionService:Reset()
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local captureEvents = {}
+				local dragEvents = {}
+				local frameHandle
+
+				RovyUi.start(node, function()
+					frameHandle = RovyUi.viewportFrame({
+						width = 120,
+						height = 80,
+						freeCamera = true,
+						camera = { cframe = _G.CFrame.new(0, 2, 8) },
+						onCaptureChanged = function(captured)
+							table.insert(captureEvents, captured)
+						end,
+						onDrag = function(delta, total, input)
+							table.insert(dragEvents, { delta = delta, total = total, input = input })
+						end,
+					})
+				end)
+
+				t.expect(frameHandle.captured()).toBe(false)
+				frameHandle.captureInput()
+				t.expect(frameHandle.captured()).toBe(true)
+				t.expect(captureEvents[1]).toBe(true)
+				t.expect(countMap(_G.__rovyTestServices.ContextActionService.BoundActions)).toBe(1)
+				t.expect(inputService.MouseBehavior).toBe(_G.Enum.MouseBehavior.Default)
+
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 30, 20))
+				t.expect(#dragEvents).toBe(0)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton2, 12, 10))
+				t.expect(inputService.MouseBehavior).toBe(_G.Enum.MouseBehavior.LockCurrentPosition)
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 12, 10, nil, 13, 8))
+				t.expect(#dragEvents).toBe(1)
+				t.expect(dragEvents[1].delta.X).toBe(13)
+				t.expect(dragEvents[1].delta.Y).toBe(8)
+				t.expect(dragEvents[1].total.X).toBe(13)
+				t.expect(dragEvents[1].total.Y).toBe(8)
+				t.expect(frameHandle.captured()).toBe(true)
+
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton2, 12, 10))
+				t.expect(inputService.MouseBehavior).toBe(_G.Enum.MouseBehavior.Default)
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 40, 30, nil, 20, 20))
+				t.expect(#dragEvents).toBe(1)
+				t.expect(frameHandle.captured()).toBe(true)
+
+				local boundAction = firstMapValue(_G.__rovyTestServices.ContextActionService.BoundActions)
+				t.expect(boundAction.callback("free-camera", _G.Enum.UserInputState.Begin, makeInput(_G.Enum.UserInputType.Keyboard, 0, 0, _G.Enum.KeyCode.Escape))).toBe(_G.Enum.ContextActionResult.Sink)
+				t.expect(frameHandle.captured()).toBe(false)
+				t.expect(inputService.MouseBehavior).toBe(_G.Enum.MouseBehavior.Default)
+				t.expect(captureEvents[2]).toBe(false)
+				t.expect(countMap(_G.__rovyTestServices.ContextActionService.BoundActions)).toBe(0)
 			end)
 
 			t.it("snaps slider value to configured step", function()

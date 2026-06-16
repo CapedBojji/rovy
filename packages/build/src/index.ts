@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import cp, { type ChildProcess } from "node:child_process";
 import fs from "node:fs";
+import https from "node:https";
 import path from "node:path";
 import readline from "node:readline";
 import ts from "typescript";
@@ -18,12 +19,26 @@ type CommandName =
   | "watch"
   | "start"
   | "stop"
+  | "publish"
   | "init";
 type Runner = (
   command: string,
   args?: readonly string[],
   options?: cp.SpawnOptions,
 ) => Promise<void>;
+export interface PublishRequest {
+  readonly url: string;
+  readonly apiKey: string;
+  readonly contentType: string;
+  readonly body: Buffer;
+}
+
+export interface PublishResponse {
+  readonly statusCode: number;
+  readonly body: string;
+}
+
+type PublishRequester = (request: PublishRequest) => Promise<PublishResponse>;
 
 const DEFAULT_PLACE_FILE = "game.rbxl";
 const DEFAULT_SCRIPT_NAMES = {
@@ -34,11 +49,13 @@ const DEFAULT_SCRIPT_NAMES = {
   watch: "watch",
   start: "start",
   stop: "stop",
+  publish: "publish",
 } as const;
 
 export interface CommandContext {
   readonly projectDir: string;
   readonly run: Runner;
+  readonly publishRequest?: PublishRequester;
 }
 
 export async function runCli(
@@ -48,6 +65,7 @@ export async function runCli(
   const command = (argv[0] ?? "build") as CommandName;
   const projectDir = context?.projectDir ?? process.cwd();
   const run = context?.run ?? runCommand;
+  const publishRequest = context?.publishRequest ?? publishPlaceVersion;
 
   switch (command) {
     case "compile":
@@ -70,6 +88,9 @@ export async function runCli(
       return;
     case "stop":
       await stop({ projectDir, run });
+      return;
+    case "publish":
+      await publishPlace({ projectDir, run, publishRequest });
       return;
     case "init":
       await init(projectDir);
@@ -107,6 +128,48 @@ export async function build(context: CommandContext): Promise<void> {
     cwd: context.projectDir,
     stdio: "inherit",
   });
+}
+
+export async function publishPlace(context: CommandContext): Promise<void> {
+  const config = readConfig(context.projectDir);
+  const publishConfig = config.build.publish;
+  if (publishConfig === undefined)
+    throw new Error("rovy-build.publish is required for rovy publish");
+
+  const universeId = requiredNumericConfig(
+    publishConfig.universeId,
+    "rovy-build.publish.universeId",
+  );
+  const placeId = requiredNumericConfig(
+    publishConfig.placeId,
+    "rovy-build.publish.placeId",
+  );
+  const versionType = publishVersionType(publishConfig.versionType);
+  const placeFile = placeFilePath(context.projectDir, config);
+  if (!fs.existsSync(placeFile))
+    throw new Error(`place file missing: ${placeFile}`);
+  const apiKey = process.env.ROBLOX_API_KEY ?? process.env.ROBLOX_OPEN_CLOUD_API_KEY;
+  if (!apiKey)
+    throw new Error(
+      "ROBLOX_API_KEY is required for rovy publish (ROBLOX_OPEN_CLOUD_API_KEY is also supported)",
+    );
+
+  const contentType = placeFileContentType(placeFile);
+  const body = fs.readFileSync(placeFile);
+  const url = `https://apis.roblox.com/universes/v1/${universeId}/places/${placeId}/versions?versionType=${versionType}`;
+  const request = context.publishRequest ?? publishPlaceVersion;
+  const response = await request({ url, apiKey, contentType, body });
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    const detail = sanitizeResponseBody(response.body, apiKey);
+    throw new Error(
+      `place publish failed (${response.statusCode})${detail ? `: ${detail}` : ""}`,
+    );
+  }
+
+  const version = publishedVersionNumber(response.body);
+  console.log(
+    `[rovy-build] published ${path.relative(context.projectDir, placeFile)} to universe ${universeId} place ${placeId}${version ? ` (version ${version})` : ""}`,
+  );
 }
 
 export async function openProject(context: CommandContext): Promise<void> {
@@ -253,6 +316,7 @@ export async function watch(
     compile: () => compile(context),
     generate: () => generate(context),
     build: () => build(context),
+    publish: () => publishPlace(context),
     stop: () => stop(context),
   });
   shell.once("SIGINT", async () => {
@@ -308,6 +372,7 @@ function startInteractiveShell(
     readonly compile: () => Promise<void>;
     readonly generate: () => Promise<void>;
     readonly build: () => Promise<void>;
+    readonly publish: () => Promise<void>;
     readonly stop: () => Promise<void>;
   },
 ): readline.Interface {
@@ -362,6 +427,9 @@ function startInteractiveShell(
       case "build":
         void runAction("build", actions.build);
         return;
+      case "publish":
+        void runAction("publish", actions.publish);
+        return;
       case "stop":
         void runAction("stop", async () => {
           await actions.stop();
@@ -394,6 +462,7 @@ function printInteractiveHelp(): void {
       "  compile   run rbxtsc and generators once",
       "  generate  run Rovy generators once",
       "  build     run compile and Rojo build once",
+      "  publish   publish the configured place file through Open Cloud",
       "  stop      stop tracked Studio/watch processes and exit",
       "  exit      stop this watch session and exit",
     ].join("\n"),
@@ -514,6 +583,48 @@ function placeFilePath(
   );
 }
 
+function requiredNumericConfig(value: unknown, name: string): string {
+  const text =
+    typeof value === "number"
+      ? String(value)
+      : typeof value === "string"
+        ? value.trim()
+        : "";
+  if (!/^\d+$/.test(text)) throw new Error(`${name} must be a numeric string`);
+  return text;
+}
+
+function publishVersionType(value: unknown): "Published" | "Saved" {
+  if (value === undefined) return "Published";
+  if (value === "Published" || value === "Saved") return value;
+  throw new Error("rovy-build.publish.versionType must be Published or Saved");
+}
+
+function placeFileContentType(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".rbxl") return "application/octet-stream";
+  if (ext === ".rbxlx") return "application/xml";
+  throw new Error(`unsupported place file extension: ${filePath}`);
+}
+
+function publishedVersionNumber(body: string): string | undefined {
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    if (!isRecord(parsed)) return undefined;
+    const version = parsed.versionNumber;
+    if (typeof version === "number" || typeof version === "string")
+      return String(version);
+  } catch {}
+  return undefined;
+}
+
+function sanitizeResponseBody(body: string, apiKey: string): string {
+  const trimmed = body.trim();
+  if (!trimmed) return "";
+  const redacted = trimmed.split(apiKey).join("<redacted>");
+  return redacted.length > 500 ? `${redacted.slice(0, 500)}...` : redacted;
+}
+
 function tsBuildInfoPath(projectDir: string): string {
   const tsconfigPath = path.join(projectDir, "tsconfig.json");
   const configFile = ts.readConfigFile(tsconfigPath, ts.sys.readFile);
@@ -588,6 +699,39 @@ function runCommand(
       if (code === 0) resolve();
       else reject(new Error(`${command} exited with code ${code}`));
     });
+  });
+}
+
+function publishPlaceVersion(
+  request: PublishRequest,
+): Promise<PublishResponse> {
+  return new Promise((resolve, reject) => {
+    const url = new URL(request.url);
+    const req = https.request(
+      url,
+      {
+        method: "POST",
+        headers: {
+          "x-api-key": request.apiKey,
+          "Content-Type": request.contentType,
+          "Content-Length": request.body.byteLength,
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk) => {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        });
+        res.once("end", () => {
+          resolve({
+            statusCode: res.statusCode ?? 0,
+            body: Buffer.concat(chunks).toString("utf8"),
+          });
+        });
+      },
+    );
+    req.once("error", reject);
+    req.end(request.body);
   });
 }
 

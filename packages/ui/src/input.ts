@@ -21,6 +21,7 @@ export interface RovyInputService {
 	GetMouseLocation(): Vector2;
 	IsKeyDown?(key: Enum.KeyCode): boolean;
 	IsMouseButtonPressed?(button: Enum.UserInputType): boolean;
+	MouseBehavior?: Enum.MouseBehavior;
 	MouseIcon?: string;
 }
 

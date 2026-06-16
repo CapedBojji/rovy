@@ -32,6 +32,7 @@
     "test:ui-inventory": "pnpm run build:ui-inventory && pnpm --filter @rovy/example-ui-inventory-game test:output && pnpm --filter @rovy/example-ui-inventory-game test:luau && pnpm --filter @rovy/example-ui-inventory-game test:place",
     "build:ui-test": "pnpm --filter @rovy/ui-test-place build",
     "open:ui-test": "pnpm --filter @rovy/ui-test-place open",
+    "publish:ui-test": "pnpm --filter @rovy/ui-test-place run publish",
     "dev:ui-test": "pnpm --filter @rovy/ui-test-place start",
     "serve:ui-test": "pnpm --filter @rovy/ui-test-place serve",
     "test:ui-test": "pnpm --filter @rovy/ui-test-place test",

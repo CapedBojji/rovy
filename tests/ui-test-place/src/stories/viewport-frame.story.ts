@@ -46,6 +46,15 @@ interface PreviewItem {
 	visible: boolean;
 }
 
+interface ViewportFrameCaptureState {
+	captured?: () => boolean;
+}
+
+function viewportFrameCaptured(frame: ViewportFrameCaptureState): boolean {
+	const captured = frame.captured;
+	return captured !== undefined && captured();
+}
+
 function makePart(name: string, size: Vector3, color: Color3): Part {
 	const part = new Instance("Part");
 	part.Name = name;
@@ -154,6 +163,10 @@ const story = {
 									cframe: camera,
 									fieldOfView: cameraNear ? 32 : 38,
 								},
+								freeCamera: {
+									speed: cameraNear ? 8 : 12,
+									lookSensitivity: 0.22,
+								},
 							},
 							() => {
 								for (const item of previewItems) {
@@ -169,9 +182,10 @@ const story = {
 						);
 
 						label(
-							`Items ${frame.itemCount()}  FOV ${cameraNear ? 32 : 38}  Accent rotation ${revision * 8} deg`,
+							`Items ${frame.itemCount()}  FOV ${cameraNear ? 32 : 38}  Free cam ${viewportFrameCaptured(frame) ? "captured" : "released"}`,
 							{ wrapped: true },
 						);
+						label("Ctrl+Shift click the viewport to capture or release. Captured mode uses mouse look plus WASD, Q/E, and Space.", { wrapped: true });
 					},
 				);
 			});
