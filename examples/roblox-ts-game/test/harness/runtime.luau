@@ -3,7 +3,7 @@ local fs = zune.fs
 local luau = zune.luau
 local task = zune.task
 local process = zune.process
-local roblox = require("../../../../test/luau/harness/roblox")
+local roblox = require("../../../../tests/luau/harness/roblox")
 
 local function kind(path: string): string?
 	local ok, stat = pcall(fs.stat, path)

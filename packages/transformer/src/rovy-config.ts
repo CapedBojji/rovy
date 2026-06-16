@@ -21,6 +21,12 @@ export interface RovyEditorConfig {
 	readonly runtimeTypeChecks?: boolean;
 }
 
+export interface RovyPublishConfig {
+	readonly universeId?: string;
+	readonly placeId?: string;
+	readonly versionType?: "Published" | "Saved";
+}
+
 export interface RovyEnvironmentConfig {
 	readonly debug?: boolean;
 	readonly rojo?: string;
@@ -63,6 +69,7 @@ export interface RovyBuildScriptNames {
 	readonly watch?: string;
 	readonly start?: string;
 	readonly stop?: string;
+	readonly publish?: string;
 }
 
 export interface RovyBuildConfigFile extends RovyConfigFile {
@@ -71,6 +78,7 @@ export interface RovyBuildConfigFile extends RovyConfigFile {
 	readonly rojoBuildArgs?: ReadonlyArray<string>;
 	readonly watchOnOpen?: boolean;
 	readonly generateBlink?: boolean;
+	readonly publish?: RovyPublishConfig;
 	readonly names?: RovyBuildScriptNames;
 }
 

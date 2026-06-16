@@ -17,8 +17,8 @@
 		"watch:arena": "ROVY_ENV=arena node ../../packages/build/bin/rovy-build.js watch",
 		"test:output": "node test/assert-output.js",
 		"test:place": "node test/assert-place.js",
-		"test:roblox:lobby": "pnpm run build:lobby && bash ../../scripts/run-roblox-test.sh projects/lobby/tests.project.json ../../build/rovy-multiplace-lobby-tests.rbxlx ../../test/roblox/run-tests.luau",
-		"test:roblox:arena": "pnpm run build:arena && bash ../../scripts/run-roblox-test.sh projects/arena/tests.project.json ../../build/rovy-multiplace-arena-tests.rbxlx ../../test/roblox/run-tests.luau",
+		"test:roblox:lobby": "pnpm run build:lobby && bash ../../scripts/run-roblox-test.sh projects/lobby/tests.project.json ../../build/rovy-multiplace-lobby-tests.rbxlx ../../tests/roblox/run-tests.luau",
+		"test:roblox:arena": "pnpm run build:arena && bash ../../scripts/run-roblox-test.sh projects/arena/tests.project.json ../../build/rovy-multiplace-arena-tests.rbxlx ../../tests/roblox/run-tests.luau",
 		"test:roblox": "pnpm run test:roblox:lobby && pnpm run test:roblox:arena"
 	},
 	"type": "module",

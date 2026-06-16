@@ -32,6 +32,9 @@
 			"type": "boolean",
 			"description": "Run explicit Blink artifact generation after compile and during watch."
 		},
+		"publish": {
+			"$ref": "#/$defs/publish"
+		},
 		"names": {
 			"type": "object",
 			"additionalProperties": false,
@@ -42,7 +45,8 @@
 				"open": { "type": "string" },
 				"watch": { "type": "string" },
 				"start": { "type": "string" },
-				"stop": { "type": "string" }
+				"stop": { "type": "string" },
+				"publish": { "type": "string" }
 			}
 		},
 		"environments": {
@@ -54,6 +58,26 @@
 		}
 	},
 	"$defs": {
+		"publish": {
+			"type": "object",
+			"description": "Open Cloud place publishing target for rovy publish.",
+			"additionalProperties": false,
+			"required": ["universeId", "placeId"],
+			"properties": {
+				"universeId": {
+					"type": "string",
+					"description": "Roblox Universe ID containing the place."
+				},
+				"placeId": {
+					"type": "string",
+					"description": "Roblox Place ID to update."
+				},
+				"versionType": {
+					"enum": ["Published", "Saved"],
+					"description": "Whether the uploaded place file should be published or only saved."
+				}
+			}
+		},
 		"environment": {
 			"type": "object",
 			"additionalProperties": false,

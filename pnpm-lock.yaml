@@ -333,7 +333,7 @@ importers:
         specifier: 5.5.3
         version: 5.5.3
 
-  examples/ui-test-place:
+  tests/ui-test-place:
     dependencies:
       '@rbxts/better-janitor':
         specifier: ^0.4.0

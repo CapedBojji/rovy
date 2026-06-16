@@ -110,6 +110,8 @@ EditableImageBuffer
 demoWindow
 curveEditor
 curvePath
+viewportFrame
+viewportItem
 sampleBezierCurve
 ```
 
@@ -127,6 +129,15 @@ type CurvePathCommand =
 	| { kind: "C"; control1: CurveCanvasPoint; control2: CurveCanvasPoint; point: CurveCanvasPoint }
 	| { kind: "Z" };
 ```
+
+## Viewport Frame Types
+
+```ts
+viewportFrame(options: ViewportFrameOptions, children: () => void): ViewportFrameHandle
+viewportItem(options: ViewportItemOptions): ViewportItemHandle
+```
+
+`viewportItem` clones the provided source instance into the parent viewport. In dynamic loops, call `useKey` with a stable item id before `viewportItem`.
 
 ## Internal Transformer Hooks
 

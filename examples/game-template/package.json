@@ -15,7 +15,7 @@
 		"check": "tsc -p tsconfig.json --noEmit --pretty false",
 		"lint": "eslint \"src/**/*.ts\" && pnpm run check",
 		"test:luau": "zune test test/smoke",
-		"test:roblox": "pnpm run build && bash ../../scripts/run-roblox-test.sh tests.project.json ../../build/rovy-game-template-tests.rbxlx ../../test/roblox/run-tests.luau"
+		"test:roblox": "pnpm run build && bash ../../scripts/run-roblox-test.sh tests.project.json ../../build/rovy-game-template-tests.rbxlx ../../tests/roblox/run-tests.luau"
 	},
 	"keywords": [],
 	"author": "",

@@ -240,6 +240,7 @@ end
 
 local allInstances = {}
 local FakeInstance = {}
+local newInstance
 local signalKeys = {
 	Changed = true,
 	Destroying = true,
@@ -286,7 +287,39 @@ local function newVector3(x, y, z)
 	vector.Y = y
 	vector.Z = z
 	vector.Magnitude = math.sqrt(x * x + y * y + z * z)
-	return vector
+	function vector:add(other)
+		return newVector3(self.X + other.X, self.Y + other.Y, self.Z + other.Z)
+	end
+	function vector:sub(other)
+		return newVector3(self.X - other.X, self.Y - other.Y, self.Z - other.Z)
+	end
+	function vector:mul(value)
+		return newVector3(self.X * value, self.Y * value, self.Z * value)
+	end
+	return setmetatable(vector, {
+		__add = function(left, right)
+			return newVector3(left.X + right.X, left.Y + right.Y, left.Z + right.Z)
+		end,
+		__sub = function(left, right)
+			return newVector3(left.X - right.X, left.Y - right.Y, left.Z - right.Z)
+		end,
+		__mul = function(left, right)
+			if type(left) == "number" then
+				return newVector3(right.X * left, right.Y * left, right.Z * left)
+			end
+			return newVector3(left.X * right, left.Y * right, left.Z * right)
+		end,
+	})
+end
+
+local function newCFrame(x, y, z)
+	local position
+	if type(x) == "table" and x.X ~= nil then
+		position = x
+	else
+		position = newVector3(x or 0, y or 0, z or 0)
+	end
+	return { Position = position }
 end
 
 local function newUDim2(xs, xo, ys, yo)
@@ -354,7 +387,11 @@ FakeInstance.__newindex = function(self, key, value)
 	end
 end
 function FakeInstance:IsA(className)
-	return self.ClassName == className or className == "Instance" or (className == "GuiObject" and self.__isGui)
+	local isBasePart = self.ClassName == "Part" or self.ClassName == "MeshPart" or self.ClassName == "BasePart"
+	return self.ClassName == className
+		or className == "Instance"
+		or (className == "GuiObject" and self.__isGui)
+		or (className == "BasePart" and isBasePart)
 end
 function FakeInstance:Destroy()
 	self.Destroyed = true
@@ -382,6 +419,43 @@ function FakeInstance:GetChildren()
 		end
 	end
 	return children
+end
+function FakeInstance:Clone()
+	local clone = newInstance(self.ClassName)
+	for key, value in pairs(self) do
+		if key ~= "Parent"
+			and key ~= "__children"
+			and key ~= "__events"
+			and key ~= "__propertyEvents"
+			and key ~= "__attributes"
+			and type(value) ~= "function"
+		then
+			clone[key] = value
+		end
+	end
+	for _, child in ipairs(self:GetChildren()) do
+		local childClone = child:Clone()
+		childClone.Parent = clone
+	end
+	return clone
+end
+function FakeInstance:PivotTo(cframe)
+	self.CFrame = cframe
+	self.Pivot = cframe
+end
+function FakeInstance:GetBoundingBox()
+	if self:IsA("BasePart") then
+		return self.CFrame or newCFrame(self.Position or newVector3(0, 0, 0)), self.Size or newVector3(1, 1, 1)
+	end
+	local center = self.CFrame or newCFrame(0, 0, 0)
+	local size = self.Size or newVector3(1, 1, 1)
+	for _, child in ipairs(self:GetChildren()) do
+		local childCFrame, childSize = child:GetBoundingBox()
+		center = childCFrame or center
+		size = childSize or size
+		break
+	end
+	return center, size
 end
 function FakeInstance:FindFirstChild(name)
 	for _, child in ipairs(self:GetChildren()) do
@@ -422,7 +496,22 @@ function FakeInstance:GetPropertyChangedSignal(name)
 	return events[name]
 end
 
-local function newInstance(className)
+function newInstance(className)
+	local guiClasses = {
+		CanvasGroup = true,
+		Frame = true,
+		ImageButton = true,
+		ImageLabel = true,
+		ScrollingFrame = true,
+		TextLabel = true,
+		TextButton = true,
+		TextBox = true,
+		VideoFrame = true,
+		ViewportFrame = true,
+		ScreenGui = true,
+		BillboardGui = true,
+		SurfaceGui = true,
+	}
 	local instance = setmetatable({
 		ClassName = className,
 		Name = className,
@@ -430,12 +519,22 @@ local function newInstance(className)
 		__events = {},
 		__propertyEvents = {},
 		__attributes = {},
-		__isGui = true,
+		__isGui = guiClasses[className] == true,
+		Destroyed = false,
 		LayoutOrder = 0,
 		AbsolutePosition = newVector2(0, 0),
 		AbsoluteSize = newVector2(100, 100),
 		Visible = true,
 	}, FakeInstance)
+	if className == "Part" or className == "MeshPart" or className == "BasePart" then
+		instance.Size = newVector3(1, 1, 1)
+		instance.Position = newVector3(0, 0, 0)
+		instance.CFrame = newCFrame(0, 0, 0)
+	end
+	if className == "Camera" then
+		instance.CFrame = newCFrame(0, 0, 0)
+		instance.FieldOfView = 70
+	end
 	table.insert(allInstances, instance)
 	return instance
 end
@@ -487,6 +586,23 @@ local function makeEditableImage(size)
 end
 
 local services = {
+	ContextActionService = {
+		BoundActions = {},
+		BindActionAtPriority = function(self, actionName, callback, createTouchButton, priority, ...)
+			self.BoundActions[actionName] = {
+				callback = callback,
+				createTouchButton = createTouchButton,
+				priority = priority,
+				inputs = { ... },
+			}
+		end,
+		UnbindAction = function(self, actionName)
+			self.BoundActions[actionName] = nil
+		end,
+		Reset = function(self)
+			table.clear(self.BoundActions)
+		end,
+	},
 	UserInputService = {
 		InputBegan = signal("UserInputService.InputBegan"),
 		InputChanged = signal("UserInputService.InputChanged"),
@@ -539,6 +655,12 @@ local fakeGlobals = {
 	},
 	Vector2 = { new = newVector2 },
 	Vector3 = { new = newVector3 },
+	CFrame = {
+		new = newCFrame,
+		lookAt = function(position, _focus)
+			return newCFrame(position)
+		end,
+	},
 	UDim2 = { new = newUDim2 },
 	UDim = { new = function(scale, offset) return { Scale = scale, Offset = offset } end },
 	Instance = { new = newInstance },
@@ -579,6 +701,7 @@ local fakeGlobals = {
 		end
 		return type(value)
 	end,
+	warn = function(...) end,
 }
 for key, value in pairs(fakeGlobals) do
 	_G[key] = value

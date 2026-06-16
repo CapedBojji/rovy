@@ -16,7 +16,7 @@
 		"test:output": "node test/assert-output.js",
 		"test:luau": "zune test test/smoke",
 		"test:place": "node test/assert-place.js",
-		"test:roblox": "pnpm run build && bash ../../scripts/run-roblox-test.sh tests.project.json ../../build/rovy-tower-defense-game-tests.rbxlx ../../test/roblox/run-tests.luau"
+		"test:roblox": "pnpm run build && bash ../../scripts/run-roblox-test.sh tests.project.json ../../build/rovy-tower-defense-game-tests.rbxlx ../../tests/roblox/run-tests.luau"
 	},
 	"keywords": [],
 	"author": "",

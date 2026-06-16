@@ -40,6 +40,41 @@ async function capture(argv, dir) {
   return calls;
 }
 
+async function withEnv(values, fn) {
+  const previous = {};
+  for (const key of Object.keys(values)) {
+    previous[key] = Object.prototype.hasOwnProperty.call(process.env, key)
+      ? process.env[key]
+      : undefined;
+    if (values[key] === undefined) delete process.env[key];
+    else process.env[key] = values[key];
+  }
+  try {
+    return await fn();
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+async function capturePublish(dir, options = {}) {
+  const requests = [];
+  const response = options.response ?? { statusCode: 200, body: '{"versionNumber":7}' };
+  await withEnv(options.env ?? { ROBLOX_API_KEY: "test-key" }, async () => {
+    await runCli(["publish"], {
+      projectDir: dir,
+      run: async () => {},
+      publishRequest: async (request) => {
+        requests.push({ ...request, body: Buffer.from(request.body) });
+        return typeof response === "function" ? response(request) : response;
+      },
+    });
+  });
+  return requests;
+}
+
 (async () => {
   const buildDir = tempProject({ generateBlink: false });
   assert.deepEqual(await capture(["compile"], buildDir), [
@@ -82,6 +117,103 @@ async function capture(argv, dir) {
   ]);
   assert.equal(fs.existsSync(path.join(envOverrideDir, "build")), true);
 
+  const publishDir = tempProject({
+    generateBlink: false,
+    publish: {
+      universeId: "10335309698",
+      placeId: "107039625110623",
+      versionType: "Published",
+    },
+  });
+  fs.writeFileSync(path.join(publishDir, "game.rbxl"), Buffer.from([1, 2, 3]));
+  const publishRequests = await capturePublish(publishDir);
+  assert.equal(publishRequests.length, 1);
+  assert.equal(
+    publishRequests[0].url,
+    "https://apis.roblox.com/universes/v1/10335309698/places/107039625110623/versions?versionType=Published",
+  );
+  assert.equal(publishRequests[0].apiKey, "test-key");
+  assert.equal(publishRequests[0].contentType, "application/octet-stream");
+  assert.deepEqual([...publishRequests[0].body], [1, 2, 3]);
+
+  const xmlPublishDir = tempProject({
+    generateBlink: false,
+    placeFile: "game.rbxlx",
+    publish: {
+      universeId: "10",
+      placeId: "20",
+      versionType: "Published",
+    },
+  });
+  fs.writeFileSync(path.join(xmlPublishDir, "game.rbxlx"), "<roblox />");
+  const xmlPublishRequests = await capturePublish(xmlPublishDir, {
+    env: {
+      ROBLOX_API_KEY: undefined,
+      ROBLOX_OPEN_CLOUD_API_KEY: "fallback-key",
+    },
+  });
+  assert.equal(xmlPublishRequests[0].apiKey, "fallback-key");
+  assert.equal(xmlPublishRequests[0].contentType, "application/xml");
+  assert.equal(xmlPublishRequests[0].body.toString("utf8"), "<roblox />");
+
+  const noPublishDir = tempProject({ generateBlink: false });
+  fs.writeFileSync(path.join(noPublishDir, "game.rbxl"), "place");
+  await assert.rejects(
+    runCli(["publish"], {
+      projectDir: noPublishDir,
+      run: async () => {},
+      publishRequest: async () => {
+        throw new Error("publishRequest should not be called");
+      },
+    }),
+    /rovy-build\.publish is required/,
+  );
+
+  const noKeyDir = tempProject({
+    generateBlink: false,
+    publish: {
+      universeId: "10",
+      placeId: "20",
+      versionType: "Published",
+    },
+  });
+  fs.writeFileSync(path.join(noKeyDir, "game.rbxl"), "place");
+  await assert.rejects(
+    withEnv(
+      { ROBLOX_API_KEY: undefined, ROBLOX_OPEN_CLOUD_API_KEY: undefined },
+      () =>
+        runCli(["publish"], {
+          projectDir: noKeyDir,
+          run: async () => {},
+          publishRequest: async () => {
+            throw new Error("publishRequest should not be called");
+          },
+        }),
+    ),
+    /ROBLOX_API_KEY is required/,
+  );
+
+  const secret = "secret-publish-key";
+  await assert.rejects(
+    withEnv(
+      { ROBLOX_API_KEY: secret, ROBLOX_OPEN_CLOUD_API_KEY: undefined },
+      () =>
+        runCli(["publish"], {
+          projectDir: publishDir,
+          run: async () => {},
+          publishRequest: async () => ({
+            statusCode: 403,
+            body: `denied ${secret}`,
+          }),
+        }),
+    ),
+    (error) => {
+      assert.match(error.message, /place publish failed \(403\): denied <redacted>/);
+      assert.doesNotMatch(error.message, new RegExp(secret));
+      return true;
+    },
+  );
+
   const initDir = fs.mkdtempSync(path.join(os.tmpdir(), "rovy-build-init-"));
   fs.writeFileSync(
     path.join(initDir, "package.json"),
@@ -101,6 +233,7 @@ async function capture(argv, dir) {
   assert.equal(pkg["rovy-build"].current, "dev");
   assert.equal(pkg.scripts.build, "rovy build");
   assert.equal(pkg.scripts.generate, "rovy generate");
+  assert.equal(pkg.scripts.publish, "rovy publish");
 
   console.log("rovy-build tests OK");
 })().catch((error) => {

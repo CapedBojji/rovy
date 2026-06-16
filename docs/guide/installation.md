@@ -108,6 +108,11 @@ Keep build, environment, Rojo, boundary, and Blink settings in `package.json` un
   "rovy-build": {
     "current": "dev",
     "placeFile": "game.rbxl",
+    "publish": {
+      "universeId": "1234567890",
+      "placeId": "9876543210",
+      "versionType": "Published"
+    },
     "rbxtscArgs": ["--type", "game"],
     "rojoBuildArgs": ["build", "default.project.json", "-o", "game.rbxl"],
     "watchOnOpen": true,
@@ -153,7 +158,8 @@ project-local `node_modules/.bin` is on `PATH`:
     "watch": "rovy watch",
     "open": "rovy open",
     "start": "rovy start",
-    "stop": "rovy stop"
+    "stop": "rovy stop",
+    "publish": "rovy publish"
   }
 }
 ```
@@ -167,10 +173,16 @@ project-local `node_modules/.bin` is on `PATH`:
 | `rovy open`     | Opens `placeFile` in Roblox Studio. If `watchOnOpen` is not `false`, it also starts `rovy watch`.                                      |
 | `rovy start`    | Runs `rovy build`, then `rovy open`. Use this for the normal "build, open Studio, keep watching" loop.                                 |
 | `rovy stop`     | Stops tracked watch and Studio processes from `.rovy-build/*.pid`.                                                                     |
+| `rovy publish`  | Publishes the existing `placeFile` to `rovy-build.publish` through Roblox Open Cloud.                                                  |
 | `rovy init`     | Writes a starter `rovy-build` config and package scripts into the current `package.json`.                                              |
 
 `rovy watch` includes an interactive prompt. Type `help` in that prompt for
-available actions: `open`, `compile`, `generate`, `build`, `stop`, and `exit`.
+available actions: `open`, `compile`, `generate`, `build`, `publish`, `stop`,
+and `exit`.
+
+`rovy publish` requires `ROBLOX_API_KEY`, or `ROBLOX_OPEN_CLOUD_API_KEY` as a
+fallback. The API key must have the Roblox Open Cloud `universe-places:write`
+scope for the configured experience. Keep the key out of source control.
 
 The older `rovy-build` binary name still points at the same CLI, but examples and
 new docs use `rovy`.

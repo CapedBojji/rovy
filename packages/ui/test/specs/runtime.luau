@@ -103,19 +103,31 @@ return function(TS, t)
 			InputChanged = makeSignal(),
 			InputEnded = makeSignal(),
 			MouseLocation = _G.Vector2.new(0, 0),
+			PressedKeys = {},
+			MouseBehavior = _G.Enum.MouseBehavior.Default,
 		}
 		function service:GetMouseLocation()
 			return self.MouseLocation
 		end
+		function service:IsKeyDown(key)
+			return self.PressedKeys[key] == true
+		end
+		function service:SetKeyDown(key, down)
+			self.PressedKeys[key] = down == true
+		end
 		return service
 	end
 
-	local function makeInput(userInputType, x, y, keyCode)
-		return {
+	local function makeInput(userInputType, x, y, keyCode, deltaX, deltaY)
+		local input = {
 			UserInputType = userInputType,
 			KeyCode = keyCode or _G.Enum.KeyCode.Unknown,
 			Position = _G.Vector2.new(x or 0, y or 0),
 		}
+		if deltaX ~= nil or deltaY ~= nil then
+			input.Delta = _G.Vector2.new(deltaX or 0, deltaY or 0)
+		end
+		return input
 	end
 
 	local function firstDirectChild(instance, predicate)
@@ -367,19 +379,537 @@ return function(TS, t)
 					must("dragValue", function() RovyUi.dragValue({ initial = 1 }) end)
 					must("toggle", function() RovyUi.toggle("Toggle") end)
 					must("radioButton", function() RovyUi.radioButton("Radio") end)
-						must("selectableLabel", function() RovyUi.selectableLabel("Select") end)
-						must("clickableLabel", function() RovyUi.clickableLabel("ClickLabel") end)
-						must("collapsingHeader", function() RovyUi.collapsingHeader("Header", function() end) end)
-						must("editableImage", function() RovyUi.editableImage({ size = _G.Vector2.new(2, 2) }) end)
-						must("curveEditor", function() RovyUi.curveEditor({ width = 120, height = 80 }) end)
+					must("selectableLabel", function() RovyUi.selectableLabel("Select") end)
+					must("clickableLabel", function() RovyUi.clickableLabel("ClickLabel") end)
+					must("collapsingHeader", function() RovyUi.collapsingHeader("Header", function() end) end)
+					must("editableImage", function() RovyUi.editableImage({ size = _G.Vector2.new(2, 2) }) end)
+					must("curveEditor", function() RovyUi.curveEditor({ width = 120, height = 80 }) end)
+					must("viewportFrame", function()
+						local part = _G.Instance.new("Part")
+						RovyUi.viewportFrame({ width = 120, height = 80, camera = { cframe = _G.CFrame.new(0, 0, 8) } }, function()
+							RovyUi.viewportItem({ source = part })
+						end)
 					end)
 				end)
+			end)
 			local hasChildren = false
 			for _ in pairs(node.children) do
 				hasChildren = true
 				break
 			end
 			t.expect(hasChildren).toBeTruthy()
+			end)
+
+			t.it("renders portal children into the target instance and cleans them up", function()
+				RovyUi.__reset()
+				local gui = root()
+				local target = _G.Instance.new("Frame")
+				target.Name = "PortalTarget"
+				target.Parent = gui
+				local node = RovyUi.new(gui)
+
+				RovyUi.start(node, function()
+					RovyUi.window({ title = "Portal Host" }, function()
+						RovyUi.label("Host Label")
+						RovyUi.portal(target, function()
+							RovyUi.label("Portaled Label")
+						end)
+					end)
+				end)
+
+				local portaledLabel = findFirstDescendant(target, function(instance)
+					return instance.ClassName == "TextLabel" and instance.Text == "Portaled Label"
+				end)
+				local hostLabel = findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextLabel" and instance.Text == "Host Label"
+				end)
+
+				t.expect(portaledLabel).toBeDefined()
+				t.expect(portaledLabel.Parent).toBe(target)
+				t.expect(hostLabel).toBeDefined()
+				t.expect(hostLabel.Parent).never.toBe(target)
+
+				RovyUi.start(node, function()
+					RovyUi.window({ title = "Portal Host" }, function()
+						RovyUi.label("Host Label")
+					end)
+				end)
+
+				t.expect(portaledLabel.Destroyed).toBe(true)
+				t.expect(target.Destroyed).toBe(false)
+				t.expect(findFirstDescendant(target, function(instance)
+					return instance.ClassName == "TextLabel" and instance.Text == "Portaled Label"
+				end)).toBe(nil)
+			end)
+
+			t.it("skips portal children after an externally managed target is destroyed", function()
+				RovyUi.__reset()
+				local gui = root()
+				local target = _G.Instance.new("Frame")
+				target.Name = "ExternalPortalTarget"
+				target.Parent = gui
+				local node = RovyUi.new(gui)
+				local childRuns = 0
+
+				RovyUi.start(node, function()
+					RovyUi.portal(target, function()
+						childRuns += 1
+						RovyUi.label("Live Portal Child")
+					end)
+				end)
+
+				local portaledLabel = findFirstDescendant(target, function(instance)
+					return instance.ClassName == "TextLabel" and instance.Text == "Live Portal Child"
+				end)
+				t.expect(childRuns).toBe(1)
+				t.expect(portaledLabel).toBeDefined()
+				t.expect(portaledLabel.Parent).toBe(target)
+
+				target:Destroy()
+				RovyUi.start(node, function()
+					RovyUi.portal(target, function()
+						childRuns += 1
+						RovyUi.label("Should Not Render")
+					end)
+				end)
+
+				t.expect(childRuns).toBe(1)
+				t.expect(portaledLabel.Destroyed).toBe(true)
+				t.expect(findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextLabel" and instance.Text == "Should Not Render"
+				end)).toBe(nil)
+			end)
+
+			t.it("cleans general UI, viewport, and curve editor resources on unmount", function()
+				RovyUi.__reset()
+				_G.__rovyTestRuntime.resetConnections()
+				local services = _G.__rovyTestServices
+				table.clear(services.AssetService.CreatedEditableImages)
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local source = _G.Instance.new("Part")
+				source.Name = "CleanupPreviewPart"
+				local viewportHandle
+				local itemHandle
+				local curveHandle
+
+				RovyUi.start(node, function()
+					RovyUi.window({ title = "Cleanup Host" }, function()
+						RovyUi.label("General Cleanup Label")
+						RovyUi.button("General Cleanup Button")
+						viewportHandle = RovyUi.viewportFrame({
+							width = 120,
+							height = 80,
+							camera = { cframe = _G.CFrame.new(0, 0, 8) },
+						}, function()
+							itemHandle = RovyUi.viewportItem({ source = source })
+						end)
+						curveHandle = RovyUi.curveEditor({ width = 120, height = 80 }, function()
+							RovyUi.curvePath({
+								id = "cleanup-path",
+								commands = {
+									{ kind = "M", point = { x = 0, y = 0 } },
+									{ kind = "L", point = { x = 64, y = 32 } },
+								},
+							})
+						end)
+					end)
+				end)
+
+				local generalLabel = findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextLabel" and instance.Text == "General Cleanup Label"
+				end)
+				local generalButton = findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == "General Cleanup Button"
+				end)
+				local viewport = viewportHandle.instance()
+				local worldModel = viewportHandle.worldModel()
+				local camera = viewportHandle.camera()
+				local clone = itemHandle.clone()
+				local curveOverlay = findFirstDescendant(gui, function(instance)
+					return instance.Name == "CurveEditorInput"
+				end)
+				local curveCanvas = findFirstDescendant(gui, function(instance)
+					return instance.Name == "CurveEditorCanvas"
+				end)
+				local curveImage = services.AssetService.CreatedEditableImages[#services.AssetService.CreatedEditableImages]
+
+				t.expect(generalLabel).toBeDefined()
+				t.expect(generalButton).toBeDefined()
+				t.expect(viewport).toBeDefined()
+				t.expect(worldModel).toBeDefined()
+				t.expect(camera).toBeDefined()
+				t.expect(clone).toBeDefined()
+				t.expect(curveHandle).toBeDefined()
+				t.expect(curveOverlay).toBeDefined()
+				t.expect(curveCanvas).toBeDefined()
+				t.expect(curveImage).toBeDefined()
+
+				RovyUi.start(node, function() end)
+
+				t.expect(generalLabel.Destroyed).toBe(true)
+				t.expect(generalButton.Destroyed).toBe(true)
+				t.expect(viewport.Destroyed).toBe(true)
+				t.expect(worldModel.Destroyed).toBe(true)
+				t.expect(camera.Destroyed).toBe(true)
+				t.expect(clone.Destroyed).toBe(true)
+				t.expect(curveOverlay.Destroyed).toBe(true)
+				t.expect(curveCanvas.Destroyed).toBe(true)
+				t.expect(curveImage.Destroyed).toBe(true)
+				t.expect(source.Destroyed).toBe(false)
+				t.expect(_G.__rovyTestRuntime.liveConnectionCount()).toBe(0)
+			end)
+
+			t.it("renders cloned viewport items with a controlled camera", function()
+				RovyUi.__reset()
+				local gui = root()
+				local node = RovyUi.new(gui)
+				local source = _G.Instance.new("Part")
+				source.Name = "PreviewPart"
+				source.Size = _G.Vector3.new(2, 3, 4)
+				local cameraCFrame = _G.CFrame.new(1, 2, 12)
+				local frameHandle
+				local itemHandle
+
+				RovyUi.start(node, function()
+					frameHandle = RovyUi.viewportFrame({
+						width = 180,
+						height = 100,
+						camera = { cframe = cameraCFrame, fieldOfView = 42 },
+					}, function()
+						itemHandle = RovyUi.viewportItem({
+							source = source,
+							pivot = _G.CFrame.new(5, 6, 7),
+							scale = 2,
+						})
+					end)
+				end)
+
+				local viewport = frameHandle.instance()
+				local worldModel = frameHandle.worldModel()
+				local camera = frameHandle.camera()
+				local clone = itemHandle.clone()
+				t.expect(viewport).toBeDefined()
+				t.expect(worldModel).toBeDefined()
+				t.expect(camera).toBeDefined()
+				t.expect(clone).toBeDefined()
+				t.expect(viewport.ClassName).toBe("ViewportFrame")
+				t.expect(worldModel.ClassName).toBe("WorldModel")
+				t.expect(camera.ClassName).toBe("Camera")
+				t.expect(viewport.CurrentCamera).toBe(camera)
+				t.expect(camera.CFrame).toBe(cameraCFrame)
+				t.expect(camera.FieldOfView).toBe(42)
+				t.expect(clone).never.toBe(source)
+				t.expect(clone.Name).toBe("PreviewPart")
+				t.expect(clone.Parent).toBe(worldModel)
+				t.expect(source.Parent).toBe(nil)
+				t.expect(clone.CFrame.Position.X).toBe(5)
+				t.expect(clone.Size.X).toBe(4)
+				t.expect(frameHandle.itemCount()).toBe(1)
+			end)
+
+			t.it("reconciles dynamic viewport item scopes and destroys stale clones", function()
+				RovyUi.__reset()
+				local gui = root()
+				local node = RovyUi.new(gui)
+				local first = _G.Instance.new("Part")
+				first.Name = "First"
+				local second = _G.Instance.new("Part")
+				second.Name = "Second"
+				local items = { first, second }
+				local frameHandle
+				local secondHandle
+
+				local function render()
+					RovyUi.start(node, function()
+						frameHandle = RovyUi.viewportFrame({ camera = { cframe = _G.CFrame.new(0, 0, 10) } }, function()
+							for _, item in ipairs(items) do
+								RovyUi.useKey(item.Name)
+								local handle = RovyUi.viewportItem({ source = item })
+								if item == second then secondHandle = handle end
+							end
+						end)
+					end)
+				end
+
+				render()
+				local firstClone = frameHandle.worldModel():FindFirstChild("First")
+				local secondClone = secondHandle.clone()
+				t.expect(frameHandle.itemCount()).toBe(2)
+				t.expect(firstClone).toBeDefined()
+				t.expect(secondClone).toBeDefined()
+
+				items = { second }
+				render()
+				t.expect(frameHandle.itemCount()).toBe(1)
+				t.expect(firstClone.Destroyed).toBe(true)
+				t.expect(secondHandle.clone()).toBe(secondClone)
+				t.expect(secondClone.Parent).toBe(frameHandle.worldModel())
+			end)
+
+			t.it("uses an auto fallback camera when viewport items omit camera options", function()
+				RovyUi.__reset()
+				local gui = root()
+				local node = RovyUi.new(gui)
+				local source = _G.Instance.new("Part")
+				source.Size = _G.Vector3.new(4, 4, 4)
+				local frameHandle
+
+				RovyUi.start(node, function()
+					frameHandle = RovyUi.viewportFrame(function()
+						RovyUi.viewportItem({ source = source })
+					end)
+				end)
+
+				t.expect(frameHandle.itemCount()).toBe(1)
+				t.expect(frameHandle.camera().CFrame).toBeDefined()
+				t.expect(frameHandle.camera().FieldOfView).toBe(35)
+			end)
+
+			t.it("requires viewportItem to be rendered inside viewportFrame", function()
+				RovyUi.__reset()
+				local source = _G.Instance.new("Part")
+				t.expect(function()
+					run(function()
+						RovyUi.viewportItem({ source = source })
+					end)
+				end).toThrow()
+			end)
+
+			t.it("captures viewport frame input, reports drag deltas, and releases on mouse up", function()
+				RovyUi.__reset()
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local captureEvents = {}
+				local dragEvents = {}
+				local frameHandle
+
+				RovyUi.start(node, function()
+					frameHandle = RovyUi.viewportFrame({
+						width = 120,
+						height = 80,
+						captureInput = true,
+						camera = { cframe = _G.CFrame.new(0, 0, 8) },
+						onCaptureChanged = function(captured)
+							table.insert(captureEvents, captured)
+						end,
+						onDrag = function(delta, total)
+							table.insert(dragEvents, { delta = delta, total = total })
+						end,
+					})
+				end)
+
+				local capture = findFirstDescendant(gui, function(instance)
+					return instance.Name == "ViewportFrameInput"
+				end)
+				t.expect(capture).toBeDefined()
+				t.expect(capture.Visible).toBe(true)
+				t.expect(capture.InputSink).toBe(_G.Enum.InputSink.All)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 10, 12))
+				t.expect(frameHandle.captured()).toBe(true)
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 18, 17))
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 25, 19))
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 25, 19))
+				t.expect(frameHandle.captured()).toBe(false)
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 40, 40))
+
+				t.expect(#captureEvents).toBe(2)
+				t.expect(captureEvents[1]).toBe(true)
+				t.expect(captureEvents[2]).toBe(false)
+				t.expect(#dragEvents).toBe(2)
+				t.expect(dragEvents[1].delta.X).toBe(8)
+				t.expect(dragEvents[1].delta.Y).toBe(5)
+				t.expect(dragEvents[1].total.X).toBe(8)
+				t.expect(dragEvents[1].total.Y).toBe(5)
+				t.expect(dragEvents[2].delta.X).toBe(7)
+				t.expect(dragEvents[2].delta.Y).toBe(2)
+				t.expect(dragEvents[2].total.X).toBe(15)
+				t.expect(dragEvents[2].total.Y).toBe(7)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 20, 20))
+				t.expect(frameHandle.captured()).toBe(true)
+				frameHandle.releaseInput()
+				t.expect(frameHandle.captured()).toBe(false)
+			end)
+
+			t.it("uncaptures viewport frame input when the widget unmounts mid-drag", function()
+				RovyUi.__reset()
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local captureEvents = {}
+
+				RovyUi.start(node, function()
+					RovyUi.viewportFrame({
+						captureInput = true,
+						camera = { cframe = _G.CFrame.new(0, 0, 8) },
+						onCaptureChanged = function(captured)
+							table.insert(captureEvents, captured)
+						end,
+					})
+				end)
+
+				local capture = findFirstDescendant(gui, function(instance)
+					return instance.Name == "ViewportFrameInput"
+				end)
+				t.expect(capture).toBeDefined()
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 10, 12))
+				t.expect(captureEvents[1]).toBe(true)
+
+				RovyUi.start(node, function() end)
+
+				t.expect(captureEvents[2]).toBe(false)
+				t.expect(capture.Destroyed).toBe(true)
+			end)
+
+			t.it("toggles viewport free camera with Ctrl+Shift click and moves while captured", function()
+				RovyUi.__reset()
+				_G.__rovyTestServices.ContextActionService:Reset()
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local captureEvents = {}
+				local frameHandle
+
+				local function render()
+					RovyUi.start(node, function()
+						frameHandle = RovyUi.viewportFrame({
+							width = 120,
+							height = 80,
+							freeCamera = { speed = 60, lookSensitivity = 0.2 },
+							camera = { cframe = _G.CFrame.new(0, 2, 8) },
+							onCaptureChanged = function(captured)
+								table.insert(captureEvents, captured)
+							end,
+						})
+					end)
+				end
+
+				render()
+				local capture = findFirstDescendant(gui, function(instance)
+					return instance.Name == "ViewportFrameInput"
+				end)
+				t.expect(capture).toBeDefined()
+				t.expect(capture.Visible).toBe(true)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 10, 12))
+				t.expect(frameHandle.captured()).toBe(false)
+
+				inputService:SetKeyDown(_G.Enum.KeyCode.LeftControl, true)
+				inputService:SetKeyDown(_G.Enum.KeyCode.LeftShift, true)
+				capture.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 10, 12))
+				t.expect(frameHandle.captured()).toBe(true)
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 10, 12))
+				t.expect(frameHandle.captured()).toBe(true)
+				t.expect(#captureEvents).toBe(1)
+				t.expect(captureEvents[1]).toBe(true)
+				t.expect(countMap(_G.__rovyTestServices.ContextActionService.BoundActions)).toBe(1)
+				capture.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 10, 12))
+				t.expect(frameHandle.captured()).toBe(true)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 20, 12))
+				t.expect(frameHandle.captured()).toBe(false)
+				t.expect(captureEvents[2]).toBe(false)
+				t.expect(countMap(_G.__rovyTestServices.ContextActionService.BoundActions)).toBe(0)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 30, 12))
+				t.expect(frameHandle.captured()).toBe(true)
+				t.expect(captureEvents[3]).toBe(true)
+				t.expect(countMap(_G.__rovyTestServices.ContextActionService.BoundActions)).toBe(1)
+				local boundAction = firstMapValue(_G.__rovyTestServices.ContextActionService.BoundActions)
+				t.expect(boundAction.priority).toBe(10000)
+				t.expect(boundAction.callback("free-camera", _G.Enum.UserInputState.Begin, makeInput(_G.Enum.UserInputType.Keyboard, 0, 0, _G.Enum.KeyCode.W))).toBe(_G.Enum.ContextActionResult.Sink)
+				local hasWKey = false
+				local hasForwardAction = false
+				for _, input in ipairs(boundAction.inputs) do
+					if input == _G.Enum.KeyCode.W then hasWKey = true end
+					if input == _G.Enum.PlayerActions.CharacterForward then hasForwardAction = true end
+				end
+				t.expect(hasWKey).toBe(true)
+				t.expect(hasForwardAction).toBe(true)
+
+				local startZ = frameHandle.camera().CFrame.Position.Z
+				inputService:SetKeyDown(_G.Enum.KeyCode.W, true)
+				inputService:SetKeyDown(_G.Enum.KeyCode.LeftShift, false)
+				render()
+				local movedZ = frameHandle.camera().CFrame.Position.Z
+				t.expect(movedZ < startZ).toBeTruthy()
+
+				inputService:SetKeyDown(_G.Enum.KeyCode.W, false)
+				inputService:SetKeyDown(_G.Enum.KeyCode.LeftShift, true)
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 40, 12))
+				t.expect(frameHandle.captured()).toBe(false)
+				t.expect(captureEvents[4]).toBe(false)
+				t.expect(countMap(_G.__rovyTestServices.ContextActionService.BoundActions)).toBe(0)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton1, 50, 12))
+				t.expect(frameHandle.captured()).toBe(true)
+				t.expect(countMap(_G.__rovyTestServices.ContextActionService.BoundActions)).toBe(1)
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.Keyboard, 0, 0, _G.Enum.KeyCode.Escape))
+				t.expect(frameHandle.captured()).toBe(false)
+				t.expect(countMap(_G.__rovyTestServices.ContextActionService.BoundActions)).toBe(0)
+			end)
+
+			t.it("captures viewport free camera from a control and releases with Escape", function()
+				RovyUi.__reset()
+				_G.__rovyTestServices.ContextActionService:Reset()
+				local gui = root()
+				local inputService = makeInputService()
+				local node = RovyUi.new(gui, { inputService = inputService })
+				local captureEvents = {}
+				local dragEvents = {}
+				local frameHandle
+
+				RovyUi.start(node, function()
+					frameHandle = RovyUi.viewportFrame({
+						width = 120,
+						height = 80,
+						freeCamera = true,
+						camera = { cframe = _G.CFrame.new(0, 2, 8) },
+						onCaptureChanged = function(captured)
+							table.insert(captureEvents, captured)
+						end,
+						onDrag = function(delta, total, input)
+							table.insert(dragEvents, { delta = delta, total = total, input = input })
+						end,
+					})
+				end)
+
+				t.expect(frameHandle.captured()).toBe(false)
+				frameHandle.captureInput()
+				t.expect(frameHandle.captured()).toBe(true)
+				t.expect(captureEvents[1]).toBe(true)
+				t.expect(countMap(_G.__rovyTestServices.ContextActionService.BoundActions)).toBe(1)
+				t.expect(inputService.MouseBehavior).toBe(_G.Enum.MouseBehavior.Default)
+
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 30, 20))
+				t.expect(#dragEvents).toBe(0)
+
+				inputService.InputBegan:Fire(makeInput(_G.Enum.UserInputType.MouseButton2, 12, 10))
+				t.expect(inputService.MouseBehavior).toBe(_G.Enum.MouseBehavior.LockCurrentPosition)
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 12, 10, nil, 13, 8))
+				t.expect(#dragEvents).toBe(1)
+				t.expect(dragEvents[1].delta.X).toBe(13)
+				t.expect(dragEvents[1].delta.Y).toBe(8)
+				t.expect(dragEvents[1].total.X).toBe(13)
+				t.expect(dragEvents[1].total.Y).toBe(8)
+				t.expect(frameHandle.captured()).toBe(true)
+
+				inputService.InputEnded:Fire(makeInput(_G.Enum.UserInputType.MouseButton2, 12, 10))
+				t.expect(inputService.MouseBehavior).toBe(_G.Enum.MouseBehavior.Default)
+				inputService.InputChanged:Fire(makeInput(_G.Enum.UserInputType.MouseMovement, 40, 30, nil, 20, 20))
+				t.expect(#dragEvents).toBe(1)
+				t.expect(frameHandle.captured()).toBe(true)
+
+				local boundAction = firstMapValue(_G.__rovyTestServices.ContextActionService.BoundActions)
+				t.expect(boundAction.callback("free-camera", _G.Enum.UserInputState.Begin, makeInput(_G.Enum.UserInputType.Keyboard, 0, 0, _G.Enum.KeyCode.Escape))).toBe(_G.Enum.ContextActionResult.Sink)
+				t.expect(frameHandle.captured()).toBe(false)
+				t.expect(inputService.MouseBehavior).toBe(_G.Enum.MouseBehavior.Default)
+				t.expect(captureEvents[2]).toBe(false)
+				t.expect(countMap(_G.__rovyTestServices.ContextActionService.BoundActions)).toBe(0)
 			end)
 
 			t.it("snaps slider value to configured step", function()
