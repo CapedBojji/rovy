@@ -219,14 +219,12 @@ Lowercase service names like `workspace/...` also work.
 
 ## Example
 
-The zombie example includes the inspector on the client, toggles it from an
-input binding, and marks wave/score resources with `@inspect` so the frame
-recorder can show gameplay-resource diffs. See [Example Projects](/examples/)
-for the runnable project.
+Use the inspector from a client UI surface, toggle it from an input binding,
+and mark gameplay resources with `@inspect` so the frame recorder can show
+resource diffs during local playtesting.
 
 ## See also
 
 - [Packages Overview](/packages/packages.md)
 - [Networking](/packages/networking.md)
 - [Rovy UI](/packages/ui)
-- [Examples](/examples/)

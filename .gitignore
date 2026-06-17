@@ -10,12 +10,9 @@
 .DS_Store
 **/*/**.rbxl
 *.rbxl.lock
-/examples/**/**/node_modules
-/examples/**/**/out
 /build
 .studio.pid
 .studio*.pid
 .rovy
 **/**/.rovy-build
 **/**/sourcemap.json
-

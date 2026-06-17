@@ -136,5 +136,3 @@ class MovePlayersOnly {
 - [Queries](/concepts/queries) — terms, filters, change detection.
 - [Events](/concepts/events) and [Observers](/concepts/observers) — reactive logic.
 - [Schedules](/concepts/schedules) — ordering systems with sets and flush points.
-- [Combat System example](/examples/combat-system) — a full worked domain.
-- [Example projects](/examples/) — runnable games in the repo.

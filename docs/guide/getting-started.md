@@ -75,4 +75,3 @@ Roblox/Flamework signals, and the networking and UI packages.
 
 - [Installation](/guide/installation) — full project setup.
 - [Your First System](/guide/your-first-system) — a hands-on walkthrough.
-- [Examples](/examples/) — runnable example projects.

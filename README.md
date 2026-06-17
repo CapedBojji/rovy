@@ -88,7 +88,6 @@ Full setup: [Installation guide](https://capedbojji.github.io/rovy/guide/install
 
 ```
 packages/      core, networking, ui, transformer
-examples/      runnable example projects
 docs/          VitePress documentation site
 ```
 
@@ -99,7 +98,6 @@ pnpm install
 pnpm build           # build all packages
 pnpm test            # run all package tests
 pnpm docs:dev        # run the docs site locally
-pnpm build:examples  # build the example projects
 ```
 
 Requires Node.js >=22.13 and pnpm 11.

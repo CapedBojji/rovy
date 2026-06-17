@@ -23,13 +23,6 @@ BUILD_DIRS=(
   "$ROOT/packages/networking/out"
   "$ROOT/packages/ui/out"
   "$ROOT/packages/transformer/dist"
-  "$ROOT/examples/plugin-example/out"
-  "$ROOT/examples/game-template/out"
-  "$ROOT/examples/roblox-ts-game/out"
-  "$ROOT/examples/roblox-ts-game/build"
-  "$ROOT/examples/ui-inventory-game/out"
-  "$ROOT/examples/zombie-game/out"
-  "$ROOT/examples/zombie-game/build"
 )
 
 for dir in "${BUILD_DIRS[@]}"; do

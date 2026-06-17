@@ -18,7 +18,7 @@ Roblox and Flamework APIs expose signals and callback surfaces like:
 - `Player.CharacterAdded`
 - `UserInputService.InputBegan`
 
-Today those sources usually get wired in ad hoc boot code, then some gameplay translation can drift into `@observer` handlers even though the real source was not a Rovy event to begin with. The zombie-game example shows this tension: the engine hooks live outside the ECS, but fire/restart intent handling still wants a more system-shaped bridge.
+Today those sources usually get wired in ad hoc boot code, then some gameplay translation can drift into `@observer` handlers even though the real source was not a Rovy event to begin with. Collectors move those external hooks to an explicit ingress boundary while keeping gameplay translation in scheduled systems.
 
 ## Mental model
 
@@ -137,7 +137,7 @@ Collected payloads are plain DTOs by default, not `@event` classes. Once a syste
 
 ## Worked example: Flamework networking
 
-This is the main missing bridge in the current zombie-game shape.
+This is the main bridge for projects that receive gameplay intents through an external networking layer.
 
 ```ts
 @collect
@@ -214,9 +214,9 @@ class ToolActivatedCollect extends Collector<ToolActivation> {
 
 The collector owns the Roblox hookups; the system owns the gameplay meaning.
 
-## Zombie-game migration sketch
+## Migration sketch
 
-The current zombie-game split is:
+For a project with external engine and networking hooks, the split usually starts as:
 
 - engine and networking hooks live in `main.server.ts` / `main.client.ts`
 - some gameplay intent translation still lands in `@observer` handlers like fire/restart handling

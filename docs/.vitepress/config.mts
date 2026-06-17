@@ -28,7 +28,6 @@ export default defineConfig({
           { text: "Custom Widgets", link: "/packages/ui/custom-widgets" },
         ],
       },
-      { text: "Examples", link: "/examples/" },
       { text: "Reference", link: "/reference/api" },
     ],
 
@@ -94,14 +93,6 @@ export default defineConfig({
             ],
           },
           { text: "World Inspector", link: "/packages/world-inspector" },
-        ],
-      },
-      {
-        text: "Examples",
-        collapsed: false,
-        items: [
-          { text: "Example Projects", link: "/examples/" },
-          { text: "Combat System", link: "/examples/combat-system" },
         ],
       },
       {

@@ -246,7 +246,7 @@ This is why two installed packages can both have a `Plugin` class or similar sou
 Plugins can still inject runtime handles via `insertParam`. Systems receive them as `Res<Handle>`:
 
 ```ts
-export const GAME_CLOCK_PARAM = "@rovy/example-gameclock/GameClock";
+export const GAME_CLOCK_PARAM = "@acme/game-clock/GameClock";
 
 export class GameClock {
   tick = 0;
@@ -264,7 +264,7 @@ export class GameClockPlugin implements Plugin {
 Consumer system:
 
 ```ts
-import { GameClock } from "@rovy/example-gameclock";
+import { GameClock } from "@acme/game-clock";
 
 @system({ schedule: Update })
 class ReadClock {
