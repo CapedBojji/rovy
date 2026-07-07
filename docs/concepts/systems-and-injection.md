@@ -4,6 +4,35 @@
 
 Systems are classes decorated with `@system`. The decorator carries scheduling config. The transformer reads param types on `run`, builds query descriptors, and injects a `rovy.__system` registration after the class. No manual `addSystems` calls.
 
+## Server and client guards
+
+Use `@server` or `@client` on a system, observer, or monitor when the module lives
+in shared code but should only register on one side. This is useful for plugins
+that expose shared modules but include systems with server-only or client-only
+behavior.
+
+```ts
+import { client, server, system } from "@rovy/core";
+
+@server
+@system({ schedule: Update })
+class SaveProfiles {
+	run(writer: DocumentWriter<typeof PlayerProfile>) {}
+}
+
+@client
+@system({ schedule: Update })
+class UpdateHud {
+	run(clock: Res<GameClock>) {}
+}
+```
+
+The transformer keeps the class itself in the compiled module, but wraps the
+generated `rovy.__system(...)` registration and any query descriptors in a
+`RunService` check. A `@server` system does not register on the client, and a
+`@client` system does not register on the server. `@server` and `@client` cannot
+be used together on the same class.
+
 ## Sets
 
 Sets are classes that extend `SystemSet`. `extends` is the type marker — TS enforces only `SystemSet` subclasses pass as `set:`. Optional `@set` decorator adds a debug label; not required.
@@ -273,6 +302,14 @@ rovy.__system(MoveUnits, {
 		{ kind: "res", ctor: BattleClock },
 	],
 });
+```
+
+With `@server` or `@client`, the injected registration is guarded:
+
+```ts
+if (game.GetService("RunService").IsServer()) {
+	rovy.__system(SaveProfiles, { ... });
+}
 ```
 
 App boot:

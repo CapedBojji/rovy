@@ -13,6 +13,8 @@ export {
 	inspect,
 	prefab,
 	plugin,
+	server,
+	client,
 	event,
 	system,
 	observer,

@@ -49,6 +49,12 @@ Install datastore only when you need persistent documents:
 npm i @rovy/datastore
 ```
 
+Install Vide only when you author reactive game UI with Vide:
+
+```sh
+npm i @rovy/vide @rbxts/vide
+```
+
 Install UI only when you author widgets:
 
 ```sh
@@ -66,6 +72,7 @@ npm i @rovy/world-inspector
 | `@rovy/core`            | Decorators, macros, types, **and the packaged runtime**        | `import` it and write code                  |
 | `@rovy/networking`      | `@netEvent` authoring surface + runtime handles                | `import` when using net events              |
 | `@rovy/datastore`       | Persistent document declarations + reader/writer/opener handles | `import` when using datastore documents     |
+| `@rovy/vide`            | Reactive Vide view integration for gameplay UI                 | `import` `@view` and `mountView`            |
 | `@rovy/ui`              | Function-first widget/render runtime                           | `import` widget helpers                     |
 | `@rovy/world-inspector` | In-game ECS inspection and editing plugin                      | `import` when embedding the debug inspector |
 | `rovy-transformer`      | roblox-ts compiler transformer plugin                          | List it in `tsconfig.json`                  |
@@ -184,6 +191,7 @@ ran (no untransformed-macro error at startup). Continue to
 ## See also
 
 - [Packages Overview](/packages/packages) — full package breakdown.
+- [Rovy Vide](/packages/vide) — reactive Vide views over Rovy ECS state.
 - [Datastore](/packages/datastore) — typed persistent documents.
 - [World Inspector](/packages/world-inspector) — in-game ECS inspection and editing.
 - [Transformer](/runtime/transformer) — build-time duty list.

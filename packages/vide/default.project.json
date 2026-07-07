@@ -1,0 +1,9 @@
+{
+  "name": "vide",
+  "tree": {
+    "$className": "Folder",
+    "out": {
+      "$path": "out"
+    }
+  }
+}

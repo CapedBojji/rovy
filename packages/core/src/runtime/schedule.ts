@@ -54,8 +54,8 @@ export class Scheduler {
 	makeWriter!: (registry: EventRegistry, event: Ctor) => EventWriterHandle;
 	/** Built-in per-run schedule metadata resource (set by App after finalize). */
 	scheduleContext!: ScheduleContext;
-	/** Monitor reconcile, run after every set-boundary flush (set by App). */
-	onFlush?: () => void;
+	/** Flush listeners, run after every set-boundary flush (set by App/packages). */
+	private readonly flushListeners = new Array<{ active: boolean; callback: () => void }>();
 
 	constructor(
 		private world: RovyWorld,
@@ -187,14 +187,14 @@ export class Scheduler {
 				}
 			}
 			this.flushCommands(); // set boundary
-			if (this.onFlush !== undefined) this.onFlush(); // monitor reconcile
+			this.notifyFlushListeners();
 		}
 
 		// final flush + reconcile: trailing commands from the last set's
 		// reconcile (e.g. a monitor onEnter despawn) must apply this run, even
 		// when later sets are empty/skipped.
 		this.flushCommands();
-		if (this.onFlush !== undefined) this.onFlush();
+		this.notifyFlushListeners();
 
 		this.depth -= 1;
 		if (this.depth === 0) {
@@ -212,6 +212,20 @@ export class Scheduler {
 		const lifecycle = this.world.lifecycle;
 		if (lifecycle !== undefined) lifecycle.withBatch(() => flush(this.commands));
 		else flush(this.commands);
+	}
+
+	onFlush(callback: () => void): () => void {
+		const listener = { active: true, callback };
+		this.flushListeners.push(listener);
+		return () => {
+			listener.active = false;
+		};
+	}
+
+	private notifyFlushListeners(): void {
+		for (const listener of this.flushListeners) {
+			if (listener.active) listener.callback();
+		}
 	}
 
 	/** Stable topological sort by after/before within a set. */

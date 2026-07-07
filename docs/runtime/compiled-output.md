@@ -10,7 +10,15 @@ roblox-ts compiles TS to Luau. Decorators and type annotations are erased. The t
 
 These calls run as **module side effects** when the module is required. `rovy.loadPaths(...)` forces the requires; `app.start()` finalizes. No central manifest module.
 
-`@rovy/ui` widget lowering follows the same idea: source authoring stays in TypeScript, the transformer injects registration/wrapping code, and later plain widget calls carry stable callsite identity. See [Rovy UI](/packages/ui).
+`@server` and `@client` are compile-time guards for shared modules. When present
+on a system, observer, or monitor, the transformer keeps the class emission but
+wraps the generated registration side effects in `RunService:IsServer()` or
+`RunService:IsClient()`. The wrong side can require the module without registering
+that system.
+
+`@rovy/vide` view lowering follows the same idea: source authoring stays in TypeScript, the transformer injects `rovyVide.__view(...)` metadata and any required core query descriptors, and runtime mounting stays explicit through `mountView(...)`. See [Rovy Vide](/packages/vide).
+
+`@rovy/ui` widget lowering also follows the same idea: source authoring stays in TypeScript, the transformer injects registration/wrapping code, and later plain widget calls carry stable callsite identity. See [Rovy UI](/packages/ui).
 
 ---
 
@@ -140,6 +148,43 @@ rovy.__prefab(SlimePrefab, {
 ```
 
 Unlike systems, prefab registration does not include schedule/set metadata. It only carries the stable id plus the lowered `build(...)` param descriptor list.
+
+---
+
+## Server/client guarded systems
+
+```ts
+@server
+@system({ schedule: Update })
+class DrainServerInbox {
+	run(events: EventReader<PlayerJoined>) {}
+}
+```
+
+Compiled shape:
+
+```luau
+local DrainServerInbox = {}
+DrainServerInbox.__index = DrainServerInbox
+function DrainServerInbox.new()
+    return setmetatable({}, DrainServerInbox)
+end
+
+if game:GetService("RunService"):IsServer() then
+    rovy.__system(DrainServerInbox, {
+        id = "src/shared/plugins/profile/DrainServerInbox",
+        schedule = Update,
+        after = {},
+        before = {},
+        params = {
+            { kind = "eventReader", ctor = PlayerJoined },
+        },
+    })
+end
+```
+
+`@client` emits the same shape with `IsClient()`. Query descriptors lowered from
+guarded system params are emitted inside the same guard.
 
 ---
 

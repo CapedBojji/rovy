@@ -46,6 +46,8 @@ import {
 	relation,
 	rovy,
 	schedule,
+	server,
+	client,
 	system,
 	trait,
 	plugin,
@@ -72,6 +74,7 @@ import {
 		rovyData,
 	} from "@rovy/datastore";
 	import RovyUi, { Style, StyleScope, button, scope, useEffect, useInstance, useState } from "@rovy/ui";
+	import { ViewContext, ViewMonitor, view, rovyVide } from "@rovy/vide";
 	`;
 
 runCase("bare decorators inject registry calls", () => {
@@ -960,6 +963,47 @@ class ProfileSystem {
 	assert.match(result.printed, /eventCtor\("changed", "src\/main\/PlayerProfile"\)/);
 });
 
+runCase("@server/@client guard system registration and lowered params", () => {
+	const serverResult = compileFixture(`
+${header}
+@component class Unit {}
+@schedule class Update {}
+@server
+@system({ schedule: Update })
+class ServerSystem {
+	run(units: Query<[Entity, Unit]>) {}
+}
+`);
+	assertNoDiagnostics(serverResult, "server system guard");
+	assert.match(serverResult.printed, /class ServerSystem/);
+	assert.match(serverResult.printed, /if \(game\.GetService\("RunService"\)\.IsServer\(\)\) \{ rovy\.__query/);
+	assert.match(serverResult.printed, /__system\(ServerSystem/);
+
+	const clientResult = compileFixture(`
+${header}
+@schedule class Update {}
+@client
+@system({ schedule: Update })
+class ClientSystem {
+	run() {}
+}
+`);
+	assertNoDiagnostics(clientResult, "client system guard");
+	assert.match(clientResult.printed, /if \(game\.GetService\("RunService"\)\.IsClient\(\)\) \{ rovy\.__system\(ClientSystem/);
+
+	const invalid = compileFixture(`
+${header}
+@schedule class Update {}
+@server
+@client
+@system({ schedule: Update })
+class ConfusedSystem {
+	run() {}
+}
+`);
+	assert.match(invalid.diagnostics.join("\n"), /@server and @client cannot be used on the same class/);
+});
+
 runCase("traits and pairs lower in query descriptors and trait macro rewrites", () => {
 	const result = compileFixture(`
 ${header}
@@ -1084,6 +1128,161 @@ class HealthMonitor {
 	assert.match(result.printed, /__system\(DrainSystem, \{[\s\S]*kind: "collect", ctor: FireInbox/);
 	assert.match(result.printed, /__observer\(DamageObserver, \{[\s\S]*kind: "event"[\s\S]*kind: "collect", ctor: FireInbox/);
 	assert.match(result.printed, /__monitor\(HealthMonitor, \{[\s\S]*kind: "term", index: 1[\s\S]*kind: "collect", ctor: FireInbox/);
+});
+
+runCase("@view root registration lowers to rovyVide registry", () => {
+	const result = compileFixture(`
+${header}
+@view()
+class HudView {
+	render(ctx: ViewContext) {}
+}
+`);
+	assertNoDiagnostics(result, "view root lowering");
+	assert.match(result.printed, /from "@rovy\/vide"/);
+	assert.match(result.printed, /__view\(HudView, \{ id: "src\/main@HudView", methods: \["render"\], params: \[\s*\{ kind: "context" \}\s*\] \}\)/);
+});
+
+runCase("@view render Query param lowers to reactive query descriptor", () => {
+	const result = compileFixture(`
+${header}
+@component class Health {}
+@view()
+class HudView {
+	render(health: Query<[Health]>) {}
+}
+`);
+	assertNoDiagnostics(result, "view query param lowering");
+	assert.match(result.printed, /__query\(\{ id: "src\/main@HudView:0"/);
+	assert.match(result.printed, /__view\(HudView, \{[\s\S]*params: \[\s*\{ kind: "query", handle: "src\/main@HudView:0" \}\s*\]/);
+});
+
+runCase("@view render ViewMonitor param lowers to vide-owned monitor descriptor", () => {
+	const result = compileFixture(`
+${header}
+@component class Health {}
+@component class Player {}
+@view()
+class HudView {
+	render(health: ViewMonitor<[Health], With<Player>>) {}
+}
+`);
+	assertNoDiagnostics(result, "view monitor param lowering");
+	assert.match(result.printed, /__query\(\{ id: "src\/main@HudView:0:monitor"/);
+	assert.match(result.printed, /kind: "viewMonitor", handle: "src\/main@HudView:0:monitor"/);
+	assert.match(result.printed, /filters: \{ with: \[Player\] \}/);
+});
+
+runCase("@view render supports full system-style injection metadata", () => {
+	const result = compileFixture(`
+${header}
+@component class Health {}
+@resource class Clock { constructor(public tick = 0) {} }
+@event() class DamageTaken {}
+@view()
+class HudView {
+	render(
+		commands: Commands,
+		world: World,
+		clock: Res<Clock>,
+		clockMut: ResMut<Clock>,
+		maybeClock: OptRes<Clock>,
+		damage: EventReader<DamageTaken>,
+		writer: EventWriter<DamageTaken>,
+		local: Local<{ open: boolean }>,
+		health: Query<[Health]>,
+		ctx: ViewContext,
+	) {}
+}
+`);
+	assertNoDiagnostics(result, "view full injection lowering");
+	assert.match(result.printed, /kind: "commands"/);
+	assert.match(result.printed, /kind: "world"/);
+	assert.match(result.printed, /kind: "res", ctor: Clock/);
+	assert.match(result.printed, /kind: "resMut", ctor: Clock/);
+	assert.match(result.printed, /kind: "optRes", ctor: Clock/);
+	assert.match(result.printed, /kind: "eventReader", ctor: DamageTaken/);
+	assert.match(result.printed, /kind: "eventWriter", ctor: DamageTaken/);
+	assert.match(result.printed, /kind: "local", index: 0/);
+	assert.match(result.printed, /kind: "query", handle: "src\/main@HudView:8"/);
+	assert.match(result.printed, /kind: "context"/);
+});
+
+runCase("@view match option is rejected in favor of render params", () => {
+	const result = compileFixture(`
+${header}
+@component class Health {}
+@component class Player {}
+@view({ match: query<[Entity, Health], With<Player>>() })
+class HealthRowView {
+	render(ctx: ViewContext) {}
+}
+`);
+	assert.match(result.diagnostics.join("\n"), /@view match is not supported/);
+	assert.doesNotMatch(result.printed, /__query\(\{ id: "src\/main@HealthRowView:match"/);
+	assert.doesNotMatch(result.printed, /match: "src\/main@HealthRowView:match"/);
+	assert.match(result.printed, /methods: \["render"\]/);
+});
+
+runCase("@view events map is rejected in favor of render params", () => {
+	const result = compileFixture(`
+${header}
+@event() class DamageTaken {}
+@view({ events: { damage: DamageTaken } })
+class CombatFeedView {
+	render(ctx: ViewContext) {}
+	damage(event: DamageTaken, ctx: ViewContext) {}
+}
+`);
+	assert.match(result.diagnostics.join("\n"), /@view events are not supported/);
+	assert.doesNotMatch(result.printed, /events: \{ damage: DamageTaken \}/);
+	assert.match(result.printed, /methods: \["render"\]/);
+});
+
+runCase("@view requires render", () => {
+	const result = compileFixture(`
+${header}
+@view()
+class BrokenView {}
+`);
+	assert.match(result.diagnostics.join("\n"), /@view classes require render/);
+});
+
+runCase("query macro lowers inside view render for ctx.query", () => {
+	const result = compileFixture(`
+${header}
+@component class Health {}
+@component class Mana {}
+@view()
+class HudView {
+	render(ctx: ViewContext) {
+		const health = ctx.query(query<[Entity, Health]>());
+		const mana = ctx.query(query<[Entity, Mana]>());
+		return { health, mana };
+	}
+}
+`);
+	assertNoDiagnostics(result, "view ctx query lowering");
+	assert.match(result.printed, /ctx\.query\("src\/main:query:0"\)/);
+	assert.match(result.printed, /__query\(\{ id: "src\/main:query:0"/);
+	assert.match(result.printed, /ctx\.query\("src\/main:query:1"\)/);
+	assert.match(result.printed, /__query\(\{ id: "src\/main:query:1"/);
+});
+
+runCase("ctx.events remains a runtime call inside view render", () => {
+	const result = compileFixture(`
+${header}
+@event() class DamageTaken {}
+@view()
+class HudView {
+	render(ctx: ViewContext) {
+		return ctx.events(DamageTaken, { limit: 3 });
+	}
+}
+`);
+	assertNoDiagnostics(result, "view ctx events runtime call");
+	assert.match(result.printed, /ctx\.events\(DamageTaken, \{ limit: 3 \}\)/);
+	assert.doesNotMatch(result.printed, /events: \{/);
 });
 
 runCase("loadPaths string lowers through rojo path", () => {

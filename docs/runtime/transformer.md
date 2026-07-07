@@ -1,6 +1,6 @@
 # Transformer
 
-The roblox-ts transformer handles compile-time work that runtime TypeScript cannot do: resolving generic types, validating decorator usage, hoisting query descriptors, injecting `rovy.__*` registration calls after each decorated class, lowering datastore declarations for `@rovy/datastore`, and lowering widget authoring for `@rovy/ui`.
+The roblox-ts transformer handles compile-time work that runtime TypeScript cannot do: resolving generic types, validating decorator usage, hoisting query descriptors, injecting `rovy.__*` registration calls after each decorated class, lowering datastore declarations for `@rovy/datastore`, lowering `@view` classes for `@rovy/vide`, and lowering widget authoring for `@rovy/ui`.
 
 Shipped as the `rovy-transformer` package — a dev-only roblox-ts plugin, separate from the `@rovy/core` runtime. See [Packages](/packages/packages.md) for the split and `rovy-build` setup.
 
@@ -8,7 +8,7 @@ Shipped as the `rovy-transformer` package — a dev-only roblox-ts plugin, separ
 
 All of the following happen at **build time**. Nothing below runs at Luau startup.
 
-1. Scan every decorated class: `@component`, `@collect`, `@resource`, `@event`, `@system`, `@observer`, `@monitor`, `@relation`, `@schedule`, `@set`, `@plugin`.
+1. Scan every decorated class: `@component`, `@collect`, `@resource`, `@event`, `@system`, `@observer`, `@monitor`, `@relation`, `@schedule`, `@set`, `@plugin`, plus compile-time boundary markers `@server` / `@client`.
 2. Resolve trait macros (`trait<T>()`) and query macros (`query<...>()`), plus `Trait<T>` / `HasTrait<T>` / `AllTraits<T>` type references, via TypeScript `TypeChecker` (erased at runtime — must happen now).
 3. Generate stable trait IDs from canonical module paths.
 4. Scan `implements` clauses on `@component` classes to find trait implementers.
@@ -20,6 +20,8 @@ All of the following happen at **build time**. Nothing below runs at Luau startu
 The networking layer adds more transformer duties: detect `@netEvent` from `@rovy/networking`, treat it as implicit core `@event`, read network settings from `package.json` `rovy-build`, generate Blink-validated `.blink` schema metadata, lower `NetClient`/`NetServer` params through core's package-extension injection hook, and inject `rovyNet.__netEvent(...)` metadata. See [Networking](/packages/networking.md).
 
 Datastore work adds another compile-time path: detect `playerDocument<T>()`, `document<T, Owner>()`, and `sharedDocument<T>()` from `@rovy/datastore`, require explicit data types, generate datastore-safe `@rbxts/t` validators from TypeScript data shapes, lower declarations into `rovyData.__document(...)`, generate lifecycle event constructors, and lower `DocumentReader` / `DocumentWriter` / `DocumentOpener` params through core's package-extension injection hook. See [Datastore](/packages/datastore.md).
+
+Vide work adds another compile-time path: detect `@view` imported from `@rovy/vide`, require `render(...)`, reject `match` and `events` maps, lower render params, hoist view query descriptors, and inject `rovyVide.__view(...)`. See [Rovy Vide](/packages/vide).
 
 UI work adds another compile-time path: detect JSDoc `@widget` functions, require a same-file implementation, hoist a module-level `const __rovyWidgetMeta_X = { id, name } as const` per widget, wrap the function through `RovyUi.__widget(fn, __rovyWidgetMeta_X)`, lower later plain widget calls and built-in `@rovy/ui` widget calls through `RovyUi.__scope("module:key", () => Widget(args))`, erase leading `style: Style` authoring sugar into `RovyUi.getActiveStyle()`, lower storage helpers like `useState` / `useEffect` / `useInstance` to keyed internals, and lower `StyleScope(...)` / `scope(...)` as keyed callback-bounded runtime scopes. See [Rovy UI](/packages/ui).
 
@@ -180,6 +182,67 @@ One injected call per decorator:
 
 Each `rovy.__*` call only **pushes into a global registry**. No jecs IDs, no hooks yet — registration is lazy. `app.start()` does the finalize pass.
 
+`@server` and `@client` do not inject their own registry calls. They wrap the
+generated `@system`, `@observer`, or `@monitor` side effects, including any
+hoisted query descriptors for that class:
+
+```ts
+if (game.GetService("RunService").IsServer()) {
+	rovy.__system(ServerOnlySystem, { ... });
+}
+```
+
+This lets shared/plugin modules be required on both sides while registering only
+the systems that belong to the current runtime context.
+
+## Vide view lowering
+
+`@rovy/vide` views use the same side-effect registration model as core decorators, but the runtime registry is package-owned:
+
+```ts
+import Vide from "@rbxts/vide";
+import { Entity, Query, With } from "@rovy/core";
+import { view } from "@rovy/vide";
+
+@view()
+class HudView {
+	render(health: Query<[Entity, Health], With<Player>>) {
+		return Vide.values(health.rows(), (row) => {
+			const [entity, health] = row.values;
+			return Vide.create("TextLabel", {
+				Name: `Health_${entity}`,
+				Text: `${health.current}/${health.max}`,
+			});
+		});
+	}
+}
+```
+
+The transformer emits a core query descriptor for the render param and a Vide view registration:
+
+```ts
+rovy.__query({
+	id: "src/client/ui/hud-view:query:0",
+	terms: [
+		{ t: "entity" },
+		{ t: "component", ctor: Health },
+	],
+	filters: { with: [Player] },
+});
+
+rovyVide.__view(HudView, {
+	id: "src/client/ui/hud-view@HudView",
+	methods: ["render"],
+	params: [{ kind: "query", handle: "src/client/ui/hud-view@HudView:0" }],
+});
+```
+
+The runtime call remains explicit. The transformer registers view metadata, but user code still chooses when and where to mount:
+
+```ts
+mountView(app, CombatFeed, { target: screenGui });
+```
+
 ## Widget lowering
 
 Widgets are not public classes. The intended authoring shape is one JSDoc-tagged function:
@@ -322,4 +385,5 @@ Reason: avoid collisions across files that happen to share a type name. Same rul
 - [Monitors](/concepts/monitors.md)
 - [Packages](/packages/packages.md)
 - [Networking](/packages/networking.md)
+- [Rovy Vide](/packages/vide)
 - [Rovy UI](/packages/ui)

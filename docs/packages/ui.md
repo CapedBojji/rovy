@@ -12,6 +12,8 @@ It is intentionally:
 
 It is not a React clone, a widget-class framework, or a Lua-authored public API. EgooE and Plasma are behavior references; Rovy owns the runtime and transformer contract.
 
+For reactive production UI built directly on Vide, use [`@rovy/vide`](/packages/vide). `@rovy/ui` remains the immediate-mode widget/tool surface.
+
 ## Start Here
 
 ```ts

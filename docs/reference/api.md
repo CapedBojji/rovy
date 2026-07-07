@@ -12,13 +12,21 @@ Full public surface. Authoring is decorator-based; the transformer reads decorat
 @inspect(options?: { depth?: number; exclude?: string[] }) // debug-only resource inspection and recorder snapshots
 @event(options?: { capacity?: number; label?: string })
 @system(options: { schedule: ScheduleCtor; set?: typeof SystemSet; after?: SystemCtor[]; before?: SystemCtor[]; runIf?: () => boolean })
+@server                              // optional, on @system/@observer/@monitor classes
+@client                              // optional, on @system/@observer/@monitor classes
 @observer(options: { event: EventCtor; priority?: number })
 @monitor(options: { match: QueryToken })
 @relation(options?: { exclusive?: boolean; onTargetDelete?: "cascade" | "remove" | "none"; onDelete?: "cascade" | "remove" | "none" })
 @schedule(options?: { runOnStart?: boolean })
 @set(options?: { label?: string })   // optional, on classes extending SystemSet
 @plugin                              // on a class with build(app: App)
+@view() // from @rovy/vide
 ```
+
+`@server` and `@client` are compile-time boundary guards for modules that may be
+loaded from shared/plugin code. The transformer wraps the generated registration
+side effects in `RunService:IsServer()` or `RunService:IsClient()`, so the class
+only registers in the matching runtime context. They cannot be used together.
 
 ## Injection params
 
@@ -64,6 +72,8 @@ These come from `@rovy/networking`, not `@rovy/core`. Core provides the package-
 `App.start()` auto-installs networking when `@netEvent` metadata or injected net params are present, so normal user code does not add `NetPlugin` manually.
 
 Planned prefab `build(...)` injection is narrower. See [Prefabs](/concepts/prefabs.md) for the proposed v1 allowed param list and exclusions.
+
+Vide views in `@rovy/vide` expose `render(...)` only. Rovy wires render params like `Query<...>`, `ViewMonitor<...>`, resources, and events into Vide sources, and views are mounted explicitly with `mountView(...)`. See [Rovy Vide](/packages/vide).
 
 Widget functions in `@rovy/ui` also use injected params, but with a function-first public surface instead of a class-based one. See [Rovy UI](/packages/ui).
 
@@ -528,6 +538,68 @@ DocumentClosed<D>
 ```
 
 See [Datastore](/packages/datastore.md) for examples, queue behavior, session-lock behavior, rate-limit failure handling, and current backend-adapter boundary.
+
+## Rovy Vide (`@rovy/vide`)
+
+Optional reactive UI package for Vide-authored gameplay UI:
+
+```ts
+import { type EventReader, type Query, type With } from "@rovy/core";
+import { mountView, unmountView, view, type ViewMonitor } from "@rovy/vide";
+
+@view()
+class HudView {
+  render(
+    health: Query<[Entity, Health], With<Player>>,
+    monitor: ViewMonitor<[Entity, Health], With<Player>>,
+    damage: EventReader<DamageTaken>,
+  ): Vide.Node {
+    return Vide.create("Frame", {
+      [1]: Vide.values(health.rows(), (row) => {
+        const [entity, value] = row.values;
+        return Vide.create("TextLabel", {
+          Name: `Health_${entity}`,
+          Text: `${value.current}/${value.max}`,
+        });
+      }),
+      [2]: Vide.values(monitor.exited(), (row) => {
+        return Vide.create("TextLabel", {
+          Text: `Left ${row.entity}`,
+        });
+      }),
+      [3]: Vide.values(damage.events(), (event) => {
+        return Vide.create("TextLabel", {
+          Text: `-${event.amount}`,
+        });
+      }),
+    });
+  }
+}
+
+const handle = mountView(app, HudView, {
+  target: screenGui,
+  name: "Hud",
+});
+
+unmountView(handle);
+```
+
+`@view()` render params support `Query`, `ViewMonitor`, resources, events, commands, world, locals, and optional `ViewContext`.
+
+`ViewContext` exposes lower-level helpers:
+
+```ts
+interface ViewContext {
+  readonly app: App;
+  readonly target?: Instance;
+  query<T extends ReadonlyArray<unknown>>(handle: string): Vide.Source<ReadonlyArray<T>>;
+  events<T extends object>(eventCtor: Ctor<T>, options?: { limit?: number }): Vide.Source<ReadonlyArray<T>>;
+  mount(viewCtor: Ctor, options?: { target?: Instance; name?: string }): ViewHandle;
+}
+```
+
+See [Rovy Vide](/packages/vide.md) for render injection, query rows, monitor
+streams, event readers, and template setup.
 
 ## World Inspector (`@rovy/world-inspector`)
 

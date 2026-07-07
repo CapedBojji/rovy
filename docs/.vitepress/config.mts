@@ -28,6 +28,7 @@ export default defineConfig({
           { text: "Custom Widgets", link: "/packages/ui/custom-widgets" },
         ],
       },
+      { text: "Rovy Vide", link: "/packages/vide" },
       { text: "Reference", link: "/reference/api" },
     ],
 
@@ -79,6 +80,7 @@ export default defineConfig({
           { text: "Packages Overview", link: "/packages/packages" },
           { text: "Networking", link: "/packages/networking" },
           { text: "Datastore", link: "/packages/datastore" },
+          { text: "Rovy Vide", link: "/packages/vide" },
           {
             text: "Rovy UI",
             collapsed: true,

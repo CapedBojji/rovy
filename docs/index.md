@@ -28,7 +28,7 @@ features:
   - title: Commands & schedules
     details: Deferred mutations through Commands, custom schedules and system sets, and explicit flush points — ordered, predictable frame logic.
   - title: Optional packages
-    details: Optional @rovy/networking adds @netEvent over generated Blink transport; @rovy/datastore adds typed persistent documents; @rovy/ui adds a function-first immediate-mode widget runtime; @rovy/world-inspector adds a live ECS inspection tool.
+    details: Optional @rovy/networking adds @netEvent over generated Blink transport; @rovy/datastore adds typed persistent documents; @rovy/vide adds reactive Vide views; @rovy/ui adds a function-first immediate-mode widget runtime; @rovy/world-inspector adds a live ECS inspection tool.
 ---
 
 ## What is Rovy?
@@ -75,4 +75,5 @@ new App().start();
 - Setting up a project? See [Installation](/guide/installation).
 - Want to write code immediately? Follow [Your First System](/guide/your-first-system).
 - Learning the model? Browse the [Concepts](/concepts/components) section.
+- Building reactive UI? Read [Rovy Vide](/packages/vide).
 - Need persistence? Read [Datastore](/packages/datastore).

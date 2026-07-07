@@ -40,6 +40,9 @@ const DECORATORS = new Set([
 	"schedule",
 	"set",
 	"plugin",
+	"server",
+	"client",
+	"view",
 ]);
 
 type MonitorMethod = "onEnter" | "onExit" | "onChange";
@@ -90,7 +93,8 @@ export default function rovyTransformer(
 
 function transformSourceFile(state: TransformState, sourceFile: ts.SourceFile): ts.SourceFile {
 	const widgetCallers = collectWidgetCallers(state, sourceFile);
-	const visitor = createVisitor(state, sourceFile, widgetCallers);
+	const freeQueryStatements: ts.Statement[] = [];
+	const visitor = createVisitor(state, sourceFile, widgetCallers, freeQueryStatements);
 	const statements: ts.Statement[] = [];
 	const runtimeConfig = state.netRuntimeConfigStatement(sourceFile);
 	if (runtimeConfig) statements.push(runtimeConfig);
@@ -127,7 +131,7 @@ function transformSourceFile(state: TransformState, sourceFile: ts.SourceFile): 
 		}
 	}
 
-	return ts.factory.updateSourceFile(sourceFile, state.withPendingImports(sourceFile, statements));
+	return ts.factory.updateSourceFile(sourceFile, state.withPendingImports(sourceFile, [...statements, ...freeQueryStatements]));
 }
 
 function transformVariableStatement(
@@ -300,10 +304,11 @@ function createVisitor(
 	state: TransformState,
 	sourceFile: ts.SourceFile,
 	widgetCallers: ReadonlyMap<string, WidgetCallerInfo>,
+	freeQueryStatements: ts.Statement[],
 ): ts.Visitor {
 	const visitor: ts.Visitor = (node) => {
 		if (ts.isCallExpression(node)) {
-			const rewritten = transformCall(state, sourceFile, node, visitor, widgetCallers);
+			const rewritten = transformCall(state, sourceFile, node, visitor, widgetCallers, freeQueryStatements);
 			if (rewritten) return rewritten;
 		}
 		return ts.visitEachChild(node, visitor, state.context);
@@ -317,6 +322,7 @@ function transformCall(
 	node: ts.CallExpression,
 	visitor: ts.Visitor,
 	widgetCallers: ReadonlyMap<string, WidgetCallerInfo>,
+	freeQueryStatements: ts.Statement[],
 ): ts.Expression | undefined {
 	const coreName = state.resolveCoreName(sourceFile, node.expression);
 	if (coreName === "trait") {
@@ -329,8 +335,9 @@ function transformCall(
 	}
 
 	if (coreName === "query") {
-		state.diagnostic(node, "query<...>() is only supported inside @monitor({ match })");
-		return node;
+		const query = buildQueryFromMacro(state, node, state.nextQueryCallsiteKey(node));
+		freeQueryStatements.push(regQuery(state.addRovyImport(sourceFile), query.descriptor));
+		return str(query.id);
 	}
 
 	if (coreName === "$collectRef") {
@@ -542,6 +549,18 @@ function transformClass(
 				);
 				break;
 			}
+			case "view": {
+				const method = methodNamed(node, "render");
+				const params = method ? lowerViewParams(state, sourceFile, method.parameters, classId) : emptyParams();
+				queryStatements.push(...params.queryStatements);
+				afterStatements.push(
+					regCall(state.addRovyVideImport(sourceFile), "__view", [
+						className,
+						buildViewMeta(state, decorator, classId, params),
+					]),
+				);
+				break;
+			}
 			case "prefab": {
 				const method = methodNamed(node, "build");
 				const params = method
@@ -564,6 +583,10 @@ function transformClass(
 		}
 	}
 
+	const boundary = systemBoundary(decorators);
+	if (boundary) {
+		return [transformedClass, boundaryGuardStatement(boundary, [...queryStatements, ...afterStatements])];
+	}
 	return [...queryStatements, transformedClass, ...afterStatements];
 }
 
@@ -679,6 +702,15 @@ function removeRovyDecorators(state: TransformState, sourceFile: ts.SourceFile, 
 }
 
 function validateClass(state: TransformState, node: ts.ClassDeclaration, decorators: readonly DecoratorInfo[]): void {
+	const hasServer = decorators.some((d) => d.name === "server");
+	const hasClient = decorators.some((d) => d.name === "client");
+	if (hasServer && hasClient) {
+		state.diagnostic(node, "@server and @client cannot be used on the same class");
+	}
+	if ((hasServer || hasClient) && !decorators.some((d) => d.name === "system" || d.name === "observer" || d.name === "monitor")) {
+		state.diagnostic(node, "@server/@client can only be used on @system, @observer, or @monitor classes");
+	}
+
 	if (node.typeParameters && decorators.some((d) => d.name === "system" || d.name === "observer" || d.name === "monitor")) {
 		state.diagnostic(node, "@system/@observer/@monitor classes cannot be generic in v1");
 	}
@@ -703,6 +735,10 @@ function validateClass(state: TransformState, node: ts.ClassDeclaration, decorat
 		state.diagnostic(node, "@prefab classes require a build(...) method");
 	}
 
+	if (decorators.some((d) => d.name === "view") && !methodNamed(node, "render")) {
+		state.diagnostic(node, "@view classes require render(...)");
+	}
+
 	if (decorators.some((d) => d.name === "netEvent") && decorators.some((d) => d.name === "event")) {
 		state.diagnostic(node, "@netEvent implies @event; remove the extra @event decorator");
 	}
@@ -710,6 +746,21 @@ function validateClass(state: TransformState, node: ts.ClassDeclaration, decorat
 	if (decorators.some((d) => d.name === "inspect") && !decorators.some((d) => d.name === "resource")) {
 		state.diagnostic(node, "@inspect can only be used on @resource classes");
 	}
+}
+
+function systemBoundary(decorators: readonly DecoratorInfo[]): "server" | "client" | undefined {
+	if (decorators.some((d) => d.name === "server")) return "server";
+	if (decorators.some((d) => d.name === "client")) return "client";
+	return undefined;
+}
+
+function boundaryGuardStatement(boundary: "server" | "client", statements: readonly ts.Statement[]): ts.IfStatement {
+	return ts.factory.createIfStatement(
+		call(
+			field(call(field(id("game"), "GetService"), [str("RunService")]), boundary === "server" ? "IsServer" : "IsClient"),
+		),
+		ts.factory.createBlock([...statements], true),
+	);
 }
 
 function collectRefBindings(
@@ -832,6 +883,28 @@ function buildMonitorMeta(
 			maybeProp("plugin", plugin?.expr),
 			prop("match", str(matchId)),
 			prop("methods", arr(methods.map(str))),
+			prop("params", params.descriptor),
+		]),
+		true,
+	);
+}
+
+function buildViewMeta(
+	state: TransformState,
+	decorator: DecoratorInfo,
+	classId: string,
+	params: ParamBuild,
+): ts.ObjectLiteralExpression {
+	if (decoratorObjectValue(decorator, "match") !== undefined) {
+		state.diagnostic(decorator.node, "@view match is not supported; declare Query<...> or ViewMonitor<...> render params instead");
+	}
+	if (decoratorObjectValue(decorator, "events") !== undefined) {
+		state.diagnostic(decorator.node, "@view events are not supported; declare EventReader<...> render params instead");
+	}
+	return obj(
+		stripUndefinedProperties([
+			prop("id", str(classId)),
+			prop("methods", arr([str("render")])),
 			prop("params", params.descriptor),
 		]),
 		true,
@@ -1761,6 +1834,62 @@ function lowerMonitorMethodParams(
 	return { descriptor: arr(descriptors, true), queryStatements };
 }
 
+function lowerViewParams(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	params: ts.NodeArray<ts.ParameterDeclaration>,
+	classId: string,
+): ParamBuild {
+	const descriptors: ts.ObjectLiteralExpression[] = [];
+	const queryStatements: ts.Statement[] = [];
+	let localIndex = 0;
+	for (let i = 0; i < params.length; i++) {
+		const lowered = lowerViewParam(state, sourceFile, params[i], {
+			classId,
+			paramIndex: i,
+			localIndex,
+		});
+		if (lowered.localUsed) localIndex++;
+		descriptors.push(lowered.descriptor);
+		queryStatements.push(...lowered.queryStatements);
+	}
+	return { descriptor: arr(descriptors, true), queryStatements };
+}
+
+function lowerViewParam(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	param: ts.ParameterDeclaration,
+	ctx: { classId: string; paramIndex: number; localIndex: number },
+): { descriptor: ts.ObjectLiteralExpression; queryStatements: readonly ts.Statement[]; localUsed?: boolean } {
+	const type = param.type;
+	if (!type) {
+		state.diagnostic(param, "injected params require an explicit type annotation");
+		return { descriptor: obj([prop("kind", str("context"))], false), queryStatements: [] };
+	}
+
+	if (ts.isTypeReferenceNode(type)) {
+		const name = lastTypeName(type.typeName);
+		if (isVideType(state, sourceFile, type, "ViewContext")) {
+			return { descriptor: obj([prop("kind", str("context"))], false), queryStatements: [] };
+		}
+		if (isVideType(state, sourceFile, type, "ViewMonitor") || name === "ViewMonitor") {
+			const query = buildQueryFromType(state, type, `${ctx.classId}:${ctx.paramIndex}:monitor`);
+			return {
+				descriptor: obj([prop("kind", str("viewMonitor")), prop("handle", str(query.id))], false),
+				queryStatements: [regQuery(state.addRovyImport(sourceFile), query.descriptor)],
+			};
+		}
+	}
+
+	return lowerParam(state, sourceFile, param, {
+		kind: "system",
+		classId: ctx.classId,
+		paramIndex: ctx.paramIndex,
+		localIndex: ctx.localIndex,
+	});
+}
+
 function lowerParam(
 	state: TransformState,
 	sourceFile: ts.SourceFile,
@@ -2090,6 +2219,18 @@ function isDatastoreType(
 	exportName: string,
 ): boolean {
 	const imports = state.getDatastoreImports(sourceFile);
+	const name = type.typeName;
+	if (ts.isIdentifier(name)) return imports.named.get(name.text) === exportName;
+	return ts.isIdentifier(name.left) && imports.namespaces.has(name.left.text) && name.right.text === exportName;
+}
+
+function isVideType(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	type: ts.TypeReferenceNode,
+	exportName: string,
+): boolean {
+	const imports = state.getVideImports(sourceFile);
 	const name = type.typeName;
 	if (ts.isIdentifier(name)) return imports.named.get(name.text) === exportName;
 	return ts.isIdentifier(name.left) && imports.namespaces.has(name.left.text) && name.right.text === exportName;

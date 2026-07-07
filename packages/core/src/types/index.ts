@@ -47,13 +47,13 @@ export type Added<C extends object> = { readonly __rovyAdded?: [C] };
 export type Removed<C extends object> = { readonly __rovyRemoved?: [C] };
 
 /** Resolve a single declared term to the value bound in `forEach`. */
-type ResolveTerm<T> = T extends typeof EntityMarker
+export type ResolveTerm<T> = T extends typeof EntityMarker
 	? Entity
 	: T extends Ctor<infer I>
 		? I
 		: T;
 
-type ResolveTerms<Terms extends ReadonlyArray<unknown>> = {
+export type ResolveTerms<Terms extends ReadonlyArray<unknown>> = {
 	[K in keyof Terms]: ResolveTerm<Terms[K]>;
 } & unknown[];
 

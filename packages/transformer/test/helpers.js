@@ -26,6 +26,7 @@ function createFixtureDir() {
 		}),
 	);
 	writeRovyUiStub(temp);
+	writeRovyVideStub(temp);
 	return { temp, src, rojo: path.join(temp, "test.project.json") };
 }
 
@@ -66,6 +67,24 @@ function writeRovyUiStub(temp) {
 	lines.push(`declare const RovyUi: { ${objectMembers} };`);
 	lines.push("export default RovyUi;");
 	fs.writeFileSync(path.join(dir, "index.d.ts"), lines.join("\n") + "\n");
+}
+
+function writeRovyVideStub(temp) {
+	const dir = path.join(temp, "node_modules", "@rovy", "vide");
+	fs.mkdirSync(dir, { recursive: true });
+	fs.writeFileSync(
+		path.join(dir, "package.json"),
+		JSON.stringify({ name: "@rovy/vide", version: "0.0.0", types: "index.d.ts" }),
+	);
+	fs.writeFileSync(
+		path.join(dir, "index.d.ts"),
+		[
+			"export interface ViewContext { query<T = unknown>(handle: string): unknown; events<T = unknown>(eventCtor: unknown, options?: unknown): unknown; }",
+			"export interface ViewMonitor<T = unknown, F1 = unknown, F2 = unknown, F3 = unknown, F4 = unknown, F5 = unknown> {}",
+			"export declare function view(options?: unknown): (ctor: new (...args: never[]) => object) => void;",
+			"export declare const rovyVide: { __view(ctor: unknown, meta: unknown): void; };",
+		].join("\n") + "\n",
+	);
 }
 
 function createProgram(entryPaths, rootDir, currentDirectory) {

@@ -41,8 +41,8 @@ new App().start();
 ## Features
 
 - **Decorator-based authoring** — `@component`, `@resource`, `@event`, `@system`,
-  `@observer`, `@monitor`, `@relation`, `@schedule`, `@plugin`. The transformer wires
-  registration for you.
+  `@observer`, `@monitor`, `@relation`, `@schedule`, `@plugin`, plus `@server` /
+  `@client` guards for shared modules. The transformer wires registration for you.
 - **Compile-time queries & injection** — `Query<...>` terms and system parameters are
   resolved and hoisted at build time; zero runtime reflection.
 - **Interface-based traits** — `trait<T>()` turns plain interfaces into queryable,
@@ -52,6 +52,7 @@ new App().start();
 - **Commands & schedules** — deferred mutations, custom schedules, system sets, and
   explicit flush points.
 - **Optional packages** — `@rovy/networking` (`@netEvent` over Blink),
+  `@rovy/vide` (reactive Vide views for gameplay UI),
   `@rovy/ui` (function-first immediate-mode widgets), and
   `@rovy/world-inspector` (live local/remote ECS inspection).
 
@@ -61,6 +62,7 @@ new App().start();
 |---------|------|
 | `@rovy/core` | Decorators, macros, types, and the packaged runtime — what you import |
 | `@rovy/networking` | `@netEvent` authoring surface and runtime handles |
+| `@rovy/vide` | Reactive Vide view integration for gameplay UI |
 | `@rovy/ui` | Function-first widget/render runtime |
 | `@rovy/world-inspector` | In-game ECS inspection and editing plugin |
 | `rovy-transformer` | roblox-ts compiler transformer plugin (dev dependency) |
@@ -87,7 +89,7 @@ Full setup: [Installation guide](https://capedbojji.github.io/rovy/guide/install
 ## Repository layout
 
 ```
-packages/      core, networking, ui, transformer
+packages/      core, networking, datastore, vide, ui, world-inspector, transformer, build
 docs/          VitePress documentation site
 ```
 

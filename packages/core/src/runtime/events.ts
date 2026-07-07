@@ -23,6 +23,7 @@ interface EventBuffer {
 	capacity?: number;
 	buffer: Array<object>;
 	observers: Array<ObserverEntry>;
+	externalObservers: Array<{ active: boolean; callback: (event: object) => void }>;
 }
 
 export class EventRegistry {
@@ -32,7 +33,7 @@ export class EventRegistry {
 
 	registerEvent(ctor: Ctor, capacity?: number): void {
 		if (!this.buffers.has(ctor)) {
-			this.buffers.set(ctor, { capacity, buffer: [], observers: [] });
+			this.buffers.set(ctor, { capacity, buffer: [], observers: [], externalObservers: [] });
 		}
 	}
 
@@ -52,6 +53,16 @@ export class EventRegistry {
 		buf.observers.push({ ctor: reg.ctor, instance: new factory(), priority: reg.priority, params: reg.params });
 		// higher priority first; stable
 		buf.observers.sort((a, b) => a.priority > b.priority);
+	}
+
+	observe(event: Ctor, callback: (event: object) => void): () => void {
+		const buf = this.buffers.get(event);
+		assert(buf !== undefined, `[rovy] observe for unregistered @event: ${tostring(event)}`);
+		const entry = { active: true, callback };
+		buf.externalObservers.push(entry);
+		return () => {
+			entry.active = false;
+		};
 	}
 
 	private bufferOf(event: object): EventBuffer | undefined {
@@ -98,6 +109,9 @@ export class EventRegistry {
 			} else {
 				runObserver();
 			}
+		}
+		for (const observer of buf.externalObservers) {
+			if (observer.active) observer.callback(event);
 		}
 	}
 

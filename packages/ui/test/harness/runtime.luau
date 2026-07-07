@@ -504,6 +504,8 @@ local services = {
 	},
 	RunService = {
 		RenderStepped = signal("RunService.RenderStepped"),
+		Heartbeat = signal("RunService.Heartbeat"),
+		Stepped = signal("RunService.Stepped"),
 	},
 	Players = {
 		LocalPlayer = {
@@ -527,14 +529,27 @@ local services = {
 			return image
 		end,
 	},
+	ReflectionService = {
+		GetClasses = function()
+			return {}
+		end,
+	},
 }
 
 local bufferApi = _G.buffer or fakeBuffer()
 
 local fakeGlobals = {
 	Color3 = {
+		new = function(r, g, b)
+			return { R = r, G = g, B = b }
+		end,
 		fromRGB = function(r, g, b)
 			return { R = r / 255, G = g / 255, B = b / 255 }
+		end,
+	},
+	vector = {
+		create = function(x, y, z)
+			return { x, y, z }
 		end,
 	},
 	Vector2 = { new = newVector2 },
@@ -618,9 +633,15 @@ local function loadModule(node): any
 						p = p .. "/" .. seg
 					end
 				end
-				local n = treeIndex(p) or treeIndex(p:gsub("%.luau$", ""):gsub("%.lua$", ""))
+				local n = treeIndex(p) or treeIndex(p .. ".luau") or treeIndex(p .. ".lua") or treeIndex(p:gsub("%.luau$", ""):gsub("%.lua$", ""))
 				if not n then
-					n = scan(p)
+					if isFile(p .. ".luau") then
+						n = scan(p .. ".luau")
+					elseif isFile(p .. ".lua") then
+						n = scan(p .. ".lua")
+					else
+						n = scan(p)
+					end
 					indexTree(n)
 				end
 				return loadModule(n)

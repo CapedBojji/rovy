@@ -1,4 +1,4 @@
-# Packages — core, networking, datastore, ui, world inspector, and transformer
+# Packages — core, networking, datastore, vide, ui, world inspector, and transformer
 
 Rovy ships as distinct packages, mirroring the split between runtime packages and build-time transformer tooling:
 
@@ -7,6 +7,7 @@ Rovy ships as distinct packages, mirroring the split between runtime packages an
 | `@rovy/core`            | Decorators, macros, types, **and the packaged runtime**        | `import` it and write code                                |
 | `@rovy/networking`      | Net-event authoring surface and runtime handles                | `import` it when using `@netEvent`                        |
 | `@rovy/datastore`       | Persistent document declarations and runtime handles           | `import` it when using persistent documents               |
+| `@rovy/vide`            | Reactive Vide view integration for gameplay UI                 | `import` `@view`, `mountView`, and `ViewMonitor`          |
 | `@rovy/ui`              | Widget/render integration package                              | `import` widget helpers and JSDoc-tagged widget functions |
 | `@rovy/world-inspector` | In-game ECS inspection and editing plugin                      | `import` it when embedding the debug inspector            |
 | `rovy-transformer`      | roblox-ts compiler transformer plugin                          | Listing it in `tsconfig.json`                             |
@@ -14,7 +15,8 @@ Rovy ships as distinct packages, mirroring the split between runtime packages an
 
 Most ECS code authors against `@rovy/core`. Networked event code additionally
 imports `@rovy/networking`. Persistent game data code imports
-`@rovy/datastore`. UI code authors against `@rovy/ui`. Debug tooling can
+`@rovy/datastore`. Reactive gameplay UI can author against `@rovy/vide`.
+Immediate-mode tool UI can author against `@rovy/ui`. Debug tooling can
 additionally import `@rovy/world-inspector`. `rovy-transformer` runs
 silently at build time and rewrites decorated and widget code into the runtime
 calls the packages consume. `rovy-build` owns the project command flow around
@@ -22,13 +24,14 @@ calls the packages consume. `rovy-build` owns the project command flow around
 
 Inside this repo, the shipped packages live in a pnpm workspace at
 `packages/core`, `packages/networking`, `packages/datastore`, `packages/ui`,
-`packages/world-inspector`, `packages/transformer`, and `packages/build`.
+`packages/vide`, `packages/world-inspector`, `packages/transformer`, and
+`packages/build`.
 
 ## What lives in `@rovy/core`
 
 Everything you import:
 
-- **Decorators** — `@component`, `@collect`, `@resource`, `@event`, `@system`, `@observer`, `@monitor`, `@relation`, `@schedule`, `@set`, `@plugin`
+- **Decorators** — `@component`, `@collect`, `@resource`, `@event`, `@system`, `@observer`, `@monitor`, `@relation`, `@schedule`, `@set`, `@plugin`, `@server`, `@client`
 - **Planned decorator** — `@prefab`
 - **Macros** — `trait<T>()`, `query<...>()`
 - **Type-only helpers** — `Query<...>`, `Res<T>`, `ResMut<T>`, `OptRes<T>`, `Trait<T>`, `HasTrait<T>`, `AllTraits<T>`, `Pair<R>`, `Optional<C>`, `With<C>`, `Without<C>`, `Changed<C>`, `Added<C>`, `Removed<C>`, `Entity`, `Commands`, `World`, `EventReader<E>`, `EventWriter<E>`, `Local<T>`, `SystemSet`
@@ -79,6 +82,26 @@ Document declarations are transformer-backed. The transformer generates runtime
 validators from datastore-safe TypeScript data types and lowers injected
 document handle params to external package param ids.
 
+## What lives in `@rovy/vide`
+
+`@rovy/vide` is separate from core and from `@rovy/ui`. Import it when a client
+needs reactive Vide UI that talks to the Rovy world:
+
+- **Decorator** — `@view(...)`
+- **Runtime mounting** — `mountView(app, ViewCtor, options?)` and `unmountView(handle)`
+- **Render injection** — `render(...)` can declare `Query`, `ViewMonitor`, resources, events, commands, world, locals, and `ViewContext`
+- **Queries** — injected `Query<...>` params expose `rows()` as entity-keyed Vide source rows
+- **Monitors** — injected `ViewMonitor<...>` params expose `current`, `entered`, `changed`, and `exited` sources
+- **Events** — injected `EventReader<E>` params expose non-draining UI event sources
+- **Registry** — `rovyVide.__view(...)` is transformer-injected; users should not hand-call it
+
+```ts
+import { mountView, view, type ViewMonitor } from "@rovy/vide";
+```
+
+See [Rovy Vide](/packages/vide) for examples covering root views, query rows,
+monitor streams, event feeds, and the standalone game template.
+
 ## What lives in `@rovy/ui`
 
 `@rovy/ui` is the TypeScript-authored widget/render integration package.
@@ -94,6 +117,9 @@ document handle params to external package param ids.
 This package is meant to feel closer to EgooE's function-driven rendering style than to a React component tree, while still using Rovy's registration, identity, and injection machinery. Runtime does not use `debug.info(...)` for identity; transformer keys own that job.
 
 The full UI docs now live in the [Rovy UI section](/packages/ui), including [Built-in Widgets](/packages/ui/built-in-widgets), [Curve Editor](/packages/ui/curve-editor), [Styling](/packages/ui/styling), and [Custom Widgets](/packages/ui/custom-widgets).
+
+Use `@rovy/vide` instead when the public UI model should be Vide's reactive
+source graph rather than Rovy's immediate widget frame.
 
 ## What lives in `@rovy/world-inspector`
 
@@ -121,7 +147,8 @@ A roblox-ts custom transformer. Pure build-time. It never ships to the game. Dut
 5. Rewrite `trait<T>()` → `rovy.traitToken("stable/path")`.
 6. Validate decorator usage (observer field exclusivity, monitor param order, `@resource` defaulted ctor, planned `@prefab` zero-arg ctor + `build(...)` shape).
 7. Datastore support: lower document declarations, generate validators, generate lifecycle event constructors, and lower `DocumentReader` / `DocumentWriter` / `DocumentOpener` params to external package ids.
-8. UI support: detect JSDoc `@widget` functions, inject widget registration, wrap them through `RovyUi.__widget(...)`, lower plain/custom and built-in widget calls through `RovyUi.__scope(...)`, lower storage helpers to keyed internals, and lower style sugar.
+8. Vide support: detect `@view` from `@rovy/vide`, reject `match`/event maps, validate `render(...)`, lower render params, hoist view query descriptors, and inject `rovyVide.__view(...)`.
+9. UI support: detect JSDoc `@widget` functions, inject widget registration, wrap them through `RovyUi.__widget(...)`, lower plain/custom and built-in widget calls through `RovyUi.__scope(...)`, lower storage helpers to keyed internals, and lower style sugar.
 
 ## How they connect
 
@@ -166,6 +193,12 @@ Install datastore only when using persistent documents:
 
 ```sh
 npm i @rovy/datastore
+```
+
+Install Vide only when using reactive Vide views:
+
+```sh
+npm i @rovy/vide @rbxts/vide
 ```
 
 Install UI only when using widget authoring:

@@ -38,6 +38,7 @@ export class App {
 	private monitors?: MonitorRegistry;
 	private scheduleContext!: ScheduleContext;
 	private started = false;
+	private readonly postFlushListeners = new Array<{ active: boolean; callback: () => void }>();
 	/** Overrides supplied before start(); applied after resource registration. */
 	private resourceOverrides = new Map<Ctor, object>();
 	private readonly makeReader = (registry: EventRegistry, event: Ctor): EventReaderHandle =>
@@ -63,13 +64,19 @@ export class App {
 		this.world.flushImpl = () => {
 			this.flushCommands();
 			this.monitors?.reconcileAll();
+			this.notifyPostFlush();
 		};
+		this.scheduler.onFlush(() => {
+			this.monitors?.reconcileAll();
+			this.notifyPostFlush();
+		});
 	}
 
 	/** Apply queued commands to convergence (escape hatch; scheduler flushes at set boundaries). */
 	flush(): this {
 		this.flushCommands();
 		this.monitors?.reconcileAll();
+		this.notifyPostFlush();
 		return this;
 	}
 
@@ -376,7 +383,6 @@ export class App {
 			monitors.register(m, base);
 		}
 		this.monitors = monitors;
-		this.scheduler.onFlush = () => monitors.reconcileAll();
 
 		// 5b. dev validation — fail loudly + named for missing deps
 		const checkParams = (
@@ -445,6 +451,20 @@ export class App {
 		this.lifecycle.withBatch(() => {
 			flush(this.commands);
 		});
+	}
+
+	on_post_flush(callback: () => void): LifecycleUnsubscribe {
+		const listener = { active: true, callback };
+		this.postFlushListeners.push(listener);
+		return () => {
+			listener.active = false;
+		};
+	}
+
+	private notifyPostFlush(): void {
+		for (const listener of this.postFlushListeners) {
+			if (listener.active) listener.callback();
+		}
 	}
 
 	private onLifecycle(
