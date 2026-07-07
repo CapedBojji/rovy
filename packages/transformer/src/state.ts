@@ -9,6 +9,8 @@ import {
 	loadRovyConfig,
 } from "./rovy-config";
 
+const ROVY_PLUGIN_MARKER = ".rovy.plugin.json";
+
 export interface TransformerConfig {
 	readonly [key: string]: unknown;
 }
@@ -606,6 +608,10 @@ export class TransformState {
 			]);
 		}
 		return expr;
+	}
+
+	isRovyPluginSourceRoot(sourcePath: string): boolean {
+		return fs.existsSync(join(this.absolute(sourcePath), ROVY_PLUGIN_MARKER));
 	}
 
 	private symbolForTypeNode(node: ts.TypeNode): ts.Symbol | undefined {

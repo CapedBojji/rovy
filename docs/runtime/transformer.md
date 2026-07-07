@@ -349,11 +349,14 @@ Roblox ModuleScripts do not run unless required. A self-registering module is si
 
 `rovy.loadPaths(...)` solves this — authored TS passes string paths like `"src/client/systems"`. The transformer resolves each string to the matching Roblox Instance root via the active `rovy-build` environment's Rojo config, then runtime recursively requires every `ModuleScript` under that instance so every injected `rovy.__*` side effect runs.
 
+If the source path contains `.rovy.plugin.json`, the transformer lowers it as a plugin root. Plugin roots load only `shared/**` plus the active runtime folder: `client/**` on clients or `server/**` on servers.
+
 ```ts
 rovy.loadPaths(
 	"src/client/components",
 	"src/client/systems",
 	"src/client/observers",
+	"src/plugins/combat", // .rovy.plugin.json: shared + runtime side
 );
 
 app.start();   // finalize: allocate jecs IDs, wire hooks, sort observers, fire runOnStart

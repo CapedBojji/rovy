@@ -1295,6 +1295,23 @@ rovy.loadPaths("src");
 	assert.match(result.printed, /WaitForChild\("game"\)/);
 });
 
+runCase("loadPaths plugin root lowers with pluginRoot marker", () => {
+	const result = compileFixture(`
+${header}
+rovy.loadPaths("src/plugins/combat");
+`, {
+		files: {
+			"plugins/combat/.rovy.plugin.json": "{}",
+			"plugins/combat/client/index.ts": "export {};",
+			"plugins/combat/shared/index.ts": "export {};",
+			"plugins/combat/server/index.ts": "export {};",
+		},
+	});
+	assertNoDiagnostics(result, "plugin loadPaths lowering");
+	assert.match(result.printed, /rovy\.loadPaths\(rovy\.pluginRoot\(game\.GetService\("ReplicatedStorage"\)/);
+	assert.match(result.printed, /WaitForChild\("plugins"\)\.WaitForChild\("combat"\)/);
+});
+
 runCase("resource ctor validation catches required params", () => {
 	const result = compileFixture(`
 ${header}

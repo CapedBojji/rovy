@@ -82,12 +82,15 @@ Widget functions in `@rovy/ui` also use injected params, but with a function-fir
 Decorators inject these — you call only `loadPaths`.
 
 ```ts
-rovy.loadPaths(...paths);   // `paths: string[]`; transformer lowers to Instance roots
+rovy.loadPaths(...paths);       // string paths lower to Instance roots
+rovy.pluginRoot(root);          // transformer helper for `.rovy.plugin.json` roots
 rovy.traitToken<T>();           // value-position trait handle (see Traits)
 // rovy.__component / __collect / __resource / __event / __system / __observer
 // / __monitor / __relation / __schedule / __inspect / __traitImpl / __query
 //   are transformer-injected — never hand-written
 ```
+
+If a loaded source folder contains `.rovy.plugin.json`, `loadPaths` requires only `shared/**` plus the active `client/**` or `server/**` subtree.
 
 UI discovery follows the same side-effect model: `rovy.loadPaths(...)` must require widget modules so injected widget registration/wrapping runs.
 

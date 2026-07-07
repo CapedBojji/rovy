@@ -36,11 +36,16 @@ export interface TraitToken {
 	readonly __rovyTraitId: StableId;
 }
 
+export interface RovyPluginLoadRoot {
+	readonly __rovyPluginRoot: true;
+	readonly root: Instance;
+}
+
 /**
  * Forces module side effects to run so injected `rovy.__*` calls execute.
  * Authored TS passes string paths; the transformer lowers them to Roblox
- * Instance roots. Default provider walks those Instance trees; tests may swap
- * in any resolver they want.
+ * Instance roots. Plugin roots are tagged so the default provider can load only
+ * shared plus the active runtime side.
  */
 export type ModuleProvider = (roots: ReadonlyArray<unknown>) => void;
 
@@ -65,7 +70,30 @@ function createRegistry(): RovyRegistry {
 
 const registry: RovyRegistry = createRegistry();
 
-let moduleProvider: ModuleProvider = (roots) => {
+const PLUGIN_MARKER_NAME = ".rovy.plugin.json";
+
+function isInstanceLike(value: unknown): value is Instance {
+	const candidate = value as { GetDescendants?: unknown };
+	return value !== undefined && candidate.GetDescendants !== undefined;
+}
+
+function isPluginLoadRoot(value: unknown): value is RovyPluginLoadRoot {
+	const candidate = value as Partial<RovyPluginLoadRoot>;
+	return candidate.__rovyPluginRoot === true && isInstanceLike(candidate.root);
+}
+
+function activeRuntimeFolderName(): "client" | "server" | undefined {
+	const runService = game.GetService("RunService");
+	if (runService.IsClient()) return "client";
+	if (runService.IsServer()) return "server";
+	return undefined;
+}
+
+function hasPluginMarker(root: Instance): boolean {
+	return root.FindFirstChild(PLUGIN_MARKER_NAME) !== undefined;
+}
+
+function defaultModuleProvider(roots: ReadonlyArray<unknown>): void {
 	const isAutoLoadedBlinkBoundaryModule = (module: Instance): boolean => {
 		if (!module.IsA("ModuleScript")) return false;
 		const parent = module.Parent;
@@ -73,22 +101,51 @@ let moduleProvider: ModuleProvider = (roots) => {
 		return module.Name === "RovyBlinkClient" || module.Name === "RovyBlinkServer";
 	};
 
+	const requireModule = (module: Instance): void => {
+		if (
+			module.IsA("ModuleScript") &&
+			module.Name !== PLUGIN_MARKER_NAME &&
+			!isAutoLoadedBlinkBoundaryModule(module)
+		) {
+			require(module);
+		}
+	};
+
+	const requireTree = (root: Instance, detectPluginRoots = true): void => {
+		requireModule(root);
+		for (const child of root.GetChildren()) {
+			if (detectPluginRoots && hasPluginMarker(child)) {
+				requirePluginTree(child);
+			} else {
+				requireTree(child, detectPluginRoots);
+			}
+		}
+	};
+
+	const requirePluginTree = (root: Instance): void => {
+		const shared = root.FindFirstChild("shared");
+		if (shared !== undefined) requireTree(shared, false);
+		const runtimeFolder = activeRuntimeFolderName();
+		if (runtimeFolder === undefined) return;
+		const side = root.FindFirstChild(runtimeFolder);
+		if (side !== undefined) requireTree(side, false);
+	};
+
 	// Default: treat each root as a Roblox Instance and require every
 	// descendant ModuleScript so its injected rovy.__* side effects run.
 	// Blink-generated boundary modules live under shared output, but they must
 	// only load when the networking plugin has already chosen a runtime side.
 	for (const root of roots) {
-		const inst = root as Instance;
-		if (inst === undefined || (inst as unknown as { GetDescendants?: unknown }).GetDescendants === undefined) {
-			continue;
-		}
-		for (const desc of inst.GetDescendants()) {
-			if (desc.IsA("ModuleScript") && !isAutoLoadedBlinkBoundaryModule(desc)) {
-				require(desc);
-			}
+		if (isPluginLoadRoot(root)) {
+			requirePluginTree(root.root);
+		} else if (isInstanceLike(root)) {
+			if (hasPluginMarker(root)) requirePluginTree(root);
+			else requireTree(root);
 		}
 	}
-};
+}
+
+let moduleProvider: ModuleProvider = defaultModuleProvider;
 
 export const rovy = {
 	/** Live registry (read by `app.start()`; inspected by tests). */
@@ -172,8 +229,13 @@ export const rovy = {
 	 * TS authoring passes string paths like `"src/client/systems"`; the
 	 * transformer lowers them to Roblox Instance roots before runtime.
 	 */
-	loadPaths(...paths: ReadonlyArray<string | Instance>): void {
+	loadPaths(...paths: ReadonlyArray<string | Instance | RovyPluginLoadRoot>): void {
 		moduleProvider(paths);
+	},
+
+	/** Transformer helper: mark a lowered load path as a Rovy plugin root. */
+	pluginRoot(root: Instance): RovyPluginLoadRoot {
+		return { __rovyPluginRoot: true, root };
 	},
 
 	/** Swap the module-loading strategy (tests inject an array-based provider). */
@@ -200,5 +262,6 @@ export const rovy = {
 		empty(registry.prefabs);
 		registry.traits.clear();
 		registry.queries.clear();
+		moduleProvider = defaultModuleProvider;
 	},
 };

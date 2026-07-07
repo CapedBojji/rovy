@@ -359,12 +359,19 @@ function transformCall(
 
 	if (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "loadPaths") {
 		if (state.isRovyValue(sourceFile, node.expression.expression)) {
+			const rovyExpr = node.expression.expression;
 			return ts.factory.updateCallExpression(
 				node,
 				node.expression,
 				node.typeArguments,
 				node.arguments.map((arg) => {
-					if (ts.isStringLiteral(arg)) return state.lowerLoadPath(arg);
+					if (ts.isStringLiteral(arg)) {
+						const lowered = state.lowerLoadPath(arg);
+						if (state.isRovyPluginSourceRoot(arg.text)) {
+							return call(field(rovyExpr, "pluginRoot"), [lowered]);
+						}
+						return lowered;
+					}
 					return ts.visitNode(arg, visitor, ts.isExpression) ?? arg;
 				}),
 			);

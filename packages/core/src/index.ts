@@ -39,7 +39,7 @@ export { trait, query, $collectRef } from "./macros";
 
 // Runtime registry (public for the transformer + tests).
 export { rovy } from "./rovy";
-export type { TraitToken, ModuleProvider } from "./rovy";
+export type { TraitToken, ModuleProvider, RovyPluginLoadRoot } from "./rovy";
 
 // Runtime (Phase 2+).
 export { App } from "./runtime/app";

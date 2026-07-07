@@ -7,6 +7,25 @@ A plugin extends `App` before the registry finalizes. Plugins also act as an own
 
 `rovy.loadPaths(...)` still discovers decorated modules globally, but plugin-owned systems, resources, events, observers, and monitors only finalize when that plugin is explicitly added to the app.
 
+## Folder plugins
+
+A folder is treated as a Rovy plugin load root when it contains `.rovy.plugin.json`.
+
+```txt
+src/plugins/combat/
+  .rovy.plugin.json
+  shared/
+    index.ts
+  client/
+    index.ts
+  server/
+    index.ts
+```
+
+When you call `rovy.loadPaths("src/plugins/combat")`, the transformer marks that lowered Roblox Instance as a plugin root. At runtime, Rovy requires `shared/**` on both sides, plus `client/**` on the client or `server/**` on the server. Sibling folders under the plugin root are ignored by plugin-root loading.
+
+Plugin roots are also detected inside broader loaded trees. If `rovy.loadPaths("src")` or another parent path reaches a child folder with `.rovy.plugin.json`, that child folder is loaded as a plugin root instead of being required as a normal subtree.
+
 ## `Plugin` interface
 
 ```ts

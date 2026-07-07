@@ -22,7 +22,7 @@ Settled design decisions. Change only with a strong reason.
 - Change detection filters `Changed<C>` / `Added<C>` / `Removed<C>` are kept as query filters and coexist with `@monitor` onExit/onChange.
 - `@resource` auto-registers from default constructor. No manual `app.insertResource()` required. `app.insertResource()` exists only as override.
 - `@inspect` is opt-in resource metadata for frame-recorder snapshots. Components are tracked from registered component change ticks; resources record only when explicitly marked.
-- No central manifest. Transformer injects side-effect registration calls (`rovy.__component`, `rovy.__system`, `rovy.__observer`, ...) right after each decorated class. `rovy.loadPaths(...)` force-requires module trees so those registrations run; must be called before `app.start()`. `app.start()` finalizes (allocates jecs IDs, wires hooks, sorts observers, auto-instantiates resources, fires `runOnStart`).
+- No central registry manifest. Transformer injects side-effect registration calls (`rovy.__component`, `rovy.__system`, `rovy.__observer`, ...) right after each decorated class. `rovy.loadPaths(...)` force-requires module trees so those registrations run; plugin folders may include `.rovy.plugin.json` to load `shared` plus the active `client`/`server` subtree. `loadPaths` must be called before `app.start()`. `app.start()` finalizes (allocates jecs IDs, wires hooks, sorts observers, auto-instantiates resources, fires `runOnStart`).
 - Mutation must go through `commands.set` / `world.set` for change detection to fire.
 
 ## Open questions

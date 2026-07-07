@@ -113,7 +113,9 @@ function compileFixture(source, options = {}) {
 		const filePath = path.join(src, name);
 		fs.mkdirSync(path.dirname(filePath), { recursive: true });
 		fs.writeFileSync(filePath, contents);
-		rootNames.push(filePath);
+		if (/\.tsx?$/.test(name)) {
+			rootNames.push(filePath);
+		}
 	}
 	fs.mkdirSync(path.dirname(entry), { recursive: true });
 	fs.writeFileSync(entry, source);
