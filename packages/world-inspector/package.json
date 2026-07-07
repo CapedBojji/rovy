@@ -6,7 +6,7 @@
   "types": "out/index.d.ts",
   "license": "MIT",
   "scripts": {
-    "build": "pnpm --filter @rovy/networking build && pnpm --filter @rovy/ui build && rbxtsc",
+    "build": "pnpm --filter @rovy/networking build && pnpm --filter @rovy/imgui build && rbxtsc",
     "dev": "rbxtsc -w",
     "test": "npm run build && zune test test/run"
   },
@@ -20,14 +20,14 @@
   "peerDependencies": {
     "@rovy/core": "0.0.0",
     "@rovy/networking": "0.0.0",
-    "@rovy/ui": "0.0.0"
+    "@rovy/imgui": "0.0.0"
   },
   "devDependencies": {
     "@rbxts/compiler-types": "3.0.0-types.0",
     "@rbxts/types": "^1.0.920",
     "@rovy/core": "workspace:*",
     "@rovy/networking": "workspace:*",
-    "@rovy/ui": "workspace:*",
+    "@rovy/imgui": "workspace:*",
     "typescript": "^5.9.3",
     "roblox-ts": "^3.0.0"
   }

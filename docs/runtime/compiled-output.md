@@ -18,7 +18,7 @@ that system.
 
 `@rovy/vide` view lowering follows the same idea: source authoring stays in TypeScript, the transformer injects `rovyVide.__view(...)` metadata and any required core query descriptors, and runtime mounting stays explicit through `mountView(...)`. See [Rovy Vide](/packages/vide).
 
-`@rovy/ui` widget lowering also follows the same idea: source authoring stays in TypeScript, the transformer injects registration/wrapping code, and later plain widget calls carry stable callsite identity. See [Rovy UI](/packages/ui).
+`@rovy/imgui` widget lowering also follows the same idea: source authoring stays in TypeScript, the transformer injects registration/wrapping code, and later plain widget calls carry stable callsite identity. See [Rovy ImGui](/packages/imgui).
 
 ---
 
@@ -232,12 +232,12 @@ const Window = RovyUi.__widget(function Window(props: { title: string }): void {
 	const style = RovyUi.getActiveStyle();
 	print(style.windowBgColor, props.title);
 }, {
-	id: "src/ui/Window@Window",
+	id: "src/imgui/Window@Window",
 	name: "Window",
 });
 
 function draw() {
-	RovyUi.__scope("src/ui/Window:0", () => Window({ title: "Inventory" }));
+	RovyUi.__scope("src/imgui/Window:0", () => Window({ title: "Inventory" }));
 }
 ```
 

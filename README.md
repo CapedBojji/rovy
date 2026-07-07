@@ -53,7 +53,7 @@ new App().start();
   explicit flush points.
 - **Optional packages** — `@rovy/networking` (`@netEvent` over Blink),
   `@rovy/vide` (reactive Vide views for gameplay UI),
-  `@rovy/ui` (function-first immediate-mode widgets), and
+  `@rovy/imgui` (function-first immediate-mode widgets), and
   `@rovy/world-inspector` (live local/remote ECS inspection).
 
 ## Packages
@@ -63,7 +63,7 @@ new App().start();
 | `@rovy/core` | Decorators, macros, types, and the packaged runtime — what you import |
 | `@rovy/networking` | `@netEvent` authoring surface and runtime handles |
 | `@rovy/vide` | Reactive Vide view integration for gameplay UI |
-| `@rovy/ui` | Function-first widget/render runtime |
+| `@rovy/imgui` | Function-first widget/render runtime |
 | `@rovy/world-inspector` | In-game ECS inspection and editing plugin |
 | `rovy-transformer` | roblox-ts compiler transformer plugin (dev dependency) |
 

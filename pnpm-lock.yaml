@@ -114,7 +114,7 @@ importers:
         specifier: ^22.15.31
         version: 22.19.19
 
-  packages/ui:
+  packages/imgui:
     devDependencies:
       '@rbxts/compiler-types':
         specifier: 3.0.0-types.0
@@ -167,9 +167,9 @@ importers:
       '@rovy/networking':
         specifier: workspace:*
         version: link:../networking
-      '@rovy/ui':
+      '@rovy/imgui':
         specifier: workspace:*
-        version: link:../ui
+        version: link:../imgui
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0

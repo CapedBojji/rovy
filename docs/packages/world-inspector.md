@@ -12,7 +12,7 @@ It gives you a UI for:
 - inspecting the local client world, the server world, or another player's client world
 - recording per-frame component changes and opted-in resource snapshots
 
-It is built as a separate package on top of `@rovy/networking` and `@rovy/ui`.
+It is built as a separate package on top of `@rovy/networking` and `@rovy/imgui`.
 
 ## What it is for
 
@@ -63,7 +63,7 @@ unsupported values are read-only.
 npm i @rovy/world-inspector
 ```
 
-This package depends on `@rovy/networking` and `@rovy/ui`, so install those too
+This package depends on `@rovy/networking` and `@rovy/imgui`, so install those too
 when you use it directly.
 
 ## Client plugin
@@ -227,4 +227,4 @@ resource diffs during local playtesting.
 
 - [Packages Overview](/packages/packages.md)
 - [Networking](/packages/networking.md)
-- [Rovy UI](/packages/ui)
+- [Rovy ImGui](/packages/imgui)

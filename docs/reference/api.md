@@ -75,7 +75,7 @@ Planned prefab `build(...)` injection is narrower. See [Prefabs](/concepts/prefa
 
 Vide views in `@rovy/vide` expose `render(...)` only. Rovy wires render params like `Query<...>`, `ViewMonitor<...>`, resources, and events into Vide sources, and views are mounted explicitly with `mountView(...)`. See [Rovy Vide](/packages/vide).
 
-Widget functions in `@rovy/ui` also use injected params, but with a function-first public surface instead of a class-based one. See [Rovy UI](/packages/ui).
+Widget functions in `@rovy/imgui` also use injected params, but with a function-first public surface instead of a class-based one. See [Rovy ImGui](/packages/imgui).
 
 ## rovy (global registry)
 
@@ -286,7 +286,7 @@ Expected v1 semantics:
 
 ## UI
 
-Public authoring surface for `@rovy/ui`:
+Public authoring surface for `@rovy/imgui`:
 
 ```ts
 /** @widget */
@@ -652,5 +652,5 @@ and instance-expression syntax like `Workspace/Zombie/HumanoidRootPart`.
 - [Datastore](/packages/datastore.md)
 - [Networking](/packages/networking.md)
 - [Prefabs](/concepts/prefabs.md)
-- [Rovy UI](/packages/ui)
+- [Rovy ImGui](/packages/imgui)
 - [World Inspector](/packages/world-inspector.md)

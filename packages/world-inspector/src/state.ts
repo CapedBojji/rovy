@@ -1,4 +1,4 @@
-import type { Node } from "@rovy/ui";
+import type { Node } from "@rovy/imgui";
 import type {
 	WorldInspectorEditDto,
 	WorldInspectorSnapshotDto,

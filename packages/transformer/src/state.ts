@@ -94,7 +94,7 @@ export class TransformState {
 	}
 
 	getUiImports(file: ts.SourceFile): CoreImports {
-		return this.getImportsForModule(file, "@rovy/ui", this.uiImportCache);
+		return this.getImportsForModule(file, "@rovy/imgui", this.uiImportCache);
 	}
 
 	getVideImports(file: ts.SourceFile): CoreImports {
@@ -178,7 +178,7 @@ export class TransformState {
 		return undefined;
 	}
 
-	// True when the `@rovy/ui` export named `uiName` carries a `/** @widget */`
+	// True when the `@rovy/imgui` export named `uiName` carries a `/** @widget */`
 	// JSDoc tag. This is the single source of truth for which built-in widget
 	// calls get a stable callsite key inserted (replaces a hardcoded name list).
 	uiExportHasWidgetTag(file: ts.SourceFile, uiName: string): boolean {
@@ -196,7 +196,7 @@ export class TransformState {
 		for (const statement of file.statements) {
 			if (!ts.isImportDeclaration(statement)) continue;
 			if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
-			if (statement.moduleSpecifier.text !== "@rovy/ui") continue;
+			if (statement.moduleSpecifier.text !== "@rovy/imgui") continue;
 			moduleSpecifier = statement.moduleSpecifier;
 			break;
 		}
@@ -342,7 +342,7 @@ export class TransformState {
 		if (rovyImport) imports.push(importNamed("@rovy/core", "rovy", rovyImport.text));
 		if (rovyNetImport) imports.push(importNamed("@rovy/networking", "rovyNet", rovyNetImport.text));
 		if (rovyDataImport) imports.push(importNamed("@rovy/datastore", "rovyData", rovyDataImport.text));
-		if (rovyUiImport) imports.push(importDefault("@rovy/ui", rovyUiImport.text));
+		if (rovyUiImport) imports.push(importDefault("@rovy/imgui", rovyUiImport.text));
 		if (rovyVideImport) imports.push(importNamed("@rovy/vide", "rovyVide", rovyVideImport.text));
 		if (tImport) imports.push(importNamed("@rbxts/t", "t", tImport.text));
 		const pluginImports = this.pendingPluginImports.get(file.fileName);

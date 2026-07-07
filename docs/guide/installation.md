@@ -58,7 +58,7 @@ npm i @rovy/vide @rbxts/vide
 Install UI only when you author widgets:
 
 ```sh
-npm i @rovy/ui
+npm i @rovy/imgui
 ```
 
 Install the in-game inspector only when you want the debug tool:
@@ -73,7 +73,7 @@ npm i @rovy/world-inspector
 | `@rovy/networking`      | `@netEvent` authoring surface + runtime handles                | `import` when using net events              |
 | `@rovy/datastore`       | Persistent document declarations + reader/writer/opener handles | `import` when using datastore documents     |
 | `@rovy/vide`            | Reactive Vide view integration for gameplay UI                 | `import` `@view` and `mountView`            |
-| `@rovy/ui`              | Function-first widget/render runtime                           | `import` widget helpers                     |
+| `@rovy/imgui`              | Function-first widget/render runtime                           | `import` widget helpers                     |
 | `@rovy/world-inspector` | In-game ECS inspection and editing plugin                      | `import` when embedding the debug inspector |
 | `rovy-transformer`      | roblox-ts compiler transformer plugin                          | List it in `tsconfig.json`                  |
 | `rovy-build`            | build/open/watch/start orchestration and Rovy config discovery | Use it in package scripts                   |

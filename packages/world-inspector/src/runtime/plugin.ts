@@ -12,7 +12,7 @@ import {
 	type NetTransport,
 	type RuntimeBoundary,
 } from "@rovy/networking";
-import { rovyUi, type Node } from "@rovy/ui";
+import { rovyUi, type Node } from "@rovy/imgui";
 import {
 	HideWorldInspector,
 	ShowWorldInspector,

@@ -10,7 +10,7 @@ Use it when UI should react to Rovy world state:
 - monitor streams for enter/change/exit UI state
 - event-driven UI feeds such as combat logs
 
-`@rovy/vide` does not replace [`@rovy/ui`](/packages/ui). `@rovy/ui` is Rovy's immediate-mode widget/tool package. `@rovy/vide` is the production reactive UI path for Vide-authored Roblox UI.
+`@rovy/vide` does not replace [`@rovy/imgui`](/packages/imgui). `@rovy/imgui` is Rovy's immediate-mode widget/tool package. `@rovy/vide` is the production reactive UI path for Vide-authored Roblox UI.
 
 ## Install
 
@@ -297,7 +297,7 @@ the transformer emits a core query descriptor and a Vide view registration rough
 
 ```ts
 rovy.__query({
-  id: "src/client/ui/hud-view@HudView:0",
+  id: "src/client/imgui/hud-view@HudView:0",
   terms: [
     { t: "entity" },
     { t: "component", ctor: Health },
@@ -306,10 +306,10 @@ rovy.__query({
 });
 
 rovyVide.__view(HudView, {
-  id: "src/client/ui/hud-view@HudView",
+  id: "src/client/imgui/hud-view@HudView",
   methods: ["render"],
   params: [
-    { kind: "query", handle: "src/client/ui/hud-view@HudView:0" },
+    { kind: "query", handle: "src/client/imgui/hud-view@HudView:0" },
   ],
 });
 ```
@@ -351,7 +351,7 @@ Its default client bootstrap mounts a blank decorated HUD:
 ```ts
 import { mountView } from "@rovy/vide";
 import { bootTemplateApp } from "shared/bootstrap";
-import { TemplateUi } from "./ui/template-ui";
+import { TemplateUi } from "./imgui/template-ui";
 
 const app = bootTemplateApp();
 mountView(app, TemplateUi);
@@ -362,7 +362,7 @@ That keeps new games on the official reactive UI path without adding gameplay sy
 The template also has UI Claps wired for the starter Vide HUD:
 
 ```sh
-cd ../ui-claps
+cd ../imgui-claps
 pnpm install
 pnpm run build
 
@@ -372,14 +372,14 @@ pnpm run ui
 ```
 
 `ui-claps.config.ts` uses `root: "src"` and `storyRoot: "out"`. The source story
-lives at `src/client/ui/template-ui.story.ts`; `pnpm run ui` compiles first, then
-UI Claps discovers the compiled `out/client/ui/template-ui.story.luau` file and
+lives at `src/client/imgui/template-ui.story.ts`; `pnpm run ui` compiles first, then
+UI Claps discovers the compiled `out/client/imgui/template-ui.story.luau` file and
 previews the `TemplateUi` frame as one focused story with editable text, UDim,
 UDim2, opacity, and color controls.
 
 ## Related Pages
 
-- [Rovy UI](/packages/ui) for immediate-mode tools and debug widgets
+- [Rovy ImGui](/packages/imgui) for immediate-mode tools and debug widgets
 - [Queries](/concepts/queries) for `Query<...>` and query terms
 - [Monitors](/concepts/monitors) for ECS lifecycle reactions outside UI
 - [Events](/concepts/events) for local Rovy events

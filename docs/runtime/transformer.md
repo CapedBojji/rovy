@@ -1,6 +1,6 @@
 # Transformer
 
-The roblox-ts transformer handles compile-time work that runtime TypeScript cannot do: resolving generic types, validating decorator usage, hoisting query descriptors, injecting `rovy.__*` registration calls after each decorated class, lowering datastore declarations for `@rovy/datastore`, lowering `@view` classes for `@rovy/vide`, and lowering widget authoring for `@rovy/ui`.
+The roblox-ts transformer handles compile-time work that runtime TypeScript cannot do: resolving generic types, validating decorator usage, hoisting query descriptors, injecting `rovy.__*` registration calls after each decorated class, lowering datastore declarations for `@rovy/datastore`, lowering `@view` classes for `@rovy/vide`, and lowering widget authoring for `@rovy/imgui`.
 
 Shipped as the `rovy-transformer` package — a dev-only roblox-ts plugin, separate from the `@rovy/core` runtime. See [Packages](/packages/packages.md) for the split and `rovy-build` setup.
 
@@ -23,7 +23,7 @@ Datastore work adds another compile-time path: detect `playerDocument<T>()`, `do
 
 Vide work adds another compile-time path: detect `@view` imported from `@rovy/vide`, require `render(...)`, reject `match` and `events` maps, lower render params, hoist view query descriptors, and inject `rovyVide.__view(...)`. See [Rovy Vide](/packages/vide).
 
-UI work adds another compile-time path: detect JSDoc `@widget` functions, require a same-file implementation, hoist a module-level `const __rovyWidgetMeta_X = { id, name } as const` per widget, wrap the function through `RovyUi.__widget(fn, __rovyWidgetMeta_X)`, lower later plain widget calls and built-in `@rovy/ui` widget calls through `RovyUi.__scope("module:key", () => Widget(args))`, erase leading `style: Style` authoring sugar into `RovyUi.getActiveStyle()`, lower storage helpers like `useState` / `useEffect` / `useInstance` to keyed internals, and lower `StyleScope(...)` / `scope(...)` as keyed callback-bounded runtime scopes. See [Rovy UI](/packages/ui).
+UI work adds another compile-time path: detect JSDoc `@widget` functions, require a same-file implementation, hoist a module-level `const __rovyWidgetMeta_X = { id, name } as const` per widget, wrap the function through `RovyUi.__widget(fn, __rovyWidgetMeta_X)`, lower later plain widget calls and built-in `@rovy/imgui` widget calls through `RovyUi.__scope("module:key", () => Widget(args))`, erase leading `style: Style` authoring sugar into `RovyUi.getActiveStyle()`, lower storage helpers like `useState` / `useEffect` / `useInstance` to keyed internals, and lower `StyleScope(...)` / `scope(...)` as keyed callback-bounded runtime scopes. See [Rovy ImGui](/packages/imgui).
 
 ## Transformer config
 
@@ -222,7 +222,7 @@ The transformer emits a core query descriptor for the render param and a Vide vi
 
 ```ts
 rovy.__query({
-	id: "src/client/ui/hud-view:query:0",
+	id: "src/client/imgui/hud-view:query:0",
 	terms: [
 		{ t: "entity" },
 		{ t: "component", ctor: Health },
@@ -231,9 +231,9 @@ rovy.__query({
 });
 
 rovyVide.__view(HudView, {
-	id: "src/client/ui/hud-view@HudView",
+	id: "src/client/imgui/hud-view@HudView",
 	methods: ["render"],
-	params: [{ kind: "query", handle: "src/client/ui/hud-view@HudView:0" }],
+	params: [{ kind: "query", handle: "src/client/imgui/hud-view@HudView:0" }],
 });
 ```
 
@@ -276,7 +276,7 @@ export function Window(style: Style, props: { title: string }): void {
 }
 
 const __rovyWidgetMeta_Window = {
-	id: "src/ui/Window@Window",
+	id: "src/imgui/Window@Window",
 	name: "Window",
 } as const;
 
@@ -285,10 +285,10 @@ Window = RovyUi.__widget(function Window(props: { title: string }): void {
 	print(style.windowBgColor, props.title);
 }, __rovyWidgetMeta_Window);
 
-RovyUi.__scope("src/ui/Window:0", () => Window({ title: "Inventory" }));
+RovyUi.__scope("src/imgui/Window:0", () => Window({ title: "Inventory" }));
 ```
 
-The meta object is created once when the ModuleScript loads. The public authoring stays `Window({ ... })`; the lowered helper gives `@rovy/ui` stable widget-call identity for `useState` and `useEffect`.
+The meta object is created once when the ModuleScript loads. The public authoring stays `Window({ ... })`; the lowered helper gives `@rovy/imgui` stable widget-call identity for `useState` and `useEffect`.
 
 ### Style param lowering
 
@@ -389,4 +389,4 @@ Reason: avoid collisions across files that happen to share a type name. Same rul
 - [Packages](/packages/packages.md)
 - [Networking](/packages/networking.md)
 - [Rovy Vide](/packages/vide)
-- [Rovy UI](/packages/ui)
+- [Rovy ImGui](/packages/imgui)

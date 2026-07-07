@@ -73,7 +73,7 @@ import {
 		playerDocument,
 		rovyData,
 	} from "@rovy/datastore";
-	import RovyUi, { Style, StyleScope, button, scope, useEffect, useInstance, useState } from "@rovy/ui";
+	import RovyUi, { Style, StyleScope, button, scope, useEffect, useInstance, useState } from "@rovy/imgui";
 	import { ViewContext, ViewMonitor, view, rovyVide } from "@rovy/vide";
 	`;
 

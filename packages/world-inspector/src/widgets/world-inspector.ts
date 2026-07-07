@@ -19,7 +19,7 @@ import {
 	useKey,
 	window,
 	type WindowHandle,
-} from "@rovy/ui";
+} from "@rovy/imgui";
 import { matchesWorldInspectorQuery } from "../runtime/query";
 import { WorldInspectorRecorderState } from "../runtime/recorder";
 import {

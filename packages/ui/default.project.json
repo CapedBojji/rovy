@@ -1,9 +1,0 @@
-{
-  "name": "ui",
-  "tree": {
-    "$className": "Folder",
-    "out": {
-      "$path": "out"
-    }
-  }
-}

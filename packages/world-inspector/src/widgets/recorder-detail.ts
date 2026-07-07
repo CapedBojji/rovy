@@ -1,4 +1,4 @@
-import { __scope, button, label, tableCell, tableRow, uiTable, useKey, window } from "@rovy/ui";
+import { __scope, button, label, tableCell, tableRow, uiTable, useKey, window } from "@rovy/imgui";
 import { formatTarget } from "../runtime/recorder-snapshot";
 import { WorldInspectorRecorderState } from "../runtime/recorder";
 import { isExpandable, type WorldInspectorValueNodeDto } from "../runtime/value-tree";

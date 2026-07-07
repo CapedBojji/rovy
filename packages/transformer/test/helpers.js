@@ -31,7 +31,7 @@ function createFixtureDir() {
 }
 
 // The transformer reads the `/** @widget */` JSDoc tag off the resolved
-// `@rovy/ui` declaration to decide which built-in calls get a callsite key.
+// `@rovy/imgui` declaration to decide which built-in calls get a callsite key.
 // Fixture temp dirs have no node_modules, so provide a minimal tagged stub
 // that mirrors the real package surface.
 const ROVY_UI_WIDGETS = [
@@ -43,11 +43,11 @@ const ROVY_UI_WIDGETS = [
 ];
 
 function writeRovyUiStub(temp) {
-	const dir = path.join(temp, "node_modules", "@rovy", "ui");
+	const dir = path.join(temp, "node_modules", "@rovy", "imgui");
 	fs.mkdirSync(dir, { recursive: true });
 	fs.writeFileSync(
 		path.join(dir, "package.json"),
-		JSON.stringify({ name: "@rovy/ui", version: "0.0.0", types: "index.d.ts" }),
+		JSON.stringify({ name: "@rovy/imgui", version: "0.0.0", types: "index.d.ts" }),
 	);
 	const lines = [
 		"export interface Style { [key: string]: unknown; }",

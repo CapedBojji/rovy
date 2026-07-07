@@ -8,7 +8,7 @@ Rovy ships as distinct packages, mirroring the split between runtime packages an
 | `@rovy/networking`      | Net-event authoring surface and runtime handles                | `import` it when using `@netEvent`                        |
 | `@rovy/datastore`       | Persistent document declarations and runtime handles           | `import` it when using persistent documents               |
 | `@rovy/vide`            | Reactive Vide view integration for gameplay UI                 | `import` `@view`, `mountView`, and `ViewMonitor`          |
-| `@rovy/ui`              | Widget/render integration package                              | `import` widget helpers and JSDoc-tagged widget functions |
+| `@rovy/imgui`              | Widget/render integration package                              | `import` widget helpers and JSDoc-tagged widget functions |
 | `@rovy/world-inspector` | In-game ECS inspection and editing plugin                      | `import` it when embedding the debug inspector            |
 | `rovy-transformer`      | roblox-ts compiler transformer plugin                          | Listing it in `tsconfig.json`                             |
 | `rovy-build`            | build/open/watch/start orchestration and Rovy config discovery | Use it in package scripts                                 |
@@ -16,14 +16,14 @@ Rovy ships as distinct packages, mirroring the split between runtime packages an
 Most ECS code authors against `@rovy/core`. Networked event code additionally
 imports `@rovy/networking`. Persistent game data code imports
 `@rovy/datastore`. Reactive gameplay UI can author against `@rovy/vide`.
-Immediate-mode tool UI can author against `@rovy/ui`. Debug tooling can
+Immediate-mode tool UI can author against `@rovy/imgui`. Debug tooling can
 additionally import `@rovy/world-inspector`. `rovy-transformer` runs
 silently at build time and rewrites decorated and widget code into the runtime
 calls the packages consume. `rovy-build` owns the project command flow around
 `rbxtsc`, generators, Rojo, and Studio.
 
 Inside this repo, the shipped packages live in a pnpm workspace at
-`packages/core`, `packages/networking`, `packages/datastore`, `packages/ui`,
+`packages/core`, `packages/networking`, `packages/datastore`, `packages/imgui`,
 `packages/vide`, `packages/world-inspector`, `packages/transformer`, and
 `packages/build`.
 
@@ -84,7 +84,7 @@ document handle params to external package param ids.
 
 ## What lives in `@rovy/vide`
 
-`@rovy/vide` is separate from core and from `@rovy/ui`. Import it when a client
+`@rovy/vide` is separate from core and from `@rovy/imgui`. Import it when a client
 needs reactive Vide UI that talks to the Rovy world:
 
 - **Decorator** — `@view(...)`
@@ -102,9 +102,9 @@ import { mountView, view, type ViewMonitor } from "@rovy/vide";
 See [Rovy Vide](/packages/vide) for examples covering root views, query rows,
 monitor streams, event feeds, and the standalone game template.
 
-## What lives in `@rovy/ui`
+## What lives in `@rovy/imgui`
 
-`@rovy/ui` is the TypeScript-authored widget/render integration package.
+`@rovy/imgui` is the TypeScript-authored widget/render integration package.
 
 - **Runtime model** — Rovy-owned immediate UI runtime inspired by EgooE/Plasma, with no `@rbxts/egooe` dependency
 - **Built-in catalog** — `window`, `button`, `checkbox`, `slider`, `input`, `label`, `table`, `popup`, `demoWindow`, and related layout/control helpers
@@ -116,7 +116,7 @@ monitor streams, event feeds, and the standalone game template.
 
 This package is meant to feel closer to EgooE's function-driven rendering style than to a React component tree, while still using Rovy's registration, identity, and injection machinery. Runtime does not use `debug.info(...)` for identity; transformer keys own that job.
 
-The full UI docs now live in the [Rovy UI section](/packages/ui), including [Built-in Widgets](/packages/ui/built-in-widgets), [Curve Editor](/packages/ui/curve-editor), [Styling](/packages/ui/styling), and [Custom Widgets](/packages/ui/custom-widgets).
+The full UI docs now live in the [Rovy ImGui section](/packages/imgui), including [Built-in Widgets](/packages/imgui/built-in-widgets), [Curve Editor](/packages/imgui/curve-editor), [Styling](/packages/imgui/styling), and [Custom Widgets](/packages/imgui/custom-widgets).
 
 Use `@rovy/vide` instead when the public UI model should be Vide's reactive
 source graph rather than Rovy's immediate widget frame.
@@ -124,7 +124,7 @@ source graph rather than Rovy's immediate widget frame.
 ## What lives in `@rovy/world-inspector`
 
 `@rovy/world-inspector` is an optional debug package built on top of
-`@rovy/networking` and `@rovy/ui`.
+`@rovy/networking` and `@rovy/imgui`.
 
 - **Client plugin** — `WorldInspectorPlugin`
 - **Server plugin** — `WorldInspectorServerPlugin`
@@ -172,7 +172,7 @@ src/*.lua  (emitted)                     │
 
 The transformer↔runtime contract is the `rovy.__*` API exported by `@rovy/core`. Both sides are versioned together.
 
-For UI work, the equivalent boundary is the `RovyUi.__widget(...)` wrapping contract plus the lowered plain-call widget authoring described in [Rovy UI](/packages/ui).
+For UI work, the equivalent boundary is the `RovyUi.__widget(...)` wrapping contract plus the lowered plain-call widget authoring described in [Rovy ImGui](/packages/imgui).
 
 ## Setup
 
@@ -204,7 +204,7 @@ npm i @rovy/vide @rbxts/vide
 Install UI only when using widget authoring:
 
 ```sh
-npm i @rovy/ui
+npm i @rovy/imgui
 ```
 
 Install the inspector only when using the in-game debug tool:
@@ -356,5 +356,5 @@ So a missing/misconfigured transformer surfaces as an immediate, explicit error 
 - [API reference](/reference/api.md)
 - [Datastore](/packages/datastore.md)
 - [Prefabs](/concepts/prefabs.md)
-- [Rovy UI](/packages/ui)
+- [Rovy ImGui](/packages/imgui)
 - [World Inspector](/packages/world-inspector.md)

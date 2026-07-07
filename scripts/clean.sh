@@ -21,7 +21,7 @@ BUILD_DIRS=(
   "$ROOT/build"
   "$ROOT/packages/core/out"
   "$ROOT/packages/networking/out"
-  "$ROOT/packages/ui/out"
+  "$ROOT/packages/imgui/out"
   "$ROOT/packages/transformer/dist"
 )
 
