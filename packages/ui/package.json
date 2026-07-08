@@ -1,0 +1,30 @@
+{
+  "name": "@rovy/ui",
+  "version": "0.0.0",
+  "description": "Retained class-based UI package for Rovy",
+  "main": "out/init.luau",
+  "types": "out/index.d.ts",
+  "license": "MIT",
+  "scripts": {
+    "build": "pnpm --filter @rovy/core build && rbxtsc",
+    "dev": "rbxtsc -w",
+    "test": "npm run build && zune test test/run"
+  },
+  "files": [
+    "out",
+    "!**/*.tsbuildinfo"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@rovy/core": "0.0.0"
+  },
+  "devDependencies": {
+    "@rbxts/compiler-types": "3.0.0-types.0",
+    "@rbxts/types": "^1.0.920",
+    "@rovy/core": "workspace:*",
+    "typescript": "^5.9.3",
+    "roblox-ts": "^3.0.0"
+  }
+}

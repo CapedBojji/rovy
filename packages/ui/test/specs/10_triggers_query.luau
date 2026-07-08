@@ -36,6 +36,15 @@ return function(TS, t)
 	end
 
 	t.describe("$queryTrigger", function()
+		t.it("defaults query trigger options when omitted", function()
+			local descriptor = H.queryTrigger()
+			t.expect(descriptor.kind).toBe("query")
+			t.expect(descriptor.handle).toBe("")
+			t.expect(descriptor.on[1]).toBe("added")
+			t.expect(descriptor.on[2]).toBe("changed")
+			t.expect(descriptor.on[3]).toBe("removed")
+		end)
+
 		t.it("re-renders and updates size when an entity enters the query", function()
 			H.reset()
 			local Health, Comp, stats = setup()
