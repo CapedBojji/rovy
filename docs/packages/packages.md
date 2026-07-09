@@ -201,7 +201,13 @@ Install Vide only when using reactive Vide views:
 npm i @rovy/vide @rbxts/vide
 ```
 
-Install UI only when using widget authoring:
+Install retained UI only when using `@ui` components:
+
+```sh
+npm i @rovy/ui
+```
+
+Install immediate-mode widgets only when using tool/debug widget authoring:
 
 ```sh
 npm i @rovy/imgui
