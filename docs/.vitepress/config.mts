@@ -7,6 +7,12 @@ export default defineConfig({
   description: "Bevy-like ECS for Roblox-TS, built on jecs.",
   lang: "en-US",
   base: "/rovy/",
+  vite: {
+    server: {
+      host: true,
+      allowedHosts: [".trycloudflare.com"],
+    },
+  },
   cleanUrls: true,
   lastUpdated: true,
 
