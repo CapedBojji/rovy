@@ -585,6 +585,7 @@ function jsxProps(
 			continue;
 		}
 		const name = jsxAttributeName(state, attr.name);
+		if (name === "key") continue;
 		if (attr.initializer === undefined) {
 			props.push(prop(name, bool(true)));
 		} else if (ts.isStringLiteral(attr.initializer)) {

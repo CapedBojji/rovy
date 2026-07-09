@@ -361,3 +361,6 @@ return RetainedUi.child(Panel, {
 The runtime does not treat `children` specially for component nodes. It is just
 props. The wrapper component decides where to render those children, commonly by
 returning `fragment(this.props.children)`.
+
+`key` is not passed through component props. JSX lowers it into the child node's
+identity options, matching React's mental model.

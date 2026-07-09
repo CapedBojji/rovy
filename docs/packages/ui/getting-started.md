@@ -227,3 +227,47 @@ class HudBody {
 
 Props rerender children when the parent passes a changed value. Rovy triggers
 rerender the component that owns the trigger.
+
+## 6. Use JSX when you want React-like authoring
+
+Rovy UI supports JSX for both native Roblox elements and custom `@ui`
+components:
+
+```tsx
+import RovyUi, { fragment, type Props, type UiChildren, ui } from "@rovy/ui";
+
+interface PanelProps {
+	readonly title: string;
+	readonly children?: UiChildren;
+}
+
+@ui
+class Panel {
+	constructor(readonly props: Props<PanelProps>) {}
+
+	render() {
+		return (
+			<frame Name="Panel">
+				<textLabel Text={this.props.title} />
+				{fragment(this.props.children)}
+			</frame>
+		);
+	}
+}
+
+@ui
+class Root {
+	render() {
+		return (
+			<Panel title="Loadout">
+				<textLabel key="sword" Text="Sword" />
+				<textLabel key="shield" Text="Shield" />
+			</Panel>
+		);
+	}
+}
+```
+
+Lowercase/camel-case tags such as `<frame>` and `<textLabel>` create Roblox
+Instances. Uppercase tags such as `<Panel>` create nested `@ui` components. See
+[JSX](/packages/ui/jsx) for the full tag list and lowering rules.

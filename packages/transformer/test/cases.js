@@ -81,7 +81,9 @@ import {
 		$queryTrigger,
 		$resourceTrigger,
 		Props,
+		UiChildren,
 		child,
+		fragment,
 		frame,
 		textLabel,
 		ui,
@@ -1284,6 +1286,44 @@ class Root {
 	assert.match(result.printed, /RetainedUi\.native\("Frame"/);
 	assert.match(result.printed, /RetainedUi\.child\(Label, \{\}, \{ __callsite: "src\/main:ui:[0-9]+" \}\)/);
 	assert.match(result.printed, /\{ __callsite: "src\/main:ui:[0-9]+", key: "root" \}/);
+});
+
+runCase("@ui JSX component children lower into props.children", () => {
+	const result = compileFixture(`
+${header}
+@ui
+class Badge {
+	constructor(readonly props: Props<{ text: string }>) {}
+	render() {
+		return textLabel({ Text: this.props.text });
+	}
+}
+@ui
+class Panel {
+	constructor(readonly props: Props<{ title: string; children?: UiChildren }>) {}
+	render() {
+		return frame({}, [
+			textLabel({ Text: this.props.title }),
+			fragment(this.props.children),
+		]);
+	}
+}
+@ui
+class Root {
+	render() {
+		return (
+			<Panel title="Loadout">
+				<Badge key="sword" text="Sword" />
+				<Badge key="shield" text="Shield" />
+			</Panel>
+		);
+	}
+}
+`, { fileName: "main.tsx" });
+	assertNoDiagnostics(result, "ui JSX component children lowering");
+	assert.match(result.printed, /RetainedUi\.child\(Panel, \{[\s\S]*title: "Loadout"[\s\S]*children: \[[\s\S]*RetainedUi\.child\(Badge, \{ text: "Sword" \}, \{ __callsite: "src\/main:ui:[0-9]+", key: "sword" \}\)[\s\S]*RetainedUi\.child\(Badge, \{ text: "Shield" \}, \{ __callsite: "src\/main:ui:[0-9]+", key: "shield" \}\)[\s\S]*\][\s\S]*\}, \{ __callsite: "src\/main:ui:[0-9]+" \}\)/);
+	assert.doesNotMatch(result.printed, /\{ key: "sword", text: "Sword" \}/);
+	assert.doesNotMatch(result.printed, /\{ key: "shield", text: "Shield" \}/);
 });
 
 runCase("@view match option is rejected in favor of render params", () => {

@@ -27,6 +27,7 @@ export default defineConfig({
         items: [
           { text: "Overview", link: "/packages/ui" },
           { text: "Getting Started", link: "/packages/ui/getting-started" },
+          { text: "JSX", link: "/packages/ui/jsx" },
           { text: "Rerender Triggers", link: "/packages/ui/rerender-triggers" },
           { text: "Compiled Output", link: "/packages/ui/compiled-output" },
           { text: "Built-in Widgets", link: "/packages/ui/built-in-widgets" },
@@ -94,6 +95,7 @@ export default defineConfig({
             items: [
               { text: "Overview", link: "/packages/ui" },
               { text: "Getting Started", link: "/packages/ui/getting-started" },
+              { text: "JSX", link: "/packages/ui/jsx" },
               { text: "Rerender Triggers", link: "/packages/ui/rerender-triggers" },
               { text: "Compiled Output", link: "/packages/ui/compiled-output" },
               { text: "Built-in Widgets", link: "/packages/ui/built-in-widgets" },

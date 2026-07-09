@@ -65,6 +65,40 @@ return function(TS, t)
 			t.expect(mid:FindFirstChild("Leaf")).toBeDefined()
 		end)
 
+		t.it("component props.children can be rendered through a wrapper", function()
+			H.reset()
+			local Badge = H.uiClass("test/Badge", function(self)
+				return H.textLabel({
+					Name = self.props.name,
+					Text = self.props.text,
+				})
+			end)
+			local Panel = H.uiClass("test/Panel", function(self)
+				return H.frame({ Name = "Panel" }, {
+					H.textLabel({ Name = "Title", Text = self.props.title }),
+					H.fragment(self.props.children),
+				})
+			end)
+			local Root = H.uiClass("test/RootWithChildren", function()
+				return H.child(Panel, {
+					title = "Loadout",
+					children = {
+						H.child(Badge, { name = "Sword", text = "Sword" }, { key = "sword" }),
+						H.child(Badge, { name = "Shield", text = "Shield" }, { key = "shield" }),
+					},
+				})
+			end)
+			local app = H.startedApp()
+			local target = H.target()
+			H.mountUi(app, Root, { target = target })
+
+			local panel = target:FindFirstChild("Panel")
+			t.expect(panel).toBeDefined()
+			t.expect(panel:FindFirstChild("Title").Text).toBe("Loadout")
+			t.expect(panel:FindFirstChild("Sword").Text).toBe("Sword")
+			t.expect(panel:FindFirstChild("Shield").Text).toBe("Shield")
+		end)
+
 		t.it("fragments parent their children to the fragment's parent (no wrapper)", function()
 			H.reset()
 			local Comp = H.uiClass("test/Frag", function()
