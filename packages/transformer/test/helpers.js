@@ -26,6 +26,7 @@ function createFixtureDir() {
 		}),
 	);
 	writeRovyUiStub(temp);
+	writeRovyRetainedUiStub(temp);
 	writeRovyVideStub(temp);
 	return { temp, src, rojo: path.join(temp, "test.project.json") };
 }
@@ -67,6 +68,41 @@ function writeRovyUiStub(temp) {
 	lines.push(`declare const RovyUi: { ${objectMembers} };`);
 	lines.push("export default RovyUi;");
 	fs.writeFileSync(path.join(dir, "index.d.ts"), lines.join("\n") + "\n");
+}
+
+function writeRovyRetainedUiStub(temp) {
+	const dir = path.join(temp, "node_modules", "@rovy", "ui");
+	fs.mkdirSync(dir, { recursive: true });
+	fs.writeFileSync(
+		path.join(dir, "package.json"),
+		JSON.stringify({ name: "@rovy/ui", version: "0.0.0", types: "index.d.ts" }),
+	);
+	fs.writeFileSync(
+		path.join(dir, "index.d.ts"),
+		[
+			"export type Props<T extends object = {}> = Readonly<T>;",
+			"export type UiNode = unknown;",
+			"export declare function ui(ctor: new (...args: never[]) => object): void;",
+			"export declare function mountUi(app: unknown, root: unknown, options?: unknown): unknown;",
+			"export declare function child<TProps extends object>(ctor: new (props: Props<TProps>) => { render(...args: unknown[]): UiNode }, props?: TProps, options?: unknown): UiNode;",
+			"export declare function native(className: string, props?: Record<string, unknown>, children?: unknown, options?: unknown): UiNode;",
+			"export declare function fragment(children?: unknown, options?: unknown): UiNode;",
+			"export declare function frame(props?: Record<string, unknown>, children?: unknown): UiNode;",
+			"export declare function textLabel(props?: Record<string, unknown>, children?: unknown): UiNode;",
+			"export declare function textButton(props?: Record<string, unknown>, children?: unknown): UiNode;",
+			"export declare function $prop<T = unknown>(key: string): unknown;",
+			"export declare function $queryTrigger<Terms extends ReadonlyArray<unknown>, F1 = void, F2 = void, F3 = void, F4 = void, F5 = void>(options?: unknown): unknown;",
+			"export declare function $componentTrigger(ctor: unknown, options?: unknown): unknown;",
+			"export declare function $resourceTrigger(ctor: unknown): unknown;",
+			"export declare function $eventTrigger(ctor: unknown): unknown;",
+			"export declare function $relationTrigger(ctor: unknown, options?: unknown): unknown;",
+			"export declare function $lifecycleTrigger(kind: string, options?: unknown): unknown;",
+			"export declare const rovyUi: { __ui(ctor: unknown, meta: unknown): void; };",
+			"declare const RovyUi: typeof rovyUi & { child: typeof child; native: typeof native; fragment: typeof fragment; };",
+			"export default RovyUi;",
+			"export namespace JSX { interface Element {} interface IntrinsicElements { [name: string]: Record<string, unknown>; } }",
+		].join("\n") + "\n",
+	);
 }
 
 function writeRovyVideStub(temp) {

@@ -115,7 +115,7 @@ return function(TS, t)
 			t.expect(stats.renders).toBe(baseline)
 		end)
 
-		t.it("does not re-render when a changed row value is structurally equal", function()
+		t.it("re-renders when row objects are replaced even with identical field values", function()
 			H.reset()
 			local Health, Comp, stats = setup()
 			local app = H.startedApp()
@@ -123,6 +123,8 @@ return function(TS, t)
 			H.mountUi(app, Comp, { target = H.target() })
 			local baseline = stats.renders
 
+			-- Health.new(50) creates a new object; rowValuesEqual uses reference
+			-- equality so the snapshot diff detects it as changed.
 			app.world:set(e, Health, Health.new(50))
 			H.settle(app)
 			t.expect(stats.renders > baseline).toBeTruthy()

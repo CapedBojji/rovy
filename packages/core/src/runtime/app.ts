@@ -12,7 +12,7 @@ import type { ResolveCtx } from "./resolve-param";
 import { CommandsImpl } from "./commands";
 import { EventReaderHandle, EventRegistry, EventWriterHandle, wireEvents } from "./events";
 import { flush } from "./flush";
-import { runAppExtensions } from "./extensions";
+import { runAppExtensions, runPostStartAppExtensions } from "./extensions";
 import type { Plugin } from "./plugin";
 import { logRegistry, resolvePluginName } from "./log-registry";
 import { MonitorRegistry } from "./monitors";
@@ -25,6 +25,17 @@ import { Scheduler } from "./schedule";
 import { RovyWorld } from "./world";
 import { LifecycleHub, type LifecycleCallback, type LifecycleKind, type LifecycleUnsubscribe } from "./lifecycle";
 import { markResourceCloneByReference } from "./resource-clone";
+
+export interface AppMountOptions {
+	readonly props?: object;
+	readonly name?: string;
+}
+
+export interface AppMountRequest {
+	readonly ctor: unknown;
+	readonly target?: Instance;
+	readonly options?: AppMountOptions;
+}
 
 export class App {
 	readonly world = new RovyWorld();
@@ -39,6 +50,7 @@ export class App {
 	private scheduleContext!: ScheduleContext;
 	private started = false;
 	private readonly postFlushListeners = new Array<{ active: boolean; callback: () => void }>();
+	private readonly mountRequests = new Array<AppMountRequest>();
 	/** Overrides supplied before start(); applied after resource registration. */
 	private resourceOverrides = new Map<Ctor, object>();
 	private readonly makeReader = (registry: EventRegistry, event: Ctor): EventReaderHandle =>
@@ -90,6 +102,17 @@ export class App {
 	runSchedule(schedule: Ctor, dt?: number): this {
 		this.scheduler.run(schedule, dt);
 		return this;
+	}
+
+	/** Queue a package-owned root mount before start(); consumed by packages such as @rovy/ui after start finalization. */
+	mount(ctor: unknown, target?: Instance, options?: AppMountOptions): this {
+		assert(!this.started, "[rovy] app.mount(...) must be called before app.start()");
+		this.mountRequests.push({ ctor, target, options });
+		return this;
+	}
+
+	consumeMountRequests(callback: (request: AppMountRequest) => void): void {
+		for (const request of this.mountRequests) callback(request);
 	}
 
 	on_entity_spawned(callback: LifecycleCallback): LifecycleUnsubscribe {
@@ -224,7 +247,8 @@ export class App {
 				activeReg.resources.size() > 0 ||
 				activeReg.events.size() > 0 ||
 				activeReg.observers.size() > 0 ||
-				activeReg.schedules.size() > 0,
+				activeReg.schedules.size() > 0 ||
+				this.mountRequests.size() > 0,
 			"[rovy] empty active registry — call rovy.loadPaths(...) before app.start() and add required plugins",
 		);
 		runAppExtensions(this, activeReg);
@@ -424,6 +448,7 @@ export class App {
 		for (const s of this.scheduler.runOnStartList()) {
 			this.scheduler.run(s);
 		}
+		runPostStartAppExtensions(this, finalReg);
 		return this;
 	}
 

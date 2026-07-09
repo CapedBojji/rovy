@@ -679,6 +679,12 @@ local services = {
 	},
 }
 
+-- Capturing `warn` shim. The retained-ui runtime warns (instead of throwing)
+-- when a component's render() fails during a flush, so specs need `warn` to
+-- exist and to be observable. `_G.__rovyWarnings` accumulates messages;
+-- `_G.__rovyClearWarnings()` resets it (called from H.reset).
+local warnLog = {}
+
 local bufferApi = _G.buffer or fakeBuffer()
 
 local fakeGlobals = {
@@ -725,6 +731,17 @@ local fakeGlobals = {
 	__rovyDrainTasks = drainTasks,
 	__rovyPendingTasks = pendingTasks,
 	__rovyClearTasks = clearTasks,
+	__rovyWarnings = warnLog,
+	__rovyClearWarnings = function()
+		table.clear(warnLog)
+	end,
+	warn = function(...)
+		local parts = {}
+		for _, value in ipairs({ ... }) do
+			table.insert(parts, tostring(value))
+		end
+		table.insert(warnLog, table.concat(parts, " "))
+	end,
 	Enum = setmetatable({}, {
 		__index = function(_, enumName)
 			return setmetatable({}, {

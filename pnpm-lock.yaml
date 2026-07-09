@@ -81,6 +81,24 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  packages/imgui:
+    devDependencies:
+      '@rbxts/compiler-types':
+        specifier: 3.0.0-types.0
+        version: 3.0.0-types.0
+      '@rbxts/types':
+        specifier: ^1.0.920
+        version: 1.0.924
+      '@rovy/core':
+        specifier: workspace:*
+        version: link:../core
+      roblox-ts:
+        specifier: ^3.0.0
+        version: 3.0.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   packages/jecs: {}
 
   packages/networking:
@@ -114,7 +132,7 @@ importers:
         specifier: ^22.15.31
         version: 22.19.19
 
-  packages/imgui:
+  packages/ui:
     devDependencies:
       '@rbxts/compiler-types':
         specifier: 3.0.0-types.0
@@ -164,12 +182,12 @@ importers:
       '@rovy/core':
         specifier: workspace:*
         version: link:../core
-      '@rovy/networking':
-        specifier: workspace:*
-        version: link:../networking
       '@rovy/imgui':
         specifier: workspace:*
         version: link:../imgui
+      '@rovy/networking':
+        specifier: workspace:*
+        version: link:../networking
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0

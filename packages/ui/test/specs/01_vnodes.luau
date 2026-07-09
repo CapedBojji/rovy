@@ -98,6 +98,24 @@ return function(TS, t)
 		end
 	end)
 
+	t.describe("edge cases", function()
+		t.it("child() with nil props normalizes to an empty table", function()
+			local Ctor = {}
+			local node = ui.child(Ctor)
+			t.expect(node.kind).toBe("component")
+			t.expect(node.props).toBeDefined()
+			t.expect(node.props.placeholder).toBeUndefined()
+		end)
+
+		t.it("native() with nil props and nil children produces valid empty vnode", function()
+			local node = ui.native("Frame")
+			t.expect(node.kind).toBe("native")
+			t.expect(node.className).toBe("Frame")
+			t.expect(#node.children).toBe(0)
+			t.expect(node.key).toBeUndefined()
+		end)
+	end)
+
 	t.describe("jsx / jsxs", function()
 		t.it("jsx(string, props, key) builds a native vnode", function()
 			local node = ui.jsx("Frame", { Name = "J", children = ui.frame({ Name = "C" }) }, "kk")
@@ -113,6 +131,20 @@ return function(TS, t)
 			t.expect(node.kind).toBe("component")
 			t.expect(node.ctor).toBe(Ctor)
 			t.expect(node.key).toBe("kk")
+		end)
+
+		t.it("jsx(string, nil) builds a native vnode with empty props", function()
+			local node = ui.jsx("Frame", nil, nil)
+			t.expect(node.kind).toBe("native")
+			t.expect(node.className).toBe("Frame")
+			t.expect(#node.children).toBe(0)
+		end)
+
+		t.it("jsx(ctor, nil) builds a component vnode with empty props", function()
+			local Ctor = {}
+			local node = ui.jsx(Ctor, nil, nil)
+			t.expect(node.kind).toBe("component")
+			t.expect(node.ctor).toBe(Ctor)
 		end)
 
 		t.it("jsxs is the same function as jsx and Fragment is fragment", function()

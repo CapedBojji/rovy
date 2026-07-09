@@ -24,6 +24,13 @@ return function(TS, t)
 	end
 
 	t.describe("$resourceTrigger", function()
+		t.it("produces a { kind = 'resource', ctor } descriptor", function()
+			local FakeCtor = {}
+			local descriptor = H.resourceTrigger(FakeCtor)
+			t.expect(descriptor.kind).toBe("resource")
+			t.expect(descriptor.ctor).toBe(FakeCtor)
+		end)
+
 		t.it("re-renders on resource change with the fresh value injected", function()
 			H.reset()
 			local Theme, Comp, stats = setup()

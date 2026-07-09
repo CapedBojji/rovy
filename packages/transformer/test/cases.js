@@ -74,6 +74,18 @@ import {
 		rovyData,
 	} from "@rovy/datastore";
 	import RovyUi, { Style, StyleScope, button, scope, useEffect, useInstance, useState } from "@rovy/imgui";
+	import RetainedUi, {
+		$componentTrigger,
+		$eventTrigger,
+		$prop,
+		$queryTrigger,
+		$resourceTrigger,
+		Props,
+		child,
+		frame,
+		textLabel,
+		ui,
+	} from "@rovy/ui";
 	import { ViewContext, ViewMonitor, view, rovyVide } from "@rovy/vide";
 	`;
 
@@ -1206,6 +1218,72 @@ class HudView {
 	assert.match(result.printed, /kind: "local", index: 0/);
 	assert.match(result.printed, /kind: "query", handle: "src\/main@HudView:8"/);
 	assert.match(result.printed, /kind: "context"/);
+});
+
+runCase("@ui classes lower render params and static rerender triggers", () => {
+	const result = compileFixture(`
+${header}
+@component class Health {}
+@component class Visible {}
+@resource class Theme { constructor(public panel = new Color3()) {} }
+@event() class InventoryChanged {}
+@ui
+class ItemRow {
+	static rerender = [
+		$componentTrigger(Health, { entity: $prop<Entity>("entity"), on: ["changed", "removed"] }),
+	];
+	constructor(readonly props: Props<{ entity: Entity }>) {}
+	render(health: Query<[Entity, Health]>) {
+		return textLabel({ Text: "row" });
+	}
+}
+@ui
+class InventoryRoot {
+	static rerender = [
+		$queryTrigger<[Entity, Health], With<Visible>>({ on: ["added", "changed", "removed"] }),
+		$resourceTrigger(Theme),
+		$eventTrigger(InventoryChanged),
+	];
+	render(items: Query<[Entity, Health], With<Visible>>, theme: Res<Theme>) {
+		return frame({ key: "root" }, [
+			child(ItemRow, { entity: 1 as Entity }),
+		]);
+	}
+}
+`);
+	assertNoDiagnostics(result, "ui class lowering");
+	assert.match(result.printed, /from "@rovy\/ui"/);
+	assert.match(result.printed, /__ui\(ItemRow, \{ id: "src\/main@ItemRow", methods: \["render"\], params: \[\s*\{ kind: "query", handle: "src\/main@ItemRow:0" \}\s*\], triggers: \[\s*\{ kind: "component", ctor: Health, entity: \{ kind: "prop", key: "entity" \}, on: \["changed", "removed"\] \}\s*\] \}\)/);
+	assert.match(result.printed, /__query\(\{ id: "src\/main@InventoryRoot:rerender:0"/);
+	assert.match(result.printed, /__ui\(InventoryRoot, \{[\s\S]*params: \[\s*\{ kind: "query", handle: "src\/main@InventoryRoot:0" \}, \{ kind: "res", ctor: Theme \}\s*\][\s\S]*triggers: \[\s*\{ kind: "query", handle: "src\/main@InventoryRoot:rerender:0"/);
+	assert.match(result.printed, /kind: "resource", ctor: Theme/);
+	assert.match(result.printed, /kind: "event", ctor: InventoryChanged/);
+	assert.doesNotMatch(result.printed, /static rerender/);
+	assert.doesNotMatch(result.printed, /\$componentTrigger\(Health/);
+	assert.doesNotMatch(result.printed, /\$queryTrigger<\[/);
+});
+
+runCase("@ui factory and JSX calls receive stable callsite ids", () => {
+	const result = compileFixture(`
+${header}
+@ui
+class Label {
+	render() {
+		return textLabel({ Text: "label" });
+	}
+}
+@ui
+class Root {
+	render() {
+		return <frame key="root"><Label /></frame>;
+	}
+}
+`, { fileName: "main.tsx" });
+	assertNoDiagnostics(result, "ui callsite lowering");
+	assert.match(result.printed, /textLabel\(\{ Text: "label", __callsite: "src\/main:ui:0" \}\)/);
+	assert.match(result.printed, /RetainedUi\.native\("Frame"/);
+	assert.match(result.printed, /RetainedUi\.child\(Label, \{\}, \{ __callsite: "src\/main:ui:[0-9]+" \}\)/);
+	assert.match(result.printed, /\{ __callsite: "src\/main:ui:[0-9]+", key: "root" \}/);
 });
 
 runCase("@view match option is rejected in favor of render params", () => {

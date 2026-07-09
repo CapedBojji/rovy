@@ -117,4 +117,90 @@ return function(TS, t)
 			t.expect(stats.renders).toBe(3)
 		end)
 	end)
+
+	-- flushDirty pcall-isolates each node's render(): a throw must not starve
+	-- sibling nodes in the same flush, must not propagate out of app:flush(),
+	-- and must not leave state.flushing stuck true (which would silently
+	-- freeze every future re-render for the mount).
+	t.describe("render failure resilience", function()
+		t.it("isolates a throwing render: warns, does not propagate, and does not starve a sibling in the same flush", function()
+			H.reset()
+			local Bump = H.rerenderResource()
+			local aStats, bStats = { renders = 0 }, { renders = 0 }
+			local A = H.uiClass("test/Thrower", function()
+				aStats.renders += 1
+				if aStats.renders == 2 then error("boom") end
+				return H.textLabel({ Name = "A" })
+			end, { triggers = { H.resourceTrigger(Bump) } })
+			local B = H.uiClass("test/Healthy", function()
+				bStats.renders += 1
+				return H.textLabel({ Name = "B" })
+			end, { triggers = { H.resourceTrigger(Bump) } })
+			-- Mount both under one root so a single flushDirty pass carries both
+			-- dirty nodes (separate H.mountUi calls would give each its own
+			-- MountedUiState and flush independently).
+			local Root = H.uiClass("test/SiblingRoot", function()
+				return H.frame({ Name = "Root" }, {
+					H.child(A, {}, { key = "a" }),
+					H.child(B, {}, { key = "b" }),
+				})
+			end)
+			local app = H.startedApp()
+			H.mountUi(app, Root, { target = H.target() })
+			t.expect(aStats.renders).toBe(1)
+			t.expect(bStats.renders).toBe(1)
+
+			t.expect(function()
+				H.bump(app)
+			end).never.toThrow()
+
+			t.expect(aStats.renders).toBe(2)
+			t.expect(bStats.renders).toBe(2) -- sibling still rendered in the same flush
+			t.expect(#_G.__rovyWarnings).toBe(1)
+			t.expect(string.find(_G.__rovyWarnings[1], "test/Thrower", 1, true) ~= nil).toBe(true)
+			t.expect(string.find(_G.__rovyWarnings[1], "boom", 1, true) ~= nil).toBe(true)
+		end)
+
+		t.it("self-heals: a failed render does not wedge future flushes for the mount", function()
+			H.reset()
+			local Bump = H.rerenderResource()
+			local stats = { renders = 0 }
+			local Comp = H.uiClass("test/HealAfterThrow", function()
+				stats.renders += 1
+				if stats.renders == 2 then error("boom") end
+				return H.textLabel({ Name = "x" })
+			end, { triggers = { H.resourceTrigger(Bump) } })
+			local app = H.startedApp()
+			H.mountUi(app, Comp, { target = H.target() })
+			t.expect(stats.renders).toBe(1)
+
+			H.bump(app) -- render #2 throws; caught + warned
+			t.expect(stats.renders).toBe(2)
+			t.expect(#_G.__rovyWarnings).toBe(1)
+
+			-- state.flushing must have been reset — a further trigger still
+			-- renders instead of being silently dropped.
+			H.bump(app)
+			t.expect(stats.renders).toBe(3)
+		end)
+
+		t.it("the failed node itself recovers on its next trigger", function()
+			H.reset()
+			local Bump = H.rerenderResource()
+			local stats = { renders = 0 }
+			local Comp = H.uiClass("test/RecoversNode", function()
+				stats.renders += 1
+				if stats.renders == 2 then error("boom") end
+				return H.textLabel({ Name = "x", Text = tostring(stats.renders) })
+			end, { triggers = { H.resourceTrigger(Bump) } })
+			local app = H.startedApp()
+			local target = H.target()
+			H.mountUi(app, Comp, { target = target })
+
+			H.bump(app) -- throws, node stays out of state.dirty afterward
+			H.bump(app) -- next trigger re-marks it dirty and it renders successfully
+			t.expect(stats.renders).toBe(3)
+			t.expect(H.hasText(target, "3")).toBeTruthy()
+		end)
+	end)
 end

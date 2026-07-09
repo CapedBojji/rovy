@@ -49,15 +49,18 @@ export class TransformState {
 	private readonly networkingImportCache = new Map<string, CoreImports>();
 	private readonly datastoreImportCache = new Map<string, CoreImports>();
 	private readonly uiImportCache = new Map<string, CoreImports>();
+	private readonly retainedUiImportCache = new Map<string, CoreImports>();
 	private readonly videImportCache = new Map<string, CoreImports>();
 	private readonly pendingRovyImports = new Map<string, ts.Identifier>();
 	private readonly pendingRovyNetImports = new Map<string, ts.Identifier>();
 	private readonly pendingRovyDataImports = new Map<string, ts.Identifier>();
 	private readonly pendingRovyUiImports = new Map<string, ts.Identifier>();
+	private readonly pendingRovyRetainedUiImports = new Map<string, ts.Identifier>();
 	private readonly pendingRovyVideImports = new Map<string, ts.Identifier>();
 	private readonly pendingTImports = new Map<string, ts.Identifier>();
 	private readonly pendingPluginImports = new Map<string, Map<string, ts.Identifier>>();
 	private readonly widgetCallsiteCounters = new Map<string, number>();
+	private readonly uiCallsiteCounters = new Map<string, number>();
 	private readonly netCallsiteCounters = new Map<string, number>();
 	private readonly queryCallsiteCounters = new Map<string, number>();
 	private uiWidgetExportNames?: Set<string>;
@@ -95,6 +98,10 @@ export class TransformState {
 
 	getUiImports(file: ts.SourceFile): CoreImports {
 		return this.getImportsForModule(file, "@rovy/imgui", this.uiImportCache);
+	}
+
+	getRetainedUiImports(file: ts.SourceFile): CoreImports {
+		return this.getImportsForModule(file, "@rovy/ui", this.retainedUiImportCache);
 	}
 
 	getVideImports(file: ts.SourceFile): CoreImports {
@@ -160,6 +167,16 @@ export class TransformState {
 
 	resolveUiName(file: ts.SourceFile, expression: ts.Expression): string | undefined {
 		const imports = this.getUiImports(file);
+		if (ts.isIdentifier(expression)) return imports.named.get(expression.text);
+		if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression)) {
+			if (imports.namespaces.has(expression.expression.text)) return expression.name.text;
+			if (imports.defaultName === expression.expression.text) return expression.name.text;
+		}
+		return undefined;
+	}
+
+	resolveRetainedUiName(file: ts.SourceFile, expression: ts.Expression): string | undefined {
+		const imports = this.getRetainedUiImports(file);
 		if (ts.isIdentifier(expression)) return imports.named.get(expression.text);
 		if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression)) {
 			if (imports.namespaces.has(expression.expression.text)) return expression.name.text;
@@ -291,6 +308,21 @@ export class TransformState {
 		return identifier;
 	}
 
+	addRovyRetainedUiImport(file: ts.SourceFile): ts.Identifier {
+		const existingDefault = this.getRetainedUiImports(file).defaultName;
+		if (existingDefault !== undefined) return ts.factory.createIdentifier(existingDefault);
+		for (const [local, exported] of this.getRetainedUiImports(file).named) {
+			if (exported === "rovyUi") return ts.factory.createIdentifier(local);
+		}
+
+		let identifier = this.pendingRovyRetainedUiImports.get(file.fileName);
+		if (!identifier) {
+			identifier = ts.factory.createUniqueName("__rovyUi", ts.GeneratedIdentifierFlags.Optimistic);
+			this.pendingRovyRetainedUiImports.set(file.fileName, identifier);
+		}
+		return identifier;
+	}
+
 	addRovyVideImport(file: ts.SourceFile): ts.Identifier {
 		for (const [local, exported] of this.getVideImports(file).named) {
 			if (exported === "rovyVide") return ts.factory.createIdentifier(local);
@@ -336,6 +368,7 @@ export class TransformState {
 		const rovyNetImport = this.pendingRovyNetImports.get(file.fileName);
 		const rovyDataImport = this.pendingRovyDataImports.get(file.fileName);
 		const rovyUiImport = this.pendingRovyUiImports.get(file.fileName);
+		const rovyRetainedUiImport = this.pendingRovyRetainedUiImports.get(file.fileName);
 		const rovyVideImport = this.pendingRovyVideImports.get(file.fileName);
 		const tImport = this.pendingTImports.get(file.fileName);
 		const imports: ts.Statement[] = [];
@@ -343,6 +376,7 @@ export class TransformState {
 		if (rovyNetImport) imports.push(importNamed("@rovy/networking", "rovyNet", rovyNetImport.text));
 		if (rovyDataImport) imports.push(importNamed("@rovy/datastore", "rovyData", rovyDataImport.text));
 		if (rovyUiImport) imports.push(importDefault("@rovy/imgui", rovyUiImport.text));
+		if (rovyRetainedUiImport) imports.push(importDefault("@rovy/ui", rovyRetainedUiImport.text));
 		if (rovyVideImport) imports.push(importNamed("@rovy/vide", "rovyVide", rovyVideImport.text));
 		if (tImport) imports.push(importNamed("@rbxts/t", "t", tImport.text));
 		const pluginImports = this.pendingPluginImports.get(file.fileName);
@@ -569,6 +603,13 @@ export class TransformState {
 		return `${moduleId}:query:${used}`;
 	}
 
+	nextUiCallsiteKey(node: ts.Node): string {
+		const moduleId = this.stableIdForNode(node);
+		const used = this.uiCallsiteCounters.get(moduleId) ?? 0;
+		this.uiCallsiteCounters.set(moduleId, used + 1);
+		return `${moduleId}:ui:${used}`;
+	}
+
 	stableIdForTypeNode(node: ts.TypeNode): string {
 		const symbol = this.symbolForTypeNode(node);
 		const declaration = symbol?.declarations?.[0];
@@ -730,7 +771,7 @@ export class TransformState {
 export function decoratorName(state: TransformState, file: ts.SourceFile, decorator: ts.Decorator): string | undefined {
 	const expression = decorator.expression;
 	const target = ts.isCallExpression(expression) ? expression.expression : expression;
-	return state.resolveCoreName(file, target) ?? state.resolveNetworkingName(file, target) ?? state.resolveDatastoreName(file, target) ?? state.resolveUiName(file, target) ?? state.resolveVideName(file, target);
+	return state.resolveCoreName(file, target) ?? state.resolveNetworkingName(file, target) ?? state.resolveDatastoreName(file, target) ?? state.resolveRetainedUiName(file, target) ?? state.resolveUiName(file, target) ?? state.resolveVideName(file, target);
 }
 
 export function normalizePath(value: string): string {

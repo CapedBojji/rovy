@@ -55,9 +55,10 @@ Install Vide only when you author reactive game UI with Vide:
 npm i @rovy/vide @rbxts/vide
 ```
 
-Install UI only when you author widgets:
+Install UI only when you author retained UI or immediate widgets:
 
 ```sh
+npm i @rovy/ui
 npm i @rovy/imgui
 ```
 
@@ -73,7 +74,8 @@ npm i @rovy/world-inspector
 | `@rovy/networking`      | `@netEvent` authoring surface + runtime handles                | `import` when using net events              |
 | `@rovy/datastore`       | Persistent document declarations + reader/writer/opener handles | `import` when using datastore documents     |
 | `@rovy/vide`            | Reactive Vide view integration for gameplay UI                 | `import` `@view` and `mountView`            |
-| `@rovy/imgui`              | Function-first widget/render runtime                           | `import` widget helpers                     |
+| `@rovy/ui`              | Retained class-based Roblox UI runtime                         | `import` `@ui`, then call `app.mount`       |
+| `@rovy/imgui`           | Function-first widget/render runtime                           | `import` widget helpers                     |
 | `@rovy/world-inspector` | In-game ECS inspection and editing plugin                      | `import` when embedding the debug inspector |
 | `rovy-transformer`      | roblox-ts compiler transformer plugin                          | List it in `tsconfig.json`                  |
 | `rovy-build`            | build/open/watch/start orchestration and Rovy config discovery | Use it in package scripts                   |

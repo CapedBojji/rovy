@@ -8,6 +8,7 @@ Rovy ships as distinct packages, mirroring the split between runtime packages an
 | `@rovy/networking`      | Net-event authoring surface and runtime handles                | `import` it when using `@netEvent`                        |
 | `@rovy/datastore`       | Persistent document declarations and runtime handles           | `import` it when using persistent documents               |
 | `@rovy/vide`            | Reactive Vide view integration for gameplay UI                 | `import` `@view`, `mountView`, and `ViewMonitor`          |
+| `@rovy/ui`              | Retained class-based Roblox UI runtime                         | `import` `@ui`, factories, `$` triggers, then `app.mount` |
 | `@rovy/imgui`              | Widget/render integration package                              | `import` widget helpers and JSDoc-tagged widget functions |
 | `@rovy/world-inspector` | In-game ECS inspection and editing plugin                      | `import` it when embedding the debug inspector            |
 | `rovy-transformer`      | roblox-ts compiler transformer plugin                          | Listing it in `tsconfig.json`                             |
@@ -16,6 +17,7 @@ Rovy ships as distinct packages, mirroring the split between runtime packages an
 Most ECS code authors against `@rovy/core`. Networked event code additionally
 imports `@rovy/networking`. Persistent game data code imports
 `@rovy/datastore`. Reactive gameplay UI can author against `@rovy/vide`.
+Retained class-based Roblox UI can author against `@rovy/ui`.
 Immediate-mode tool UI can author against `@rovy/imgui`. Debug tooling can
 additionally import `@rovy/world-inspector`. `rovy-transformer` runs
 silently at build time and rewrites decorated and widget code into the runtime
@@ -23,7 +25,7 @@ calls the packages consume. `rovy-build` owns the project command flow around
 `rbxtsc`, generators, Rojo, and Studio.
 
 Inside this repo, the shipped packages live in a pnpm workspace at
-`packages/core`, `packages/networking`, `packages/datastore`, `packages/imgui`,
+`packages/core`, `packages/networking`, `packages/datastore`, `packages/ui`, `packages/imgui`,
 `packages/vide`, `packages/world-inspector`, `packages/transformer`, and
 `packages/build`.
 
@@ -101,6 +103,20 @@ import { mountView, view, type ViewMonitor } from "@rovy/vide";
 
 See [Rovy Vide](/packages/vide) for examples covering root views, query rows,
 monitor streams, event feeds, and the standalone game template.
+
+## What lives in `@rovy/ui`
+
+`@rovy/ui` is the retained class-based UI package. Import it when you want `@ui`
+decorated components, pre-start `app.mount(Root, target)`, native Roblox instance
+factories, and Rovy-triggered subtree rerenders.
+
+- **Decorator** — `@ui`
+- **Mounting** — `app.mount(Root, target, options?)` before `app.start()`; `@rovy/ui` mounts queued roots after start finalization
+- **Render injection** — `render(...)` params resolve through the normal Rovy injection descriptors and do not subscribe by themselves
+- **Rerender triggers** — `static rerender = [...]` with `$queryTrigger`, `$componentTrigger`, `$resourceTrigger`, `$eventTrigger`, `$relationTrigger`, `$lifecycleTrigger`, and `$prop`
+- **Tree authoring** — `child(Component, props)`, `native(...)`, `fragment(...)`, factories like `frame` and `textLabel`, plus JSX sugar
+
+Use `@rovy/imgui` instead for immediate-mode debug/tool widgets.
 
 ## What lives in `@rovy/imgui`
 

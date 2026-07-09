@@ -11,7 +11,7 @@ map of what is tested, how, and where the two test surfaces live:
    Studio and self-reports PASS/FAIL. See [§7](#7-studio-mcp-validation).
 
 Run: `pnpm --filter @rovy/ui test` (builds core + ui, then `zune test test/run`).
-Current status: **127 checks across 20 spec files (recorded).**
+Current status: **182 checks across 21 spec files.**
 
 ---
 
@@ -41,21 +41,21 @@ synchronously and is asserted immediately.
 
 | Runtime area (`src/index.ts`) | Spec | Cases |
 |---|---|---|
-| `native`/`child`/`fragment`, element helpers, `jsx`/`jsxs`/`Fragment`, prop & child normalization | `01_vnodes` | 11 |
+| `native`/`child`/`fragment`, element helpers, `jsx`/`jsxs`/`Fragment`, prop & child normalization | `01_vnodes` | 15 |
 | `rovyUi.__ui` / `__reset` / `__callsite`, `findUiReg`, unregistered/unstarted errors | `02_registry` | 8 |
 | `mountUi`, `mountNative`/`mountComponent`/`mountFragment`, `resolveTarget`/`defaultGuiName`/`getPlayerGui` | `03_mount` | 15 |
 | `patchNativeProps`/`setNativeProp`/`clearNativeProp`, `ref`, no-op skip | `04_native_props` | 5 |
 | `patchEvents` (connect/swap/drop/clear/ignore/destroy) | `05_events` | 8 |
 | `reconcileNode`/`reconcileChildren`, `sameIdentity`/identity keys, keyed reorder/remove/remount | `06_reconcile` | 15 |
 | `reconcileComponent`/`updateProps` (true/false → render or skip) | `07_props_update` | 4 |
-| `$resourceTrigger` | `08_triggers_resource` | 2 |
-| `$componentTrigger` (entity binding, `on` filter) | `09_triggers_component` | 7 |
-| `$queryTrigger` (snapshot diff add/change/remove, `on` filter, missing handle) | `10_triggers_query` | 11 |
-| `$eventTrigger` | `11_triggers_event` | 5 |
-| `$relationTrigger` (source/target binding) | `12_triggers_relation` | 7 |
-| `$lifecycleTrigger` | `13_triggers_lifecycle` | 3 |
+| `$resourceTrigger` (descriptor, re-render, unsub) | `08_triggers_resource` | 3 |
+| `$componentTrigger` (entity binding, `on` filter, descriptor defaults) | `09_triggers_component` | 12 |
+| `$queryTrigger` (snapshot diff add/change/remove, `on` filter, missing handle) | `10_triggers_query` | 16 |
+| `$eventTrigger` (descriptor, observe, post-flush, unregistered) | `11_triggers_event` | 6 |
+| `$relationTrigger` (source/target binding, descriptor defaults, `on` filter) | `12_triggers_relation` | 12 |
+| `$lifecycleTrigger` (descriptor defaults, ctor option) | `13_triggers_lifecycle` | 5 |
 | `$propsTrigger` (no-op subscription) | `14_triggers_props` | 2 |
-| `markDirty`/`scheduleFlush`/`flushDirty` batching, dedupe, idempotent drains | `15_scheduling` | 5 |
+| `markDirty`/`scheduleFlush`/`flushDirty` batching, dedupe, idempotent drains, throwing-render isolation/self-heal | `15_scheduling` | 8 |
 | `resolveParams` injection + `Local<T>` persistence/isolation | `16_params` | 4 |
 | `destroyMountedUi`/`destroyNode`, conditional subtree teardown, idempotency | `17_destroy` | 3 |
 | `registerPostStartAppExtension`/`consumeMountRequests` + `app.mount` | `18_mount_requests` | 7 |
@@ -95,6 +95,21 @@ Every param `kind` the ui render path can resolve is asserted to arrive in
   destroyed tree neither re-renders nor errors on further world activity.
 - Conditional subtrees (`cond and node or false`) mount/destroy across renders.
 - Auto-created ScreenGui is destroyed with the handle; `destroy` is idempotent.
+
+## 5a. Render failure resilience
+
+`flushDirty` pcall-isolates each dirty node's `render()` (`15_scheduling`,
+"render failure resilience"):
+
+- A throwing render warns (`[rovy/ui] render failed for '<id>': <error>`) and
+  does not propagate out of `app:flush()`.
+- A sibling node dirtied in the same flush still renders — one bad component
+  can't starve the rest of the batch.
+- `state.flushing` is always reset, so a failed flush does not wedge future
+  re-renders for the mount (self-heals on the node's next trigger).
+- Mount-time (`mountComponent`) and prop-driven (`reconcileComponent`) renders
+  are deliberately left fail-fast — isolation only applies to the scheduled
+  flush loop, per the locked "isolate + warn + continue" scope.
 
 ## 6. Known-behaviour characterizations
 

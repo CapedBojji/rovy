@@ -43,6 +43,7 @@ const DECORATORS = new Set([
 	"server",
 	"client",
 	"view",
+	"ui",
 ]);
 
 type MonitorMethod = "onEnter" | "onExit" | "onChange";
@@ -51,6 +52,28 @@ const UI_KEYED_HELPERS = new Map([
 	["useState", "__useState"],
 	["useEffect", "__useEffect"],
 	["useInstance", "__useInstance"],
+]);
+
+const RETAINED_UI_FACTORIES = new Set([
+	"native",
+	"fragment",
+	"frame",
+	"textLabel",
+	"textButton",
+	"imageLabel",
+	"imageButton",
+	"scrollingFrame",
+	"canvasGroup",
+	"textBox",
+	"viewportFrame",
+	"uiListLayout",
+	"uiGridLayout",
+	"uiPadding",
+	"uiCorner",
+	"uiStroke",
+	"uiScale",
+	"uiAspectRatioConstraint",
+	"uiSizeConstraint",
 ]);
 
 interface DecoratorInfo {
@@ -311,6 +334,15 @@ function createVisitor(
 			const rewritten = transformCall(state, sourceFile, node, visitor, widgetCallers, freeQueryStatements);
 			if (rewritten) return rewritten;
 		}
+		if (ts.isJsxElement(node)) {
+			return transformJsxElement(state, sourceFile, node, visitor);
+		}
+		if (ts.isJsxSelfClosingElement(node)) {
+			return transformJsxSelfClosingElement(state, sourceFile, node, visitor);
+		}
+		if (ts.isJsxFragment(node)) {
+			return transformJsxFragment(state, sourceFile, node, visitor);
+		}
 		return ts.visitEachChild(node, visitor, state.context);
 	};
 	return visitor;
@@ -355,6 +387,21 @@ function transformCall(
 				str(state.nextNetCallsiteKey(node)),
 			],
 		);
+	}
+
+	const retainedUiName = state.resolveRetainedUiName(sourceFile, node.expression);
+	if (retainedUiName === "child") {
+		validateChildComponent(state, sourceFile, node);
+		return appendOptionsCallsite(state, node, visitor, 2);
+	}
+	if (retainedUiName === "fragment") {
+		return appendOptionsCallsite(state, node, visitor, 1);
+	}
+	if (retainedUiName === "native") {
+		return appendOptionsCallsite(state, node, visitor, 3);
+	}
+	if (retainedUiName && RETAINED_UI_FACTORIES.has(retainedUiName)) {
+		return addPropsCallsite(state, node, visitor);
 	}
 
 	if (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "loadPaths") {
@@ -424,6 +471,222 @@ function transformCall(
 	return undefined;
 }
 
+function appendOptionsCallsite(
+	state: TransformState,
+	node: ts.CallExpression,
+	visitor: ts.Visitor,
+	optionsIndex: number,
+): ts.Expression {
+	const args = node.arguments.map((arg) => ts.visitNode(arg, visitor, ts.isExpression) ?? arg);
+	while (args.length < optionsIndex) args.push(id("undefined"));
+	args[optionsIndex] = optionsWithCallsite(state, node, args[optionsIndex]);
+	return ts.factory.updateCallExpression(node, node.expression, node.typeArguments, args);
+}
+
+function addPropsCallsite(state: TransformState, node: ts.CallExpression, visitor: ts.Visitor): ts.Expression {
+	const args = node.arguments.map((arg) => ts.visitNode(arg, visitor, ts.isExpression) ?? arg);
+	args[0] = propsWithCallsite(state, node, args[0]);
+	return ts.factory.updateCallExpression(node, node.expression, node.typeArguments, args);
+}
+
+function propsWithCallsite(state: TransformState, node: ts.Node, propsExpr?: ts.Expression): ts.Expression {
+	const callsite = prop("__callsite", str(state.nextUiCallsiteKey(node)));
+	if (propsExpr === undefined) return obj([callsite], false);
+	if (ts.isObjectLiteralExpression(propsExpr)) {
+		return obj([...propsExpr.properties, callsite], false);
+	}
+	if (propsExpr.kind === ts.SyntaxKind.UndefinedKeyword) return obj([callsite], false);
+	return obj([ts.factory.createSpreadAssignment(propsExpr), callsite], false);
+}
+
+function optionsWithCallsite(state: TransformState, node: ts.Node, optionsExpr?: ts.Expression): ts.Expression {
+	const callsite = prop("__callsite", str(state.nextUiCallsiteKey(node)));
+	if (optionsExpr === undefined) return obj([callsite], false);
+	if (ts.isObjectLiteralExpression(optionsExpr)) {
+		return obj([...optionsExpr.properties, callsite], false);
+	}
+	if (optionsExpr.kind === ts.SyntaxKind.UndefinedKeyword) return obj([callsite], false);
+	return obj([ts.factory.createSpreadAssignment(optionsExpr), callsite], false);
+}
+
+function transformJsxSelfClosingElement(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.JsxSelfClosingElement,
+	visitor: ts.Visitor,
+): ts.Expression {
+	return transformJsxTag(state, sourceFile, node, visitor, node.tagName, node.attributes, []);
+}
+
+function transformJsxElement(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.JsxElement,
+	visitor: ts.Visitor,
+): ts.Expression {
+	return transformJsxTag(
+		state,
+		sourceFile,
+		node,
+		visitor,
+		node.openingElement.tagName,
+		node.openingElement.attributes,
+		jsxChildren(state, sourceFile, node.children, visitor),
+	);
+}
+
+function transformJsxFragment(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.JsxFragment,
+	visitor: ts.Visitor,
+): ts.Expression {
+	const rovyUi = state.addRovyRetainedUiImport(sourceFile);
+	return call(field(rovyUi, "fragment"), [
+		arr(jsxChildren(state, sourceFile, node.children, visitor), true),
+		obj([prop("__callsite", str(state.nextUiCallsiteKey(node)))], false),
+	]);
+}
+
+function transformJsxTag(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.Node,
+	visitor: ts.Visitor,
+	tagName: ts.JsxTagNameExpression,
+	attributes: ts.JsxAttributes,
+	children: readonly ts.Expression[],
+): ts.Expression {
+	const rovyUi = state.addRovyRetainedUiImport(sourceFile);
+	const propsExpr = jsxProps(state, attributes, visitor, children);
+	const options = obj([prop("__callsite", str(state.nextUiCallsiteKey(node))), ...jsxKeyOption(attributes)], false);
+	if (ts.isIdentifier(tagName) && isComponentJsxTag(tagName)) {
+		validateComponentExpression(state, sourceFile, tagName);
+		return call(field(rovyUi, "child"), [tagName, propsExpr, options]);
+	}
+	return call(field(rovyUi, "native"), [
+		str(jsxNativeClassName(tagName.getText(sourceFile))),
+		propsExpr,
+		arr(children, true),
+		options,
+	]);
+}
+
+function jsxProps(
+	state: TransformState,
+	attributes: ts.JsxAttributes,
+	visitor: ts.Visitor,
+	children: readonly ts.Expression[],
+): ts.Expression {
+	const props: Array<ts.ObjectLiteralElementLike> = [];
+	for (const attr of attributes.properties) {
+		if (ts.isJsxSpreadAttribute(attr)) {
+			props.push(ts.factory.createSpreadAssignment(ts.visitNode(attr.expression, visitor, ts.isExpression) ?? attr.expression));
+			continue;
+		}
+		const name = jsxAttributeName(state, attr.name);
+		if (attr.initializer === undefined) {
+			props.push(prop(name, bool(true)));
+		} else if (ts.isStringLiteral(attr.initializer)) {
+			props.push(prop(name, str(attr.initializer.text)));
+		} else if (ts.isJsxExpression(attr.initializer)) {
+			const expr = attr.initializer.expression;
+			props.push(prop(name, expr ? ts.visitNode(expr, visitor, ts.isExpression) ?? expr : id("undefined")));
+		}
+	}
+	if (children.length > 0) props.push(prop("children", arr(children, true)));
+	return obj(props, props.length > 3);
+}
+
+function jsxChildren(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	children: ts.NodeArray<ts.JsxChild>,
+	visitor: ts.Visitor,
+): ts.Expression[] {
+	const out: ts.Expression[] = [];
+	for (const childNode of children) {
+		if (ts.isJsxText(childNode)) {
+			if (childNode.getText(sourceFile).replace(/\s+/g, "").length > 0) {
+				state.diagnostic(childNode, "text JSX children are not supported by @rovy/ui; use textLabel(...)");
+			}
+			continue;
+		}
+		if (ts.isJsxExpression(childNode)) {
+			if (childNode.expression !== undefined) {
+				out.push(ts.visitNode(childNode.expression, visitor, ts.isExpression) ?? childNode.expression);
+			}
+			continue;
+		}
+		if (ts.isJsxElement(childNode)) out.push(transformJsxElement(state, sourceFile, childNode, visitor));
+		else if (ts.isJsxSelfClosingElement(childNode)) out.push(transformJsxSelfClosingElement(state, sourceFile, childNode, visitor));
+		else if (ts.isJsxFragment(childNode)) out.push(transformJsxFragment(state, sourceFile, childNode, visitor));
+	}
+	return out;
+}
+
+function jsxKeyOption(attributes: ts.JsxAttributes): ts.PropertyAssignment[] {
+	for (const attr of attributes.properties) {
+		if (!ts.isJsxAttribute(attr) || jsxAttributeName(undefined, attr.name) !== "key" || attr.initializer === undefined) continue;
+		if (ts.isStringLiteral(attr.initializer)) return [prop("key", str(attr.initializer.text))];
+		if (ts.isJsxExpression(attr.initializer) && attr.initializer.expression !== undefined) {
+			return [prop("key", attr.initializer.expression)];
+		}
+	}
+	return [];
+}
+
+function isComponentJsxTag(tagName: ts.Identifier): boolean {
+	const first = tagName.text.charAt(0);
+	return first.toUpperCase() === first && first.toLowerCase() !== first;
+}
+
+function jsxAttributeName(state: TransformState | undefined, name: ts.JsxAttributeName): string {
+	if (ts.isIdentifier(name)) return name.text;
+	state?.diagnostic(name, "JSX namespaced attributes are not supported by @rovy/ui");
+	return name.getText();
+}
+
+function jsxNativeClassName(name: string): string {
+	const aliases = new Map<string, string>([
+		["frame", "Frame"],
+		["textLabel", "TextLabel"],
+		["textButton", "TextButton"],
+		["imageLabel", "ImageLabel"],
+		["imageButton", "ImageButton"],
+		["scrollingFrame", "ScrollingFrame"],
+		["canvasGroup", "CanvasGroup"],
+		["textBox", "TextBox"],
+		["viewportFrame", "ViewportFrame"],
+		["uiListLayout", "UIListLayout"],
+		["uiGridLayout", "UIGridLayout"],
+		["uiPadding", "UIPadding"],
+		["uiCorner", "UICorner"],
+		["uiStroke", "UIStroke"],
+		["uiScale", "UIScale"],
+		["uiAspectRatioConstraint", "UIAspectRatioConstraint"],
+		["uiSizeConstraint", "UISizeConstraint"],
+	]);
+	return aliases.get(name) ?? name;
+}
+
+function validateChildComponent(state: TransformState, sourceFile: ts.SourceFile, node: ts.CallExpression): void {
+	const first = node.arguments[0];
+	if (first !== undefined) validateComponentExpression(state, sourceFile, first);
+}
+
+function validateComponentExpression(state: TransformState, sourceFile: ts.SourceFile, expression: ts.Expression): void {
+	if (!ts.isIdentifier(expression)) return;
+	const symbol = state.typeChecker?.getSymbolAtLocation(expression);
+	const declarations = symbol?.declarations ?? [];
+	for (const declaration of declarations) {
+		if (ts.isClassDeclaration(declaration) && state.classInfo.get(declaration)?.decorators.includes("ui")) return;
+	}
+	if (declarations.length > 0) {
+		state.diagnostic(expression, `custom UI component '${expression.text}' must be an @ui class`);
+	}
+}
+
 function transformClass(
 	state: TransformState,
 	sourceFile: ts.SourceFile,
@@ -447,9 +710,10 @@ function transformClass(
 	validateClass(state, node, decorators);
 
 	const stripped = removeRovyDecorators(state, sourceFile, node);
+	const uiReadyClass = decorators.some((d) => d.name === "ui") ? stripUiStaticRerender(stripped) : stripped;
 	const isResource = decorators.some((d) => d.name === "resource");
-	const resourceCollectRefs = isResource ? collectRefBindings(state, sourceFile, stripped) : [];
-	const resourceReadyClass = isResource ? stripCollectRefInitializers(state, sourceFile, stripped) : stripped;
+	const resourceCollectRefs = isResource ? collectRefBindings(state, sourceFile, uiReadyClass) : [];
+	const resourceReadyClass = isResource ? stripCollectRefInitializers(state, sourceFile, uiReadyClass) : uiReadyClass;
 	const transformedClass = ts.visitEachChild(resourceReadyClass, visitor, state.context);
 	const moduleId = state.stableIdForNode(node);
 	const pluginBinding = resolvePluginBinding(state, sourceFile, node);
@@ -564,6 +828,19 @@ function transformClass(
 					regCall(state.addRovyVideImport(sourceFile), "__view", [
 						className,
 						buildViewMeta(state, decorator, classId, params),
+					]),
+				);
+				break;
+			}
+			case "ui": {
+				const method = methodNamed(node, "render");
+				const params = method ? lowerUiParams(state, sourceFile, method.parameters, classId) : emptyParams();
+				const triggers = lowerUiTriggers(state, sourceFile, node, classId);
+				queryStatements.push(...params.queryStatements, ...triggers.queryStatements);
+				afterStatements.push(
+					regCall(state.addRovyRetainedUiImport(sourceFile), "__ui", [
+						className,
+						buildUiMeta(classId, params, triggers.descriptor),
 					]),
 				);
 				break;
@@ -746,6 +1023,10 @@ function validateClass(state: TransformState, node: ts.ClassDeclaration, decorat
 		state.diagnostic(node, "@view classes require render(...)");
 	}
 
+	if (decorators.some((d) => d.name === "ui") && !methodNamed(node, "render")) {
+		state.diagnostic(node, "@ui classes require render(...)");
+	}
+
 	if (decorators.some((d) => d.name === "netEvent") && decorators.some((d) => d.name === "event")) {
 		state.diagnostic(node, "@netEvent implies @event; remove the extra @event decorator");
 	}
@@ -835,6 +1116,15 @@ function stripCollectRefInitializers(
 	return ts.factory.updateClassDeclaration(node, node.modifiers, node.name, node.typeParameters, node.heritageClauses, members);
 }
 
+function stripUiStaticRerender(node: ts.ClassDeclaration): ts.ClassDeclaration {
+	const members = node.members.filter((member) => {
+		if (!ts.isPropertyDeclaration(member) || member.name === undefined) return true;
+		if (propertyNameText(member.name) !== "rerender") return true;
+		return !(member.modifiers ?? []).some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword);
+	});
+	return ts.factory.updateClassDeclaration(node, node.modifiers, node.name, node.typeParameters, node.heritageClauses, members);
+}
+
 function buildSystemMeta(
 	state: TransformState,
 	decorator: DecoratorInfo,
@@ -916,6 +1206,164 @@ function buildViewMeta(
 		]),
 		true,
 	);
+}
+
+function buildUiMeta(
+	classId: string,
+	params: ParamBuild,
+	triggers: ts.ArrayLiteralExpression,
+): ts.ObjectLiteralExpression {
+	return obj(
+		[
+			prop("id", str(classId)),
+			prop("methods", arr([str("render")])),
+			prop("params", params.descriptor),
+			prop("triggers", triggers),
+		],
+		true,
+	);
+}
+
+interface UiTriggerBuild {
+	readonly descriptor: ts.ArrayLiteralExpression;
+	readonly queryStatements: readonly ts.Statement[];
+}
+
+function lowerUiTriggers(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.ClassDeclaration,
+	classId: string,
+): UiTriggerBuild {
+	const property = staticPropertyNamed(node, "rerender");
+	if (property === undefined) return { descriptor: arr([], false), queryStatements: [] };
+	if (property.initializer === undefined) {
+		state.diagnostic(property, "@ui static rerender must be initialized to a trigger array");
+		return { descriptor: arr([], false), queryStatements: [] };
+	}
+	if (!ts.isArrayLiteralExpression(property.initializer)) {
+		state.diagnostic(property.initializer, "@ui static rerender must be a trigger array");
+		return { descriptor: arr([], false), queryStatements: [] };
+	}
+	const triggers: ts.ObjectLiteralExpression[] = [];
+	const queryStatements: ts.Statement[] = [];
+	property.initializer.elements.forEach((element, index) => {
+		if (!ts.isCallExpression(element)) {
+			state.diagnostic(element, "@ui rerender entries must be trigger helper calls");
+			return;
+		}
+		const lowered = lowerUiTrigger(state, sourceFile, element, `${classId}:rerender:${index}`);
+		triggers.push(lowered.descriptor);
+		queryStatements.push(...lowered.queryStatements);
+	});
+	return { descriptor: arr(triggers, true), queryStatements };
+}
+
+function lowerUiTrigger(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	callExpr: ts.CallExpression,
+	triggerId: string,
+): { descriptor: ts.ObjectLiteralExpression; queryStatements: readonly ts.Statement[] } {
+	const name = state.resolveRetainedUiName(sourceFile, callExpr.expression);
+	if (name === "$queryTrigger") {
+		const query = buildQuery(state, callExpr.typeArguments?.[0], [...(callExpr.typeArguments ?? [])].slice(1), triggerId, callExpr);
+		const options = objectArgFromExpression(callExpr.arguments[0]);
+		return {
+			descriptor: obj([prop("kind", str("query")), prop("handle", str(query.id)), prop("on", triggerOnArray(options))], false),
+			queryStatements: [regQuery(state.addRovyImport(sourceFile), query.descriptor)],
+		};
+	}
+	if (name === "$componentTrigger") {
+		const ctor = callExpr.arguments[0] ?? id("undefined");
+		const options = objectArgFromExpression(callExpr.arguments[1]);
+		return {
+			descriptor: obj(
+				stripUndefinedProperties([
+					prop("kind", str("component")),
+					prop("ctor", ctor),
+					maybeProp("entity", lowerUiBinding(state, sourceFile, propertyValue(options, "entity"))),
+					prop("on", triggerOnArray(options)),
+				]),
+				false,
+			),
+			queryStatements: [],
+		};
+	}
+	if (name === "$resourceTrigger") {
+		return {
+			descriptor: obj([prop("kind", str("resource")), prop("ctor", callExpr.arguments[0] ?? id("undefined"))], false),
+			queryStatements: [],
+		};
+	}
+	if (name === "$eventTrigger") {
+		return {
+			descriptor: obj([prop("kind", str("event")), prop("ctor", callExpr.arguments[0] ?? id("undefined"))], false),
+			queryStatements: [],
+		};
+	}
+	if (name === "$relationTrigger") {
+		const ctor = callExpr.arguments[0] ?? id("undefined");
+		const options = objectArgFromExpression(callExpr.arguments[1]);
+		return {
+			descriptor: obj(
+				stripUndefinedProperties([
+					prop("kind", str("relation")),
+					prop("ctor", ctor),
+					maybeProp("source", lowerUiBinding(state, sourceFile, propertyValue(options, "source"))),
+					maybeProp("target", lowerUiBinding(state, sourceFile, propertyValue(options, "target"))),
+					prop("on", triggerOnArray(options)),
+				]),
+				false,
+			),
+			queryStatements: [],
+		};
+	}
+	if (name === "$lifecycleTrigger") {
+		const options = objectArgFromExpression(callExpr.arguments[1]);
+		return {
+			descriptor: obj(
+				stripUndefinedProperties([
+					prop("kind", str("lifecycle")),
+					prop("lifecycleKind", callExpr.arguments[0] ?? id("undefined")),
+					maybeProp("ctor", propertyValue(options, "ctor")),
+				]),
+				false,
+			),
+			queryStatements: [],
+		};
+	}
+	if (name === "$propsTrigger") {
+		return { descriptor: obj([prop("kind", str("props"))], false), queryStatements: [] };
+	}
+	state.diagnostic(callExpr, "@ui rerender entries must use @rovy/ui $ trigger helpers");
+	return { descriptor: obj([prop("kind", str("props"))], false), queryStatements: [] };
+}
+
+function lowerUiBinding(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	expression: ts.Expression | undefined,
+): ts.ObjectLiteralExpression | undefined {
+	if (expression === undefined) return undefined;
+	const name = ts.isCallExpression(expression) ? state.resolveRetainedUiName(sourceFile, expression.expression) : undefined;
+	if (ts.isCallExpression(expression) && name === "$prop") {
+		const key = expression.arguments[0];
+		if (key !== undefined && ts.isStringLiteral(key)) {
+			return obj([prop("kind", str("prop")), prop("key", str(key.text))], false);
+		}
+		state.diagnostic(expression, "$prop(...) trigger bindings require a string key");
+	}
+	return obj([prop("kind", str("value")), prop("value", expression)], false);
+}
+
+function triggerOnArray(options: ts.ObjectLiteralExpression | undefined): ts.Expression {
+	const on = propertyValue(options, "on");
+	return on ?? arr([str("added"), str("changed"), str("removed")]);
+}
+
+function objectArgFromExpression(expression: ts.Expression | undefined): ts.ObjectLiteralExpression | undefined {
+	return expression !== undefined && ts.isObjectLiteralExpression(expression) ? expression : undefined;
 }
 
 function buildRelationMeta(decorator: DecoratorInfo, plugin?: PluginBinding): ts.ObjectLiteralExpression {
@@ -1841,6 +2289,29 @@ function lowerMonitorMethodParams(
 	return { descriptor: arr(descriptors, true), queryStatements };
 }
 
+function lowerUiParams(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	params: ts.NodeArray<ts.ParameterDeclaration>,
+	classId: string,
+): ParamBuild {
+	const descriptors: ts.ObjectLiteralExpression[] = [];
+	const queryStatements: ts.Statement[] = [];
+	let localIndex = 0;
+	for (let i = 0; i < params.length; i++) {
+		const lowered = lowerParam(state, sourceFile, params[i], {
+			kind: "system",
+			classId,
+			paramIndex: i,
+			localIndex,
+		});
+		if (lowered.localUsed) localIndex++;
+		descriptors.push(lowered.descriptor);
+		queryStatements.push(...lowered.queryStatements);
+	}
+	return { descriptor: arr(descriptors, true), queryStatements };
+}
+
 function lowerViewParams(
 	state: TransformState,
 	sourceFile: ts.SourceFile,
@@ -2350,6 +2821,15 @@ function traitIdArg(state: TransformState, node: ts.TypeReferenceNode): string {
 function methodNamed(node: ts.ClassDeclaration, name: string): ts.MethodDeclaration | undefined {
 	return node.members.find((member): member is ts.MethodDeclaration => {
 		return ts.isMethodDeclaration(member) && member.name !== undefined && member.name.getText() === name;
+	});
+}
+
+function staticPropertyNamed(node: ts.ClassDeclaration, name: string): ts.PropertyDeclaration | undefined {
+	return node.members.find((member): member is ts.PropertyDeclaration => {
+		return ts.isPropertyDeclaration(member) &&
+			member.name !== undefined &&
+			propertyNameText(member.name) === name &&
+			(member.modifiers ?? []).some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword);
 	});
 }
 

@@ -29,7 +29,60 @@ return function(TS, t)
 		return Health, Comp, stats
 	end
 
+	t.describe("$prop", function()
+		t.it("produces a { kind = 'prop', key } binding descriptor", function()
+			local descriptor = H.prop("entity")
+			t.expect(descriptor.kind).toBe("prop")
+			t.expect(descriptor.key).toBe("entity")
+		end)
+	end)
+
 	t.describe("$componentTrigger", function()
+		t.it("produces a descriptor with defaults when options are omitted", function()
+			local FakeCtor = {}
+			local descriptor = H.componentTrigger(FakeCtor)
+			t.expect(descriptor.kind).toBe("component")
+			t.expect(descriptor.ctor).toBe(FakeCtor)
+			t.expect(descriptor.entity).toBeUndefined()
+			t.expect(descriptor.on[1]).toBe("added")
+			t.expect(descriptor.on[2]).toBe("changed")
+			t.expect(descriptor.on[3]).toBe("removed")
+		end)
+
+		t.it("honours the `on` event filter (added-only ignores changed and removed)", function()
+			H.reset()
+			local Health = H.class(function(v)
+				return { value = v or 100 }
+			end)
+			H.rovy:__component(Health, "test/Health")
+			local stats = { renders = 0 }
+			local Comp = H.uiClass("test/HealthAddedOnly", function()
+				stats.renders += 1
+				return H.textLabel({ Name = "Status", Text = "renders=" .. tostring(stats.renders) })
+			end, {
+				triggers = {
+					H.componentTrigger(Health, { on = { "added" } }),
+				},
+			})
+			local app = H.startedApp()
+			local e = app.world:spawn(Health.new(100))
+			H.mountUi(app, Comp, { target = H.target() })
+			t.expect(stats.renders).toBe(1)
+
+			app.world:set(e, Health, Health.new(150))
+			H.settle(app)
+			t.expect(stats.renders).toBe(1)
+
+			app.world:remove(e, Health)
+			H.settle(app)
+			t.expect(stats.renders).toBe(1)
+
+			local e2 = app.world:spawn()
+			app.world:insert(e2, Health.new(10))
+			H.settle(app)
+			t.expect(stats.renders).toBe(2)
+		end)
+
 	t.it("re-renders when the bound entity's component changes", function()
 			H.reset()
 			local Health, Comp, stats = setup()

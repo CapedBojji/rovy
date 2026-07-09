@@ -43,6 +43,7 @@ export type { TraitToken, ModuleProvider, RovyPluginLoadRoot } from "./rovy";
 
 // Runtime (Phase 2+).
 export { App } from "./runtime/app";
+export type { AppMountOptions, AppMountRequest } from "./runtime/app";
 export { RovyWorld } from "./runtime/world";
 export { CommandsImpl } from "./runtime/commands";
 export { Scheduler } from "./runtime/schedule";
@@ -63,7 +64,14 @@ export type {
 } from "./runtime/lifecycle";
 export { resolveParams } from "./runtime/resolve-param";
 export type { ResolveCtx, LocalStore } from "./runtime/resolve-param";
-export { registerAppExtension, runAppExtensions, resetAppExtensions } from "./runtime/extensions";
+export {
+	registerAppExtension,
+	registerPostStartAppExtension,
+	runAppExtensions,
+	runPostStartAppExtensions,
+	resetAppExtensions,
+} from "./runtime/extensions";
+export type { AppExtension, PostStartAppExtension } from "./runtime/extensions";
 export { markResourceCloneByReference, isResourceCloneByReference } from "./runtime/resource-clone";
 export type { Plugin } from "./runtime/plugin";
 

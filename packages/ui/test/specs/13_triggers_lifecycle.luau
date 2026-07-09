@@ -8,6 +8,19 @@ return function(TS, t)
 	local H = Helpers.load(TS)
 
 	t.describe("$lifecycleTrigger", function()
+		t.it("produces a descriptor with defaults when options are omitted", function()
+			local descriptor = H.lifecycleTrigger("entity_spawned")
+			t.expect(descriptor.kind).toBe("lifecycle")
+			t.expect(descriptor.lifecycleKind).toBe("entity_spawned")
+			t.expect(descriptor.ctor).toBeUndefined()
+		end)
+
+		t.it("carries ctor when provided in options", function()
+			local FakeCtor = {}
+			local descriptor = H.lifecycleTrigger("component_added", { ctor = FakeCtor })
+			t.expect(descriptor.ctor).toBe(FakeCtor)
+		end)
+
 	t.it("re-renders when an entity spawns", function()
 			H.reset()
 			local Health = H.class(function(v)

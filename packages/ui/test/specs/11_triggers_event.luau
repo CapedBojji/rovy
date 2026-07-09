@@ -22,6 +22,13 @@ return function(TS, t)
 	end
 
 	t.describe("$eventTrigger", function()
+		t.it("produces a { kind = 'event', ctor } descriptor", function()
+			local FakeCtor = {}
+			local descriptor = H.eventTrigger(FakeCtor)
+			t.expect(descriptor.kind).toBe("event")
+			t.expect(descriptor.ctor).toBe(FakeCtor)
+		end)
+
 		t.it("re-renders when the event is triggered", function()
 			H.reset()
 			local DamagePulse, Comp, stats = setup()

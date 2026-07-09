@@ -54,6 +54,7 @@ function Helpers.load(TS)
 		core.rovy:__reset()
 		RovyUi:__reset()
 		if _G.__rovyClearTasks then _G.__rovyClearTasks() end
+		if _G.__rovyClearWarnings then _G.__rovyClearWarnings() end
 		if _G.__rovyTestRuntime then _G.__rovyTestRuntime.resetConnections() end
 	end
 

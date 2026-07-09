@@ -715,7 +715,14 @@ function flushDirty(state: MountedUiState): void {
 	const dirty = new Array<ComponentNode>();
 	for (const node of state.dirty) dirty.push(node);
 	state.dirty.clear();
-	for (const node of dirty) renderComponent(state, node);
+	// Isolate each render: a throwing render() must not starve sibling nodes or
+	// leave state.flushing stuck true (which would silently freeze every future
+	// re-render for this mount). The failed node stays out of state.dirty and
+	// re-renders on its next trigger. Mount-time renders stay fail-fast.
+	for (const node of dirty) {
+		const [ok, err] = pcall(() => renderComponent(state, node));
+		if (!ok) warn(`[rovy/ui] render failed for '${node.reg.id}': ${tostring(err)}`);
+	}
 	state.flushing = false;
 	if (state.dirty.size() > 0) scheduleFlush(state);
 }
