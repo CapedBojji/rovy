@@ -1265,6 +1265,88 @@ class InventoryRoot {
 	assert.doesNotMatch(result.printed, /\$queryTrigger<\[/);
 });
 
+runCase("@ui query trigger can be scoped to Entity props", () => {
+	const result = compileFixture(`
+${header}
+@component class Health {}
+@ui
+class RosterRows {
+	static rerender = [
+		$queryTrigger<[Entity, Health]>({
+			entities: $prop<ReadonlyArray<Entity>>("entities"),
+			on: ["changed", "removed"],
+		}),
+	];
+	constructor(readonly props: Props<{ entities: ReadonlyArray<Entity> }>) {}
+	render(rows: Query<[Entity, Health]>) {
+		return textLabel({ Text: "rows" });
+	}
+}
+`);
+	assertNoDiagnostics(result, "ui query trigger entity prop lowering");
+	assert.match(result.printed, /triggers: \[\s*\{ kind: "query", handle: "src\/main@RosterRows:rerender:0", entities: \{ kind: "prop", key: "entities" \}, on: \["changed", "removed"\] \}\s*\]/);
+});
+
+runCase("@ui query trigger entity prop validation rejects non-entity props", () => {
+	const result = compileFixture(`
+${header}
+@component class Health {}
+@ui
+class BadRows {
+	static rerender = [
+		$queryTrigger<[Entity, Health]>({
+			entities: $prop<ReadonlyArray<Entity>>("ids"),
+		}),
+	];
+	constructor(readonly props: Props<{ ids: ReadonlyArray<string> }>) {}
+	render(rows: Query<[Entity, Health]>) {
+		return textLabel({ Text: "rows" });
+	}
+}
+`);
+	assert.match(result.diagnostics.join("\n"), /\$queryTrigger entities prop 'ids' must be Entity or readonly Entity\[\]/);
+});
+
+runCase("@ui query trigger entity prop validation rejects non-entity prop type arguments", () => {
+	const result = compileFixture(`
+${header}
+@component class Health {}
+@ui
+class BadRows {
+	static rerender = [
+		$queryTrigger<[Entity, Health]>({
+			entities: $prop<ReadonlyArray<string>>("ids"),
+		}),
+	];
+	constructor(readonly props: Props<{ ids: ReadonlyArray<Entity> }>) {}
+	render(rows: Query<[Entity, Health]>) {
+		return textLabel({ Text: "rows" });
+	}
+}
+`);
+	assert.match(result.diagnostics.join("\n"), /\$queryTrigger entities \$prop\('ids'\) must be typed as Entity or readonly Entity\[\]/);
+});
+
+runCase("@ui query trigger entity prop validation rejects unknown props", () => {
+	const result = compileFixture(`
+${header}
+@component class Health {}
+@ui
+class BadRows {
+	static rerender = [
+		$queryTrigger<[Entity, Health]>({
+			entities: $prop<ReadonlyArray<Entity>>("missing"),
+		}),
+	];
+	constructor(readonly props: Props<{ ids: ReadonlyArray<Entity> }>) {}
+	render(rows: Query<[Entity, Health]>) {
+		return textLabel({ Text: "rows" });
+	}
+}
+`);
+	assert.match(result.diagnostics.join("\n"), /\$queryTrigger entities references unknown prop 'missing'/);
+});
+
 runCase("@ui factory and JSX calls receive stable callsite ids", () => {
 	const result = compileFixture(`
 ${header}

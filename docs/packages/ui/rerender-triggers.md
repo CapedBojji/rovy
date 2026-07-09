@@ -79,6 +79,58 @@ entity-keyed rows with the previous snapshot:
 The `on` option filters which of those differences mark the component dirty. If
 you omit `on`, all three are enabled.
 
+### Scoping a query trigger to props
+
+Use `entities` when the query is broad but this component should only rerender
+for one entity or a selected list of entities.
+
+```ts
+interface RosterRowsProps {
+	readonly entities: ReadonlyArray<Entity>;
+}
+
+@ui
+class RosterRows {
+	static rerender = [
+		$queryTrigger<[Entity, Health]>({
+			entities: $prop<ReadonlyArray<Entity>>("entities"),
+			on: ["changed", "removed"],
+		}),
+	];
+
+	constructor(readonly props: Props<RosterRowsProps>) {}
+
+	render(rows: Query<[Entity, Health]>) {
+		return frame(
+			{},
+			this.props.entities.map((entity) => {
+				let health: Health | undefined;
+				rows.forEach((rowEntity, rowHealth) => {
+					if (rowEntity === entity) health = rowHealth;
+				});
+				return child(HealthRow, { entity, health }, { key: entity });
+			}),
+		);
+	}
+}
+```
+
+The query snapshot still tracks the full query, but only diffs whose entity is
+inside `this.props.entities` mark the component dirty.
+
+Single-entity props work too:
+
+```ts
+$queryTrigger<[Entity, Health]>({
+	entities: $prop<Entity>("entity"),
+	on: ["changed"],
+});
+```
+
+The transformer validates `$prop(...)` bindings used in `entities`: the named
+prop must exist on the component props and be typed as `Entity` or an
+entity list such as `ReadonlyArray<Entity>`.
+
 ## Component triggers
 
 ```ts

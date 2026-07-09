@@ -160,6 +160,28 @@ The `params` array is what lets `@rovy/ui` resolve `state` before calling
 These arrays are independent. A render param reads data during render; a trigger
 subscribes the component to future changes. See [Render Injection](/packages/ui/render-injection).
 
+For a prop-scoped query trigger:
+
+```ts
+static rerender = [
+	$queryTrigger<[Entity, Health]>({
+		entities: $prop<ReadonlyArray<Entity>>("entities"),
+		on: ["changed", "removed"],
+	}),
+];
+```
+
+The trigger descriptor includes the lowered binding:
+
+```luau
+triggers = { {
+	kind = "query",
+	handle = "src/main@RosterRows:rerender:0",
+	entities = { kind = "prop", key = "entities" },
+	on = { "changed", "removed" },
+} }
+```
+
 ## Query trigger lowering
 
 Source:

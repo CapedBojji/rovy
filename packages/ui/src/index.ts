@@ -82,8 +82,10 @@ export type BindingDescriptor =
 	| { readonly kind: "prop"; readonly key: string }
 	| { readonly kind: "value"; readonly value: unknown };
 
+export type EntityBindingDescriptor = Entity | ReadonlyArray<Entity>;
+
 export type UiTriggerDescriptor =
-	| { readonly kind: "query"; readonly handle: string; readonly on: ReadonlyArray<TriggerEvent> }
+	| { readonly kind: "query"; readonly handle: string; readonly entities?: BindingDescriptor | EntityBindingDescriptor; readonly on: ReadonlyArray<TriggerEvent> }
 	| { readonly kind: "component"; readonly ctor: Ctor; readonly entity?: BindingDescriptor; readonly on: ReadonlyArray<TriggerEvent> }
 	| { readonly kind: "resource"; readonly ctor: Ctor }
 	| { readonly kind: "event"; readonly ctor: Ctor }
@@ -109,6 +111,7 @@ export interface RelationTriggerOptions {
 }
 
 export interface QueryTriggerOptions {
+	readonly entities?: EntityBindingDescriptor;
 	readonly on?: ReadonlyArray<TriggerEvent>;
 }
 
@@ -164,6 +167,8 @@ type RuntimeNode = ComponentNode | NativeNode | FragmentNode;
 
 interface QueryTriggerState {
 	readonly query: QueryLike;
+	readonly node: ComponentNode;
+	readonly entities?: BindingDescriptor | EntityBindingDescriptor;
 	readonly on: ReadonlyArray<TriggerEvent>;
 	previous: Map<Entity, Array<unknown>>;
 }
@@ -231,7 +236,7 @@ export function unmountUi(handle: UiHandle): void {
 	handle.destroy();
 }
 
-function propMacro<T = unknown>(key: string): BindingDescriptor {
+function propMacro<T = unknown>(key: string): BindingDescriptor & T {
 	return { kind: "prop", key } as BindingDescriptor & T;
 }
 
@@ -240,7 +245,7 @@ export { propMacro as $prop };
 function queryTriggerMacro<_Terms extends ReadonlyArray<unknown>, _F1 = void, _F2 = void, _F3 = void, _F4 = void, _F5 = void>(
 	options: QueryTriggerOptions = {},
 ): UiTriggerDescriptor {
-	return { kind: "query", handle: "", on: options.on ?? allTriggerEvents() };
+	return { kind: "query", handle: "", entities: options.entities, on: options.on ?? allTriggerEvents() };
 }
 
 function componentTriggerMacro(ctor: Ctor, options: ComponentTriggerOptions = {}): UiTriggerDescriptor {
@@ -613,6 +618,8 @@ function subscribeQueryTrigger(
 	assert(query !== undefined, `[rovy/ui] query trigger handle not found: ${trigger.handle}`);
 	const source: QueryTriggerState = {
 		query,
+		node,
+		entities: trigger.entities,
 		on: trigger.on,
 		previous: snapshotQuery(query),
 	};
@@ -667,6 +674,7 @@ function queryTriggerChanged(source: QueryTriggerState): boolean {
 	const current = snapshotQuery(source.query);
 	let changed = false;
 	for (const [entity, values] of current) {
+		if (!entityBindingMatches(source.node, source.entities, entity)) continue;
 		const old = source.previous.get(entity);
 		if (old === undefined) {
 			if (includesEvent(source.on, "added")) changed = true;
@@ -675,6 +683,7 @@ function queryTriggerChanged(source: QueryTriggerState): boolean {
 		}
 	}
 	for (const [entity] of source.previous) {
+		if (!entityBindingMatches(source.node, source.entities, entity)) continue;
 		if (!current.has(entity) && includesEvent(source.on, "removed")) changed = true;
 	}
 	source.previous = current;
@@ -829,6 +838,24 @@ function bindingMatches(node: ComponentNode, binding: BindingDescriptor | undefi
 	if (actual === undefined) return false;
 	const expected = binding.kind === "prop" ? node.props[binding.key] : binding.value;
 	return expected === actual;
+}
+
+function entityBindingMatches(node: ComponentNode, binding: BindingDescriptor | EntityBindingDescriptor | undefined, entity: Entity): boolean {
+	if (binding === undefined) return true;
+	const expected = isBindingDescriptor(binding) ? (binding.kind === "prop" ? node.props[binding.key] : binding.value) : binding;
+	if (expected === undefined) return false;
+	if (expected === entity) return true;
+	if (typeIs(expected, "table")) {
+		for (const [, item] of pairs(expected as Record<number, unknown>)) {
+			if (item === entity) return true;
+		}
+	}
+	return false;
+}
+
+function isBindingDescriptor(value: BindingDescriptor | EntityBindingDescriptor): value is BindingDescriptor {
+	const maybe = value as Partial<BindingDescriptor>;
+	return typeIs(value, "table") && (maybe.kind === "prop" || maybe.kind === "value");
 }
 
 function readKey(props: InstanceProps): Key | undefined {

@@ -114,6 +114,34 @@ class SelectedUnitPanel {
 This component reads `Query<[Entity, Health]>`, but it only rerenders when the
 selected entity's `Health` changes or is removed.
 
+For selected lists, use the query trigger's `entities` binding:
+
+```ts
+@ui
+class SelectedRows {
+	static rerender = [
+		$queryTrigger<[Entity, Health]>({
+			entities: $prop<ReadonlyArray<Entity>>("entities"),
+			on: ["changed", "removed"],
+		}),
+	];
+
+	constructor(readonly props: Props<{ entities: ReadonlyArray<Entity> }>) {}
+
+	render(rows: Query<[Entity, Health]>) {
+		return frame(
+			{},
+			this.props.entities.map((entity) =>
+				child(HealthRow, { entity }, { key: entity }),
+			),
+		);
+	}
+}
+```
+
+Here `render(rows)` can read the full health query, while `entities:
+$prop("entities")` limits which row diffs schedule the next render.
+
 ## Injecting events
 
 ```ts

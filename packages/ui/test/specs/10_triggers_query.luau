@@ -8,8 +8,8 @@ return function(TS, t)
 	local H = Helpers.load(TS)
 
 	-- Build a query trigger descriptor bound to a registered query handle.
-	local function queryTriggerFor(handle, on)
-		local descriptor = H.queryTrigger({ on = on })
+	local function queryTriggerFor(handle, on, entities)
+		local descriptor = H.queryTrigger({ on = on, entities = entities })
 		descriptor.handle = handle -- the transformer fills this from the query id
 		return descriptor
 	end
@@ -74,6 +74,105 @@ return function(TS, t)
 			app.world:set(e, Health, Health.new(51))
 			H.settle(app)
 			t.expect(stats.renders > baseline).toBeTruthy()
+		end)
+
+		t.it("scopes rerenders to a single Entity prop", function()
+			H.reset()
+			local Health = H.class(function(v)
+				return { value = v or 100 }
+			end)
+			H.rovy:__component(Health, "test/Health")
+			H.rovy:__query({
+				id = "q#scoped-one",
+				terms = { { t = "entity" }, { t = "component", ctor = Health } },
+				filters = {},
+			})
+			local app = H.startedApp()
+			local tracked = app.world:spawn(Health.new(10))
+			local other = app.world:spawn(Health.new(20))
+			local stats = { renders = 0 }
+			local Comp = H.uiClass("test/ScopedOne", function()
+				stats.renders += 1
+				return H.textLabel({ Name = "Status", Text = "renders=" .. tostring(stats.renders) })
+			end, {
+				triggers = { queryTriggerFor("q#scoped-one", { "changed" }, H.prop("entity")) },
+			})
+			H.mountUi(app, Comp, { target = H.target(), props = { entity = tracked } })
+			t.expect(stats.renders).toBe(1)
+
+			app.world:set(other, Health, Health.new(21))
+			H.settle(app)
+			t.expect(stats.renders).toBe(1)
+
+			app.world:set(tracked, Health, Health.new(11))
+			H.settle(app)
+			t.expect(stats.renders).toBe(2)
+		end)
+
+		t.it("scopes rerenders to an Entity list prop", function()
+			H.reset()
+			local Health = H.class(function(v)
+				return { value = v or 100 }
+			end)
+			H.rovy:__component(Health, "test/Health")
+			H.rovy:__query({
+				id = "q#scoped-list",
+				terms = { { t = "entity" }, { t = "component", ctor = Health } },
+				filters = {},
+			})
+			local app = H.startedApp()
+			local a = app.world:spawn(Health.new(10))
+			local b = app.world:spawn(Health.new(20))
+			local c = app.world:spawn(Health.new(30))
+			local stats = { renders = 0 }
+			local Comp = H.uiClass("test/ScopedList", function()
+				stats.renders += 1
+				return H.textLabel({ Name = "Status", Text = "renders=" .. tostring(stats.renders) })
+			end, {
+				triggers = { queryTriggerFor("q#scoped-list", { "changed", "removed" }, H.prop("entities")) },
+			})
+			H.mountUi(app, Comp, { target = H.target(), props = { entities = { a, b } } })
+			t.expect(stats.renders).toBe(1)
+
+			app.world:set(c, Health, Health.new(31))
+			H.settle(app)
+			t.expect(stats.renders).toBe(1)
+
+			app.world:set(b, Health, Health.new(21))
+			H.settle(app)
+			t.expect(stats.renders).toBe(2)
+
+			app.world:remove(a, Health)
+			H.settle(app)
+			t.expect(stats.renders).toBe(3)
+		end)
+
+		t.it("does not rerender when scoped entities prop is missing", function()
+			H.reset()
+			local Health = H.class(function(v)
+				return { value = v or 100 }
+			end)
+			H.rovy:__component(Health, "test/Health")
+			H.rovy:__query({
+				id = "q#scoped-missing",
+				terms = { { t = "entity" }, { t = "component", ctor = Health } },
+				filters = {},
+			})
+			local app = H.startedApp()
+			local entity = app.world:spawn(Health.new(10))
+			local stats = { renders = 0 }
+			local Comp = H.uiClass("test/ScopedMissing", function()
+				stats.renders += 1
+				return H.textLabel({ Name = "Status", Text = "renders=" .. tostring(stats.renders) })
+			end, {
+				triggers = { queryTriggerFor("q#scoped-missing", { "changed" }, H.prop("entities")) },
+			})
+			H.mountUi(app, Comp, { target = H.target(), props = {} })
+			t.expect(stats.renders).toBe(1)
+
+			app.world:set(entity, Health, Health.new(11))
+			H.settle(app)
+			t.expect(stats.renders).toBe(1)
 		end)
 
 		t.it("re-renders and shrinks size when an entity leaves the query", function()

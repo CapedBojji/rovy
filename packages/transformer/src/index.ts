@@ -1253,7 +1253,7 @@ function lowerUiTriggers(
 			state.diagnostic(element, "@ui rerender entries must be trigger helper calls");
 			return;
 		}
-		const lowered = lowerUiTrigger(state, sourceFile, element, `${classId}:rerender:${index}`);
+		const lowered = lowerUiTrigger(state, sourceFile, node, element, `${classId}:rerender:${index}`);
 		triggers.push(lowered.descriptor);
 		queryStatements.push(...lowered.queryStatements);
 	});
@@ -1263,6 +1263,7 @@ function lowerUiTriggers(
 function lowerUiTrigger(
 	state: TransformState,
 	sourceFile: ts.SourceFile,
+	classNode: ts.ClassDeclaration,
 	callExpr: ts.CallExpression,
 	triggerId: string,
 ): { descriptor: ts.ObjectLiteralExpression; queryStatements: readonly ts.Statement[] } {
@@ -1270,8 +1271,18 @@ function lowerUiTrigger(
 	if (name === "$queryTrigger") {
 		const query = buildQuery(state, callExpr.typeArguments?.[0], [...(callExpr.typeArguments ?? [])].slice(1), triggerId, callExpr);
 		const options = objectArgFromExpression(callExpr.arguments[0]);
+		const entities = propertyValue(options, "entities");
+		validateUiEntityBinding(state, sourceFile, classNode, entities, "$queryTrigger entities");
 		return {
-			descriptor: obj([prop("kind", str("query")), prop("handle", str(query.id)), prop("on", triggerOnArray(options))], false),
+			descriptor: obj(
+				stripUndefinedProperties([
+					prop("kind", str("query")),
+					prop("handle", str(query.id)),
+					maybeProp("entities", lowerUiBinding(state, sourceFile, entities)),
+					prop("on", triggerOnArray(options)),
+				]),
+				false,
+			),
 			queryStatements: [regQuery(state.addRovyImport(sourceFile), query.descriptor)],
 		};
 	}
@@ -1356,6 +1367,100 @@ function lowerUiBinding(
 		state.diagnostic(expression, "$prop(...) trigger bindings require a string key");
 	}
 	return obj([prop("kind", str("value")), prop("value", expression)], false);
+}
+
+function validateUiEntityBinding(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	classNode: ts.ClassDeclaration | undefined,
+	expression: ts.Expression | undefined,
+	label: string,
+): void {
+	if (expression === undefined || state.typeChecker === undefined) return;
+	const name = ts.isCallExpression(expression) ? state.resolveRetainedUiName(sourceFile, expression.expression) : undefined;
+	if (ts.isCallExpression(expression) && name === "$prop") {
+		const key = expression.arguments[0];
+		if (key === undefined || !ts.isStringLiteral(key)) return;
+		const explicitType = expression.typeArguments?.[0];
+		if (explicitType !== undefined && !isEntityOrEntityListType(state, state.typeChecker.getTypeFromTypeNode(explicitType))) {
+			state.diagnostic(expression, `${label} $prop('${key.text}') must be typed as Entity or readonly Entity[]`);
+			return;
+		}
+		if (classNode !== undefined) {
+			const propType = uiPropsPropertyType(state, classNode, key.text, expression);
+			if (propType === undefined) {
+				state.diagnostic(expression, `${label} references unknown prop '${key.text}'`);
+			} else if (!isEntityOrEntityListType(state, propType)) {
+				state.diagnostic(expression, `${label} prop '${key.text}' must be Entity or readonly Entity[]`);
+			}
+		}
+		return;
+	}
+	const type = state.typeChecker.getTypeAtLocation(expression);
+	if (!isEntityOrEntityListType(state, type)) {
+		state.diagnostic(expression, `${label} must be an Entity or readonly Entity[] binding`);
+	}
+}
+
+function isEntityOrEntityListType(state: TransformState, type: ts.Type): boolean {
+	if (state.typeChecker === undefined) return true;
+	if (type.isUnion()) {
+		const parts = type.types.filter((part) => (part.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Null | ts.TypeFlags.Void | ts.TypeFlags.Never)) === 0);
+		return parts.length > 0 && parts.every((part) => isEntityOrEntityListType(state, part));
+	}
+	return isEntityTsType(state, type) || isEntityListType(state, type);
+}
+
+function isEntityTsType(state: TransformState, type: ts.Type): boolean {
+	if (state.typeChecker === undefined) return true;
+	const checker = state.typeChecker;
+	if (type.getProperty("__nominal_Entity") !== undefined) return true;
+	const text = checker.typeToString(type);
+	if (text === "Entity" || text.startsWith("Entity<")) return true;
+	return false;
+}
+
+function isEntityListType(state: TransformState, type: ts.Type): boolean {
+	if (state.typeChecker === undefined) return true;
+	const checker = state.typeChecker;
+	const typedChecker = checker as ts.TypeChecker & {
+		isArrayType?: (target: ts.Type) => boolean;
+		isTupleType?: (target: ts.Type) => boolean;
+		getElementTypeOfArrayType?: (target: ts.Type) => ts.Type | undefined;
+	};
+	if (typedChecker.isArrayType?.(type) === true || typedChecker.isTupleType?.(type) === true) {
+		const element = typedChecker.getElementTypeOfArrayType?.(type) ?? checker.getIndexTypeOfType(type, ts.IndexKind.Number);
+		return element !== undefined && isEntityTsType(state, element);
+	}
+	const text = checker.typeToString(type);
+	if (/\b(?:ReadonlyArray|Array)<Entity(?:<[^>]+>)?>/.test(text) || /\breadonly Entity(?:<[^>]+>)?\[\]/.test(text) || /\bEntity(?:<[^>]+>)?\[\]/.test(text)) {
+		return true;
+	}
+	return false;
+}
+
+function uiPropsPropertyType(
+	state: TransformState,
+	classNode: ts.ClassDeclaration,
+	key: string,
+	location: ts.Node,
+): ts.Type | undefined {
+	const checker = state.typeChecker;
+	if (checker === undefined) return undefined;
+	for (const member of classNode.members) {
+		if (ts.isConstructorDeclaration(member)) {
+			for (const param of member.parameters) {
+				if (!ts.isIdentifier(param.name) || param.name.text !== "props") continue;
+				const prop = checker.getTypeAtLocation(param).getProperty(key);
+				if (prop !== undefined) return checker.getTypeOfSymbolAtLocation(prop, prop.valueDeclaration ?? location);
+			}
+		}
+		if (ts.isPropertyDeclaration(member) && propertyNameText(member.name) === "props") {
+			const prop = checker.getTypeAtLocation(member).getProperty(key);
+			if (prop !== undefined) return checker.getTypeOfSymbolAtLocation(prop, prop.valueDeclaration ?? location);
+		}
+	}
+	return undefined;
 }
 
 function triggerOnArray(options: ts.ObjectLiteralExpression | undefined): ts.Expression {

@@ -110,6 +110,10 @@ descriptors stored in `rovyUi.__ui(...)` metadata.
 
 ```ts
 $queryTrigger<[Health]>({ on: ["added", "changed", "removed"] });
+$queryTrigger<[Entity, Health]>({
+	entities: $prop<ReadonlyArray<Entity>>("entities"),
+	on: ["changed", "removed"],
+});
 $componentTrigger(Health, { entity: $prop<Entity>("entity"), on: ["changed"] });
 $resourceTrigger(Theme);
 $eventTrigger(InventoryChanged);
