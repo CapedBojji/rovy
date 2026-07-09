@@ -141,6 +141,9 @@ child(Panel, {
 Use `fragment(this.props.children)` inside wrapper components when you want to
 render passed children without adding an extra Roblox Instance.
 
+See [Props And Children](/packages/ui/props-and-children) for the full prop,
+children, and key model.
+
 ## Render params
 
 `render(...)` params use Rovy injection descriptors just like systems.

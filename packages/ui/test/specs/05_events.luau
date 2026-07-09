@@ -57,6 +57,42 @@ return function(TS, t)
 			t.expect(newCount).toBe(1)
 		end)
 
+		t.it("keeps exactly one live signal connection across handler rerenders", function()
+			H.reset()
+			local counts = { 0, 0, 0 }
+			local index = 1
+			local app, target, ctrl = mountControlled({
+				Activated = function()
+					counts[index] += 1
+				end,
+			})
+			local btn = target:FindFirstChild("Btn")
+			t.expect(btn.Activated:LiveConnectionCount()).toBe(1)
+
+			index = 2
+			ctrl.events = {
+				Activated = function()
+					counts[index] += 1
+				end,
+			}
+			H.bump(app)
+			t.expect(btn.Activated:LiveConnectionCount()).toBe(1)
+
+			index = 3
+			ctrl.events = {
+				Activated = function()
+					counts[index] += 1
+				end,
+			}
+			H.bump(app)
+			t.expect(btn.Activated:LiveConnectionCount()).toBe(1)
+
+			btn.Activated:Fire()
+			t.expect(counts[1]).toBe(0)
+			t.expect(counts[2]).toBe(0)
+			t.expect(counts[3]).toBe(1)
+		end)
+
 		t.it("dropping an event name disconnects just that one", function()
 			H.reset()
 			local clicks, moves = 0, 0

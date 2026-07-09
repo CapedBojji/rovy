@@ -109,3 +109,6 @@ frame({
 	},
 });
 ```
+
+See [Events And Refs](/packages/ui/events-and-refs) for rerender cleanup and JSX
+examples.

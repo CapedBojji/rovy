@@ -201,6 +201,9 @@ app.mount(RootHud, existingFrame, {
 
 - [Getting Started](/packages/ui/getting-started)
 - [JSX](/packages/ui/jsx)
+- [Props And Children](/packages/ui/props-and-children)
+- [Events And Refs](/packages/ui/events-and-refs)
+- [Reconciliation](/packages/ui/reconciliation)
 - [Rerender Triggers](/packages/ui/rerender-triggers)
 - [Compiled Output](/packages/ui/compiled-output)
 - [Built-in Factories](/packages/ui/built-in-widgets)
