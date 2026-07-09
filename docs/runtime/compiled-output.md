@@ -18,6 +18,11 @@ that system.
 
 `@rovy/vide` view lowering follows the same idea: source authoring stays in TypeScript, the transformer injects `rovyVide.__view(...)` metadata and any required core query descriptors, and runtime mounting stays explicit through `mountView(...)`. See [Rovy Vide](/packages/vide).
 
+`@rovy/ui` retained component lowering follows the same idea: source authoring
+stays in TypeScript, the transformer injects `rovyUi.__ui(...)` metadata,
+lowered render param descriptors, rerender trigger descriptors, and stable
+callsite ids for factory/JSX children. See [Rovy UI compiled output](/packages/ui/compiled-output).
+
 `@rovy/imgui` widget lowering also follows the same idea: source authoring stays in TypeScript, the transformer injects registration/wrapping code, and later plain widget calls carry stable callsite identity. See [Rovy ImGui](/packages/imgui).
 
 ---
