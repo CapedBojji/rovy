@@ -1,8 +1,8 @@
 # Rovy UI Render Injection
 
-`@ui` render methods support the same injection style as Rovy systems. The
-transformer reads the `render(...)` parameter types, lowers them into metadata,
-and `@rovy/ui` resolves those params every time the component renders.
+`@ui` render methods can ask Rovy for data by putting typed params in
+`render(...)`. When the component renders, Rovy looks at those params and passes
+the matching values in.
 
 Render injection is for reading or using data during a render. It does not, by
 itself, subscribe the component to future changes.
@@ -168,11 +168,14 @@ class InventoryToastCount {
 `EventReader` lets the render method inspect the buffered events. `$eventTrigger`
 is what schedules a rerender when matching events are sent.
 
-## Injecting world and commands
+## Reading and changing the world
 
 ```ts
-import { resource, type Commands, type Res } from "@rovy/core";
-import { textButton, ui } from "@rovy/ui";
+import { component, resource, type Commands, type Entity, type Res, type World } from "@rovy/core";
+import { textButton, ui, type Props } from "@rovy/ui";
+
+@component
+class SpawnedByUi {}
 
 @resource
 class SpawnStats {
@@ -181,12 +184,18 @@ class SpawnStats {
 
 @ui
 class SpawnButton {
-	render(stats: Res<SpawnStats>, commands: Commands) {
+	constructor(readonly props: Props<{ selected?: Entity }>) {}
+
+	render(stats: Res<SpawnStats>, commands: Commands, world: World) {
+		const selectedHasMarker =
+			this.props.selected !== undefined &&
+			world.has(this.props.selected, SpawnedByUi);
+
 		return textButton({
-			Text: `Spawn (${stats.count})`,
+			Text: selectedHasMarker ? `Spawned (${stats.count})` : `Spawn (${stats.count})`,
 			events: {
 				Activated: () => {
-					commands.spawn();
+					commands.spawn(new SpawnedByUi());
 				},
 			},
 		});
@@ -194,9 +203,28 @@ class SpawnButton {
 }
 ```
 
-`Commands` is resolved fresh when the component renders. Mutating in event
-callbacks should usually use Rovy's deferred command model. You can also inject
-`World` for direct reads when a query or resource is not the right shape.
+Use `Commands` when a UI action should change game state. In the example above,
+the button click does not edit the world right in the middle of the click
+handler. It puts a spawn request into `commands`, and Rovy applies that request
+at the normal command flush point.
+
+That matters because systems, monitors, and UI can all be looking at the world
+at the same time. If one callback changes the entity list while something else
+is looping through it, the result can be confusing. Commands make the change
+happen a moment later, in the same place all other queued changes happen.
+
+Use `World` when you only need to check something right now. In the example,
+`world.has(this.props.selected, SpawnedByUi)` asks, "does this selected entity
+currently have this component?" No list is needed, and no resource is needed.
+
+A simple rule:
+
+- Use `Query<...>` when the UI wants a list of matching entities.
+- Use `Res<T>` when the UI wants one shared value.
+- Use `World` when the UI wants one direct lookup, like "does this entity have
+  Health?" or "what is this entity's Position?"
+- Use `Commands` when a click or input should spawn, despawn, add, remove, or
+  replace components.
 
 ## Local state
 
