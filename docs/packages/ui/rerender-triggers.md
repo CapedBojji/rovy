@@ -6,6 +6,8 @@ Render params answer: "What data does this component read when it renders?"
 Rerender triggers answer: "Which Rovy changes should cause this component to
 render again?"
 
+For a full guide to render params, see [Render Injection](/packages/ui/render-injection).
+
 ```ts
 @ui
 class ScoreLabel {

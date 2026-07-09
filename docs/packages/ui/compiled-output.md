@@ -157,6 +157,9 @@ The `params` array is what lets `@rovy/ui` resolve `state` before calling
 `render(state)`. The `triggers` array is what tells `@rovy/ui` to subscribe to
 `TemplateState` changes and mark this component dirty.
 
+These arrays are independent. A render param reads data during render; a trigger
+subscribes the component to future changes. See [Render Injection](/packages/ui/render-injection).
+
 ## Query trigger lowering
 
 Source:

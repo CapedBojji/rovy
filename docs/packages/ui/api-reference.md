@@ -120,3 +120,12 @@ $propsTrigger();
 
 Triggers are transformer-backed. Do not hand-author the runtime descriptor shape.
 For exact runtime behavior, see [Rerender Triggers](/packages/ui/rerender-triggers).
+
+## Render injection
+
+`render(...)` params are lowered independently from triggers. A component can
+inject `Res<T>`, `Query<...>`, `EventReader<E>`, `World`, `Commands`, `Local<T>`,
+and other normal Rovy param types to read data during render. Those params do
+not install subscriptions by themselves.
+
+See [Render Injection](/packages/ui/render-injection).

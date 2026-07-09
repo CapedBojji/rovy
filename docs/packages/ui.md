@@ -204,6 +204,7 @@ app.mount(RootHud, existingFrame, {
 - [Props And Children](/packages/ui/props-and-children)
 - [Events And Refs](/packages/ui/events-and-refs)
 - [Reconciliation](/packages/ui/reconciliation)
+- [Render Injection](/packages/ui/render-injection)
 - [Rerender Triggers](/packages/ui/rerender-triggers)
 - [Compiled Output](/packages/ui/compiled-output)
 - [Built-in Factories](/packages/ui/built-in-widgets)
