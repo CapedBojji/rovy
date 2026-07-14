@@ -188,14 +188,31 @@ If no target is supplied, `@rovy/ui` creates a `ScreenGui` under
 app.mount(RootHud, undefined, { name: "GameHud" });
 ```
 
-Pass an explicit target when embedding inside an existing `ScreenGui`, `Frame`,
-or test harness container.
+Pass an explicit target when embedding inside an existing `ScreenGui`,
+`BillboardGui`, `SurfaceGui`, `Frame`, or test harness container.
 
 ```ts
 app.mount(RootHud, existingFrame, {
 	props: { title: "Inventory" },
 });
 ```
+
+`mountUi(...)` creates an independent root after `app.start()` and returns a
+destroy handle. This supports runtime-owned roots, including one root per unit:
+
+```ts
+const handle = mountUi(app, UnitTag, {
+	target: unitBillboardGui,
+	props: { entity },
+});
+
+handle.destroy();
+```
+
+When one retained root needs to render into many changing targets, use
+`portal(target, children, { key })`. Portals work with screen-space GUI,
+`BillboardGui`, `SurfaceGui`, and world Instances that receive a Rovy-created GUI
+host. See [Portals And World UI](/packages/ui/portals).
 
 ## Next steps
 
@@ -204,6 +221,7 @@ app.mount(RootHud, existingFrame, {
 - [Props And Children](/packages/ui/props-and-children)
 - [Events And Refs](/packages/ui/events-and-refs)
 - [Reconciliation](/packages/ui/reconciliation)
+- [Portals And World UI](/packages/ui/portals)
 - [Render Injection](/packages/ui/render-injection)
 - [Rerender Triggers](/packages/ui/rerender-triggers)
 - [Compiled Output](/packages/ui/compiled-output)

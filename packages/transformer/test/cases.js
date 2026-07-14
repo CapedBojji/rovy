@@ -82,9 +82,13 @@ import {
 		$resourceTrigger,
 		Props,
 		UiChildren,
+		billboardGui,
 		child,
 		fragment,
 		frame,
+		portal,
+		screenGui,
+		surfaceGui,
 		textLabel,
 		ui,
 	} from "@rovy/ui";
@@ -1368,6 +1372,35 @@ class Root {
 	assert.match(result.printed, /RetainedUi\.native\("Frame"/);
 	assert.match(result.printed, /RetainedUi\.child\(Label, \{\}, \{ __callsite: "src\/main:ui:[0-9]+" \}\)/);
 	assert.match(result.printed, /\{ __callsite: "src\/main:ui:[0-9]+", key: "root" \}/);
+});
+
+runCase("@ui portals and GUI hosts receive stable callsites", () => {
+	const result = compileFixture(`
+${header}
+@ui
+class WorldUi {
+	constructor(readonly props: Props<{ target: Instance }>) {}
+	render() {
+		return portal(
+			this.props.target,
+			billboardGui({ Name: "UnitTag" }, textLabel({ Text: "Unit" })),
+			{ key: "unit" },
+		);
+	}
+}
+@ui
+class GuiHosts {
+	render() {
+		return <screenGui><billboardGui /><surfaceGui /></screenGui>;
+	}
+}
+`, { fileName: "main.tsx" });
+	assertNoDiagnostics(result, "ui portal callsite lowering");
+	assert.match(result.printed, /portal\(this\.props\.target,[\s\S]*\{ key: "unit", __callsite: "src\/main:ui:[0-9]+" \}\)/);
+	assert.match(result.printed, /billboardGui\(\{ Name: "UnitTag", __callsite: "src\/main:ui:[0-9]+" \}/);
+	assert.match(result.printed, /RetainedUi\.native\("ScreenGui"/);
+	assert.match(result.printed, /RetainedUi\.native\("BillboardGui"/);
+	assert.match(result.printed, /RetainedUi\.native\("SurfaceGui"/);
 });
 
 runCase("@ui JSX component children lower into props.children", () => {

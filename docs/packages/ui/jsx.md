@@ -42,6 +42,9 @@ map to the same built-in factories:
 
 | JSX tag | Roblox class |
 | --- | --- |
+| `<screenGui>` | `ScreenGui` |
+| `<billboardGui>` | `BillboardGui` |
+| `<surfaceGui>` | `SurfaceGui` |
 | `<frame>` | `Frame` |
 | `<textLabel>` | `TextLabel` |
 | `<textButton>` | `TextButton` |
@@ -66,6 +69,17 @@ as custom `@ui` components.
 
 There is no JSX alias for every Roblox class. For unsupported classes such as
 `UIGradient`, use `native("UIGradient", props)` in an expression.
+
+Portals use the `portal(...)` factory rather than a JSX tag. JSX nodes can be
+passed as the portal child:
+
+```tsx
+return portal(head, (
+	<billboardGui Adornee={head} Size={UDim2.fromOffset(140, 36)}>
+		<textLabel Text="Unit" Size={UDim2.fromScale(1, 1)} />
+	</billboardGui>
+), { key: entity });
+```
 
 Example:
 

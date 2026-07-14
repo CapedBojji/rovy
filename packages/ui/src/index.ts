@@ -29,7 +29,7 @@ export type Props<T extends object = {}> = Readonly<T>;
 
 export type UiChild = UiNode | false | undefined;
 export type UiChildren = UiChild | ReadonlyArray<UiChild>;
-export type UiNode = ComponentVNode | NativeVNode | FragmentVNode;
+export type UiNode = ComponentVNode | NativeVNode | FragmentVNode | PortalVNode;
 
 export interface UiComponent {
 	render: (...args: never[]) => UiChild;
@@ -75,6 +75,12 @@ interface NativeVNode extends VNodeBase {
 
 interface FragmentVNode extends VNodeBase {
 	readonly kind: "fragment";
+	readonly children: ReadonlyArray<UiNode>;
+}
+
+interface PortalVNode extends VNodeBase {
+	readonly kind: "portal";
+	readonly target: Instance;
 	readonly children: ReadonlyArray<UiNode>;
 }
 
@@ -131,7 +137,7 @@ interface MountedUiState {
 }
 
 interface BaseRuntimeNode {
-	readonly kind: "component" | "native" | "fragment";
+	readonly kind: "component" | "native" | "fragment" | "portal";
 	readonly key?: Key;
 	readonly callsite?: string;
 	parent: Instance;
@@ -163,7 +169,13 @@ interface FragmentNode extends BaseRuntimeNode {
 	children: Array<RuntimeNode>;
 }
 
-type RuntimeNode = ComponentNode | NativeNode | FragmentNode;
+interface PortalNode extends BaseRuntimeNode {
+	readonly kind: "portal";
+	target: Instance;
+	children: Array<RuntimeNode>;
+}
+
+type RuntimeNode = ComponentNode | NativeNode | FragmentNode | PortalNode;
 
 interface QueryTriggerState {
 	readonly query: QueryLike;
@@ -310,6 +322,16 @@ export function fragment(children?: UiChildren, options: ChildOptions = {}): UiN
 	};
 }
 
+export function portal(target: Instance, children?: UiChildren, options: ChildOptions = {}): UiNode {
+	return {
+		kind: "portal",
+		target,
+		children: normalizeChildren(children),
+		key: options.key,
+		__callsite: options.__callsite,
+	};
+}
+
 export function native(className: string, props?: InstanceProps, children?: UiChildren, options: ChildOptions = {}): UiNode {
 	const cleanProps = normalizeProps(props);
 	const key = options.key ?? readKey(cleanProps);
@@ -329,6 +351,15 @@ export function native(className: string, props?: InstanceProps, children?: UiCh
 
 export function frame(props?: InstanceProps, children?: UiChildren): UiNode {
 	return native("Frame", props, children);
+}
+export function screenGui(props?: InstanceProps, children?: UiChildren): UiNode {
+	return native("ScreenGui", props, children);
+}
+export function billboardGui(props?: InstanceProps, children?: UiChildren): UiNode {
+	return native("BillboardGui", props, children);
+}
+export function surfaceGui(props?: InstanceProps, children?: UiChildren): UiNode {
+	return native("SurfaceGui", props, children);
 }
 export function textLabel(props?: InstanceProps, children?: UiChildren): UiNode {
 	return native("TextLabel", props, children);
@@ -397,6 +428,8 @@ function mountNode(state: MountedUiState, vnode: UiNode, parent: Instance): Runt
 			return mountNative(state, vnode, parent);
 		case "fragment":
 			return mountFragment(state, vnode, parent);
+		case "portal":
+			return mountPortal(state, vnode, parent);
 	}
 }
 
@@ -451,6 +484,17 @@ function mountFragment(state: MountedUiState, vnode: FragmentVNode, parent: Inst
 	};
 }
 
+function mountPortal(state: MountedUiState, vnode: PortalVNode, parent: Instance): PortalNode {
+	return {
+		kind: "portal",
+		parent,
+		target: vnode.target,
+		key: vnode.key,
+		callsite: vnode.__callsite,
+		children: reconcileChildren(state, [], vnode.children, vnode.target),
+	};
+}
+
 function reconcileNode(state: MountedUiState, oldNode: RuntimeNode | undefined, vnode: UiNode | undefined, parent: Instance): RuntimeNode | undefined {
 	if (vnode === undefined) {
 		if (oldNode !== undefined) destroyNode(oldNode);
@@ -460,7 +504,7 @@ function reconcileNode(state: MountedUiState, oldNode: RuntimeNode | undefined, 
 		if (oldNode !== undefined) destroyNode(oldNode);
 		return mountNode(state, vnode, parent);
 	}
-	oldNode.parent = parent;
+	reparentNode(oldNode, parent);
 	switch (oldNode.kind) {
 		case "component":
 			reconcileComponent(state, oldNode, vnode as ComponentVNode);
@@ -470,6 +514,9 @@ function reconcileNode(state: MountedUiState, oldNode: RuntimeNode | undefined, 
 			return oldNode;
 		case "fragment":
 			reconcileFragment(state, oldNode, vnode as FragmentVNode);
+			return oldNode;
+		case "portal":
+			reconcilePortal(state, oldNode, vnode as PortalVNode);
 			return oldNode;
 	}
 }
@@ -489,6 +536,29 @@ function reconcileFragment(state: MountedUiState, node: FragmentNode, vnode: Fra
 	node.children = reconcileChildren(state, node.children, vnode.children, node.parent);
 }
 
+function reconcilePortal(state: MountedUiState, node: PortalNode, vnode: PortalVNode): void {
+	node.target = vnode.target;
+	for (const childNode of node.children) reparentNode(childNode, vnode.target);
+	node.children = reconcileChildren(state, node.children, vnode.children, node.target);
+}
+
+function reparentNode(node: RuntimeNode, parent: Instance): void {
+	node.parent = parent;
+	switch (node.kind) {
+		case "component":
+			if (node.child !== undefined) reparentNode(node.child, parent);
+			break;
+		case "native":
+			if (node.instance.Parent !== parent) node.instance.Parent = parent;
+			break;
+		case "fragment":
+			for (const childNode of node.children) reparentNode(childNode, parent);
+			break;
+		case "portal":
+			break;
+	}
+}
+
 function reconcileChildren(
 	state: MountedUiState,
 	oldChildren: ReadonlyArray<RuntimeNode>,
@@ -506,7 +576,14 @@ function reconcileChildren(
 	for (const childVNode of newChildren) {
 		const key = vnodeIdentity(childVNode);
 		const bucket = available.get(key);
-		const oldNode = bucket !== undefined ? bucket.shift() : undefined;
+		let oldNode: RuntimeNode | undefined;
+		if (bucket !== undefined) {
+			for (let i = 0; i < bucket.size(); i++) {
+				if (!sameIdentity(bucket[i], childVNode)) continue;
+				oldNode = bucket.remove(i);
+				break;
+			}
+		}
 		const node = reconcileNode(state, oldNode, childVNode, parent);
 		if (node !== undefined) reconciled.push(node);
 	}
@@ -765,6 +842,9 @@ function destroyNode(node: RuntimeNode): void {
 		case "fragment":
 			for (const childNode of node.children) destroyNode(childNode);
 			break;
+		case "portal":
+			for (const childNode of node.children) destroyNode(childNode);
+			break;
 	}
 }
 
@@ -777,11 +857,11 @@ function sameIdentity(node: RuntimeNode, vnode: UiNode): boolean {
 }
 
 function runtimeIdentity(node: RuntimeNode): string {
-	return `${node.kind}:${node.kind === "component" ? tostring(node.ctor) : node.kind === "native" ? node.className : "fragment"}:${identityKey(node.key, node.callsite)}`;
+	return `${node.kind}:${node.kind === "component" ? tostring(node.ctor) : node.kind === "native" ? node.className : node.kind}:${identityKey(node.key, node.callsite)}`;
 }
 
 function vnodeIdentity(vnode: UiNode): string {
-	return `${vnode.kind}:${vnode.kind === "component" ? tostring(vnode.ctor) : vnode.kind === "native" ? vnode.className : "fragment"}:${identityKey(vnode.key, vnode.__callsite)}`;
+	return `${vnode.kind}:${vnode.kind === "component" ? tostring(vnode.ctor) : vnode.kind === "native" ? vnode.className : vnode.kind}:${identityKey(vnode.key, vnode.__callsite)}`;
 }
 
 function identityKey(key: Key | undefined, callsite: string | undefined): string {

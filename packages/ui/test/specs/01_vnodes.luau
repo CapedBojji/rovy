@@ -58,6 +58,26 @@ return function(TS, t)
 			t.expect(#node.children).toBe(2)
 		end)
 
+		t.it("portal() stores its external target, children, and identity", function()
+			local target = H.target("PortalTarget")
+			local node = ui.portal(target, {
+				ui.frame({ Name = "A" }),
+				false,
+				ui.frame({ Name = "B" }),
+			}, { key = "world", __callsite = "portal-site" })
+			t.expect(node.kind).toBe("portal")
+			t.expect(node.target).toBe(target)
+			t.expect(#node.children).toBe(2)
+			t.expect(node.key).toBe("world")
+			t.expect(node.__callsite).toBe("portal-site")
+
+			local empty = ui.portal(target)
+			t.expect(empty.target).toBe(target)
+			t.expect(#empty.children).toBe(0)
+			t.expect(empty.key).toBeUndefined()
+			t.expect(empty.__callsite).toBeUndefined()
+		end)
+
 		t.it("a single (non-array) child normalizes to a one-element list", function()
 			local node = ui.frame({ Name = "P" }, ui.frame({ Name = "Only" }))
 			t.expect(#node.children).toBe(1)
@@ -96,6 +116,12 @@ return function(TS, t)
 				t.expect(factory({}).className).toBe(className)
 			end)
 		end
+
+		t.it("produces ScreenGui, BillboardGui, and SurfaceGui hosts", function()
+			t.expect(ui.screenGui({}).className).toBe("ScreenGui")
+			t.expect(ui.billboardGui({}).className).toBe("BillboardGui")
+			t.expect(ui.surfaceGui({}).className).toBe("SurfaceGui")
+		end)
 	end)
 
 	t.describe("edge cases", function()

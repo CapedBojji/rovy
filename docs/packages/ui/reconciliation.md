@@ -16,6 +16,8 @@ The runtime also compares node kind and type:
 - component nodes compare component class
 - native nodes compare Roblox class name
 - fragment nodes compare fragment identity
+- portal nodes compare portal identity; the target may change without changing
+  the portal's identity
 
 If identity and type match, the old node is reused. If not, the old subtree is
 destroyed and a new subtree is mounted.
@@ -97,6 +99,25 @@ Fragments do not create Roblox Instances:
 ```
 
 Fragment children are reconciled under the nearest native parent.
+
+## Portals
+
+Portals keep logical ownership in one tree while reconciling their children
+under an external Instance:
+
+```ts
+portal(unit.head, billboardGui({ Adornee: unit.head }, child(UnitTag, {
+	entity,
+})), { key: entity });
+```
+
+With the same key or generated callsite, a portal reuses its retained children.
+If its target changes, native roots are reparented to the new target without
+resetting component or local state. Removing the portal destroys its children,
+but not the external target.
+
+See [Portals And World UI](/packages/ui/portals) for full BillboardGui and
+SurfaceGui examples.
 
 ## Rerender scheduling
 

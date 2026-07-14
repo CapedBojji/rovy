@@ -11,7 +11,7 @@ map of what is tested, how, and where the two test surfaces live:
    Studio and self-reports PASS/FAIL. See [§7](#7-studio-mcp-validation).
 
 Run: `pnpm --filter @rovy/ui test` (builds core + ui, then `zune test test/run`).
-Current status: **182 checks across 21 spec files.**
+Current status: **194 checks across 22 spec files.**
 
 ---
 
@@ -60,6 +60,8 @@ synchronously and is asserted immediately.
 | `destroyMountedUi`/`destroyNode`, conditional subtree teardown, idempotency | `17_destroy` | 3 |
 | `registerPostStartAppExtension`/`consumeMountRequests` + `app.mount` | `18_mount_requests` | 7 |
 | End-to-end proof-panel lifecycle | `19_integration` | 2 |
+| Private destroyed guards, identity mismatches, and nil-bound event paths | `20_internal_paths` | 4 |
+| Runtime roots, portals, GUI collector hosts, target moves, and keyed portal lifecycles | `21_portals` | 5 |
 
 ---
 
@@ -95,6 +97,9 @@ Every param `kind` the ui render path can resolve is asserted to arrive in
   destroyed tree neither re-renders nor errors on further world activity.
 - Conditional subtrees (`cond and node or false`) mount/destroy across renders.
 - Auto-created ScreenGui is destroyed with the handle; `destroy` is idempotent.
+- Portal children are destroyed with their logical tree while external targets
+  remain owned by the caller; keyed portals move retained children between
+  targets without resetting them.
 
 ## 5a. Render failure resilience
 
@@ -145,10 +150,7 @@ scenarios as `19_integration` against real Roblox instances and publishes:
 4. Read the `RovyUiProofPanel` TextLabel tree and confirm the row/badge texts
    match the expected end-state.
 
-**Availability note (2026-07-07).** The `robloxstudio` MCP (`@chrrxs/robloxstudio-mcp`)
-is present in the user's global Claude config and Studio is running with
-`game.rbxl` open, but its tools are **not loaded into the current session** (only
-`figma-console` is wired in). To drive Studio directly, re-run in an interactive
-session where the `robloxstudio` server is connected (`/mcp`), or extend the
-`main.client.ts` self-check harness with additional cases and read the published
-PASS/FAIL attribute.
+Studio validation requires a connected proof-place edit session. If the only
+connected session is unrelated, leave it untouched and connect the proof place
+before continuing. Inspect connected sessions and local place locks first so the
+same place is never launched twice.

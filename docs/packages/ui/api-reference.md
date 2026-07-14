@@ -37,7 +37,10 @@ Prefer `app.mount(Root, target?, options?)` before `app.start()` for normal app
 startup. Mount only root components this way. Nested components are returned
 from parent render methods with `child(Component, props, options)`.
 
-Use `mountUi(...)` only after the app is already started.
+Use `mountUi(...)` after the app is already started. Each call creates an
+independent root, so callers can add roots at runtime and destroy each one with
+its returned handle. Explicit targets may be `ScreenGui`, `BillboardGui`,
+`SurfaceGui`, `GuiObject`, or another Instance that can parent the root node.
 
 ## Nodes
 
@@ -72,6 +75,11 @@ function child<TProps extends object>(
 ): UiNode;
 
 function fragment(children?: UiChildren): UiNode;
+function portal(
+	target: Instance,
+	children?: UiChildren,
+	options?: { readonly key?: string | number },
+): UiNode;
 function native(className: string, props?: Record<string, unknown>, children?: UiChildren): UiNode;
 ```
 
@@ -99,8 +107,21 @@ child(Panel, {
 
 `fragment(...)` groups children without creating a Roblox Instance.
 
+`portal(...)` keeps children in the current retained tree while parenting them
+under an external target. Rovy destroys portal children when the portal leaves
+the tree, but never destroys the target. A stable keyed portal moves its retained
+subtree when its target changes. See [Portals And World UI](/packages/ui/portals).
+
 `native(...)` creates a Roblox Instance node. Factory helpers such as `frame` and
 `textLabel` call `native(...)` with the matching class name.
+
+GUI collector helpers are also available:
+
+```ts
+screenGui(props?, children?);     // ScreenGui
+billboardGui(props?, children?);  // BillboardGui
+surfaceGui(props?, children?);    // SurfaceGui
+```
 
 ## Triggers
 

@@ -58,6 +58,9 @@ const RETAINED_UI_FACTORIES = new Set([
 	"native",
 	"fragment",
 	"frame",
+	"screenGui",
+	"billboardGui",
+	"surfaceGui",
 	"textLabel",
 	"textButton",
 	"imageLabel",
@@ -397,6 +400,9 @@ function transformCall(
 	if (retainedUiName === "fragment") {
 		return appendOptionsCallsite(state, node, visitor, 1);
 	}
+	if (retainedUiName === "portal") {
+		return appendOptionsCallsite(state, node, visitor, 2);
+	}
 	if (retainedUiName === "native") {
 		return appendOptionsCallsite(state, node, visitor, 3);
 	}
@@ -651,6 +657,9 @@ function jsxAttributeName(state: TransformState | undefined, name: ts.JsxAttribu
 function jsxNativeClassName(name: string): string {
 	const aliases = new Map<string, string>([
 		["frame", "Frame"],
+		["screenGui", "ScreenGui"],
+		["billboardGui", "BillboardGui"],
+		["surfaceGui", "SurfaceGui"],
 		["textLabel", "TextLabel"],
 		["textButton", "TextButton"],
 		["imageLabel", "ImageLabel"],

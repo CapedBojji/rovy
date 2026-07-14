@@ -23,6 +23,9 @@ See [JSX](/packages/ui/jsx) for exact casing, config, and lowering behavior.
 
 ## Native factories
 
+- `screenGui`
+- `billboardGui`
+- `surfaceGui`
 - `frame`
 - `textLabel`
 - `textButton`
@@ -35,6 +38,9 @@ See [JSX](/packages/ui/jsx) for exact casing, config, and lowering behavior.
 
 JSX aliases:
 
+- `<screenGui>`
+- `<billboardGui>`
+- `<surfaceGui>`
 - `<frame>`
 - `<textLabel>`
 - `<textButton>`
@@ -44,6 +50,11 @@ JSX aliases:
 - `<canvasGroup>`
 - `<textBox>`
 - `<viewportFrame>`
+
+The three GUI collector factories can be rendered under their normal Roblox
+parents, including through `portal(...)`. See
+[Portals And World UI](/packages/ui/portals) for BillboardGui and SurfaceGui
+ownership patterns.
 
 ## Layout and constraints
 
