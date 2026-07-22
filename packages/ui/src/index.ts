@@ -187,25 +187,6 @@ interface QueryTriggerState {
 
 const registry = new Array<UiReg>();
 
-export const rovyUi = {
-	registry,
-
-	__ui(ctor: Ctor, meta: Omit<UiReg, "ctor">): void {
-		registry.push({ ctor, ...meta });
-	},
-
-	__reset(): void {
-		while (registry.size() > 0) registry.pop();
-	},
-
-	__callsite<T extends UiNode | undefined>(node: T, callsite: string): T {
-		if (node !== undefined) (node as { __callsite?: string }).__callsite = callsite;
-		return node;
-	},
-};
-
-export default rovyUi;
-
 registerPostStartAppExtension((app) => {
 	app.consumeMountRequests((request) => {
 		if (findUiRegOrUndefined(request.ctor as Ctor) === undefined) return;
@@ -419,6 +400,31 @@ export function jsx(nodeType: unknown, props?: InstanceProps, key?: Key): UiNode
 }
 
 export const jsxs = jsx;
+
+export const rovyUi = {
+	registry,
+	native,
+	child,
+	fragment,
+	jsx,
+	jsxs,
+	Fragment,
+
+	__ui(ctor: Ctor, meta: Omit<UiReg, "ctor">): void {
+		registry.push({ ctor, ...meta });
+	},
+
+	__reset(): void {
+		while (registry.size() > 0) registry.pop();
+	},
+
+	__callsite<T extends UiNode | undefined>(node: T, callsite: string): T {
+		if (node !== undefined) (node as { __callsite?: string }).__callsite = callsite;
+		return node;
+	},
+};
+
+export default rovyUi;
 
 function mountNode(state: MountedUiState, vnode: UiNode, parent: Instance): RuntimeNode {
 	switch (vnode.kind) {
@@ -1017,6 +1023,15 @@ export namespace JSX {
 	export type Element = UiNode;
 	export interface IntrinsicElements {
 		[className: string]: InstanceProps;
+	}
+}
+
+declare global {
+	namespace JSX {
+		type Element = UiNode;
+		interface IntrinsicElements {
+			[className: string]: InstanceProps;
+		}
 	}
 }
 
