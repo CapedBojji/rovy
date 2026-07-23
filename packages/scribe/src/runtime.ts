@@ -27,6 +27,10 @@ import {
 	createScribeLocalWriterRuntime,
 	ScribeServerWriterRuntime,
 } from "./writer-runtime";
+import {
+	ScribeEventRuntime,
+	type ScribeEventRoute,
+} from "./event-runtime";
 import type {
 	ScribeLogEntry,
 	ScribeMetricSummary,
@@ -97,6 +101,9 @@ export class ScribeRuntime implements FlushParticipant {
 	private readonly bundleById = new Map<string, ScribeInstalledBundle>();
 	private readonly handles = new Map<string, ScribeRuntimeHandle | object>();
 	private readonly writeQueue: ScribeWriteQueue;
+	private readonly eventRuntime: ScribeEventRuntime;
+	private readonly writeFailures = new Array<ScribeWriteFailure>();
+	private applyingWrites = false;
 	private readRevision = 0;
 	private readonly revisions: ScribeReadRevisionSource = {
 		revision: () => this.readRevision,
@@ -108,6 +115,7 @@ export class ScribeRuntime implements FlushParticipant {
 		definitions: ReadonlyArray<RuntimeScribeDataDefinition>,
 		transport?: ScribeTransport,
 		serverSetups?: ReadonlyMap<string, ScribeRuntimeServerSetup>,
+		eventRoutes: ReadonlyArray<ScribeEventRoute> = [],
 	) {
 		this.diagnostics = new ScribeDiagnosticsHandle(binding);
 		this.writeQueue = new ScribeWriteQueue(
@@ -126,6 +134,13 @@ export class ScribeRuntime implements FlushParticipant {
 			const active = activeNativeApi(native, boundary, definition.id);
 			this.bundleById.set(definition.id, { definition, native, active });
 		}
+		this.eventRuntime = new ScribeEventRuntime(
+			boundary,
+			binding,
+			this.bundles(),
+			eventRoutes,
+			(dataId) => this.changeSource(dataId),
+		);
 	}
 
 	bundles(): ReadonlyArray<ScribeInstalledBundle> {
@@ -191,6 +206,8 @@ export class ScribeRuntime implements FlushParticipant {
 					dataId,
 					bundle.definition.template,
 					this.writeQueue,
+					(player) =>
+						this.eventRuntime.trackServerPlayer(dataId, player),
 				);
 				break;
 			default:
@@ -205,17 +222,51 @@ export class ScribeRuntime implements FlushParticipant {
 		return handle;
 	}
 
-	flush(_context: FlushContext): boolean {
-		const wrote = this.writeQueue.flush();
+	flush(context: FlushContext): boolean {
+		this.applyingWrites = true;
+		const [writeOk, wroteOrError] = pcall(() =>
+			this.writeQueue.flush(),
+		);
+		this.applyingWrites = false;
+		assert(writeOk, tostring(wroteOrError));
+		const wrote = wroteOrError as boolean;
+		for (const failure of this.writeQueue.drainFailures()) {
+			this.writeFailures.push(failure);
+			this.eventRuntime.recordWriteFailure(failure);
+		}
 		this.readRevision += 1;
 		for (const [, handle] of this.handles) {
 			if (handle instanceof ScribeClientStateRuntime) handle.refresh();
 		}
-		return wrote;
+		const published = this.eventRuntime.flush(
+			context,
+			this.readRevision,
+		);
+		return wrote || published;
 	}
 
 	drainWriteFailures(): ReadonlyArray<ScribeWriteFailure> {
-		return this.writeQueue.drainFailures();
+		const failures = new Array<ScribeWriteFailure>();
+		while (this.writeFailures.size() > 0) {
+			failures.push(this.writeFailures.shift()!);
+		}
+		return failures;
+	}
+
+	private changeSource(dataId: string): import("./events").ScribeChangeSource {
+		if (this.boundary === "server") return "serverWrite";
+		if (this.applyingWrites) return "clientLocalWrite";
+		const active = this.bundleById.get(dataId)?.active as
+			| Record<string, unknown>
+			| undefined;
+		const isReady = active?.IsReady;
+		if (
+			typeIs(isReady, "function") &&
+			!(isReady as () => boolean)()
+		) {
+			return "initialSnapshot";
+		}
+		return "replication";
 	}
 }
 

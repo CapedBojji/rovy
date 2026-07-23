@@ -27,9 +27,11 @@ export class ScribeServerWriterRuntime {
 		private readonly dataId: string,
 		private readonly template: object,
 		private readonly queue: ScribeWriteQueue,
+		private readonly onPlayerAccess?: (player: Player) => void,
 	) {}
 
 	for(player: Player): object {
+		this.onPlayerAccess?.(player);
 		const key = player as object;
 		let tree = this.byPlayer.get(key);
 		if (tree === undefined) {
@@ -47,6 +49,7 @@ export class ScribeServerWriterRuntime {
 		player: Player,
 		callback: (writes: object) => void,
 	): ScribeTransactionHandle {
+		this.onPlayerAccess?.(player);
 		assert(
 			typeIs(callback, "function"),
 			"[rovy/scribe] writes.transaction requires a callback",

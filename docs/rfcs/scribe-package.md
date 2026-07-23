@@ -1,11 +1,12 @@
 # RFC: `@rovy/scribe`
 
-Status: **Phase 5 buffered writers complete — change journal and events next**
+Status: **Phase 6 change journal and Rovy events complete — commands next**
 
 This RFC proposes a partitioned Rovy package that projects Scribe's field-oriented
 player-data API into stable readers, buffered writers, Rovy events, and non-yielding
-jobs. The Phase 0 source is declaration-only. It does not bind a Scribe module,
-register a plugin, transform decorators, subscribe to signals, or write player data.
+jobs. Phase 0 was declaration-only; the current checkpoint binds the pinned native
+module, lowers declarations, projects readers/writers, and bridges native changes
+without exposing Scribe signals.
 
 The compile-only contract is in
 [`packages/scribe/__typecheck.ts`](../../packages/scribe/__typecheck.ts). The parity
@@ -140,8 +141,8 @@ one immutable record into:
 - both when both consumer forms exist.
 
 Structural events carry exact keys/indexes and values. They do not promise a
-whole-container `before` snapshot. Leaf records carry `before`, `after`, source,
-and flush revision.
+whole-container `before` snapshot. Leaf records carry a reliable `before` when
+native Scribe supplies one, plus `after`, source, and flush revision.
 
 ## Commands
 
@@ -419,3 +420,31 @@ All array-facing writer indexes are zero-based and translated to Scribe's
 one-based accessors at application time. Optional `set(undefined)` survives the
 queue through a private sentinel. Writer methods return `void`; only explicit
 transactions return an identity handle for later result/event association.
+
+## Phase 6 change journal and event checkpoint
+
+The runtime now inspects the active Rovy registry before subscribing. A declared
+Scribe event with an `EventReader` consumer uses `commands.send`; one with an
+observer uses `commands.trigger`; one with both receives the same frozen event
+instance through both paths. Duplicate contracts for the same native path share
+one native subscription.
+
+Native callbacks only clone/freeze their arguments and enqueue ingress records.
+The flush participant drains those records after writes commit, coalesces repeated
+leaf changes to first-reliable `before` plus final `after`, advances the committed
+reader revision, and queues normal Rovy commands. Observer-written Scribe
+operations then re-enter the generic core convergence loop. Structural insert,
+remove, key-added, and key-removed records are never coalesced and retain exact
+values plus translated zero-based indexes.
+
+Scribe reports the same post-write table reference as both values for an ancestor
+container `Changed` callback. The wrapper does not fabricate history in that
+case: `ScribeValueChanged.before` is optional, while `after` is always a frozen
+clone. Scalar and independently supplied old values retain a reliable `before`.
+
+Client leaf sources distinguish `initialSnapshot`, `replication`, and
+`clientLocalWrite`; wrapper-owned server writes use `serverWrite`. Ready,
+unavailable, session end, save, anomaly, gift, ownership, message, leaderboard,
+service-status, shared-data, and top-level issue/status callbacks enter the same
+deferred ingress path. Server profile waits and client readiness waits run only
+in package-owned background tasks, never in a Rovy system or observer.

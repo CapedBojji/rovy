@@ -45,6 +45,11 @@ trees, ordered operation snapshots, automatic native batches, explicit native
 transactions, economy metadata translation, and flush failure records. Event/job
 bridges and native integration coverage remain incomplete.
 
+Phase 6 added registry-driven native subscriptions, immutable callback ingress,
+leaf coalescing, exact structural records, lifecycle/signal bridges, and deferred
+Rovy `send`/`trigger` publication. Commands, general jobs, and native integration
+coverage remain incomplete.
+
 ## Top-level Scribe module
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
@@ -88,8 +93,8 @@ bridges and native integration coverage remain incomplete.
 | `Reason` | first-class | Typed `ScribeReasonConstants` from the native module | Binding type coverage Phase 3; runtime export Phase 8 |
 | `Configure` | configuration pass-through | `ScribePlugin.configure`, exactly once before bundle construction | Binding and conflict unit coverage Phase 3 |
 | `GetStatus` | first-class | `ScribeDiagnostics.status` | Binding proxy/unit coverage Phase 2; signal/native coverage pending |
-| `OnStatusChanged` | Rovy event | `ScribeStatusChanged` | Event type declared; runtime Phase 10 |
-| `OnIssue` | Rovy event | `ScribeIssue` | Event type declared; runtime Phase 10 |
+| `OnStatusChanged` | Rovy event | `ScribeStatusChanged` | Deferred signal/runtime coverage Phase 6; native integration pending |
+| `OnIssue` | Rovy event | `ScribeIssue` | Deferred normalized-signal/runtime coverage Phase 6; native integration pending |
 | `AddLogSink` | first-class | `ScribeDiagnostics.addSink`, installed during setup | Binding proxy/unit coverage Phase 2; native coverage pending |
 | `GetRecentLogs` | first-class | `ScribeDiagnostics.recentLogs` | Binding proxy/unit coverage Phase 2; native coverage pending |
 | `GetMetrics` | first-class | `ScribeDiagnostics.metrics` | Binding proxy/unit coverage Phase 2; native coverage pending |
@@ -119,8 +124,8 @@ bridges and native integration coverage remain incomplete.
 | `Default` | first-class | Reader `default()` | Runtime coverage Phase 4; native integration pending |
 | `Set` | first-class | Buffered writer `set`; client only through `ScribeLocalWriter` | Queue/snapshot/runtime coverage Phase 5; native integration pending |
 | `Update` | first-class | Buffered writer `update`, callback evaluated at flush | Ordered frozen-input runtime coverage Phase 5; native integration pending |
-| `Observe` | Rovy event | `@scribeEvent` plus observer/EventReader | Negative direct-signal type test |
-| `Changed` | Rovy event | `ScribeValueChanged` | Event fixture; negative direct-signal test |
+| `Observe` | Rovy event | `@scribeEvent` plus observer/EventReader | Registry-driven subscription/runtime coverage Phase 6; native integration pending |
+| `Changed` | Rovy event | `ScribeValueChanged` | Coalescing/source/dual-publication runtime coverage Phase 6; native integration pending |
 | `Increment` | first-class | Buffered numeric `increment` with economy metadata | Ordered batch/runtime coverage Phase 5; native integration pending |
 | `Decrement` | first-class | Buffered numeric `decrement` with economy metadata | Transaction/runtime coverage Phase 5; native integration pending |
 | `Min` | first-class | Number reader `min()` | Runtime coverage Phase 4; native integration pending |
@@ -133,10 +138,10 @@ bridges and native integration coverage remain incomplete.
 | `Has` | first-class | Array reader `has()` | Runtime coverage Phase 4; native integration pending |
 | `Count` | first-class | Array/dictionary reader `count()` | Runtime coverage Phase 4; native integration pending |
 | `Clear` | first-class | Buffered array/dictionary `clear()` | Runtime coverage Phase 5; native integration pending |
-| `OnInsert` | Rovy event | `ScribeArrayInserted` | Event type declared |
-| `OnRemove` | Rovy event | `ScribeArrayRemoved` | Event type declared |
-| `OnKeyAdded` | Rovy event | `ScribeKeyAdded` | Event fixture |
-| `OnKeyRemoved` | Rovy event | `ScribeKeyRemoved` | Event fixture |
+| `OnInsert` | Rovy event | `ScribeArrayInserted` | Exact value/zero-based index runtime coverage Phase 6; native integration pending |
+| `OnRemove` | Rovy event | `ScribeArrayRemoved` | Exact value/zero-based index runtime coverage Phase 6; native integration pending |
+| `OnKeyAdded` | Rovy event | `ScribeKeyAdded` | Exact key/value runtime coverage Phase 6; native integration pending |
+| `OnKeyRemoved` | Rovy event | `ScribeKeyRemoved` | Exact key/value runtime coverage Phase 6; native integration pending |
 | `SetTimed` | first-class | Buffered timed writer `setTimed()` | Runtime coverage Phase 5; native integration pending |
 | `ExtendTimed` | first-class | Buffered timed writer `extendTimed()` | Runtime coverage Phase 5; native integration pending |
 | `Active` | first-class | Timed reader `active()` returns named `{ active, remaining }` record | Tuple-to-record runtime coverage Phase 4; native integration pending |
@@ -145,7 +150,7 @@ bridges and native integration coverage remain incomplete.
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| `WaitForData` | Rovy event | Background lifecycle bridge plus ready/unavailable state/events | Event type declared; runtime Phase 8 |
+| `WaitForData` | Rovy event | Background lifecycle bridge plus ready/unavailable state/events | Non-yielding system bridge/runtime coverage Phase 6; native integration pending |
 | `GetState` | first-class | `ScribeServerReader.state(player)` | Non-yielding runtime coverage Phase 4; native integration pending |
 | `Get` | first-class | `get` returns optional; `require` supplies native error-style behavior | Loading/ready/session-ended runtime coverage Phase 4; native integration pending |
 | player index access (`Data[player]`) | intentionally unsupported | Bracket access conflicts with injected service methods; use `get`/`require` | Negative type/runtime misuse test Phase 4 |
@@ -169,19 +174,19 @@ bridges and native integration coverage remain incomplete.
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
 | `IsReady` | first-class | `ScribeClientState.ready` | Flush-stable runtime coverage Phase 4; native integration pending |
-| `WaitForData` | Rovy event | Ready state plus ready/unavailable event; no yielding system call | Event/state fixture |
+| `WaitForData` | Rovy event | Ready state plus ready/unavailable event; no yielding system call | Background task/ingress runtime coverage Phase 6; native integration pending |
 | `Request` | first-class | Non-yielding `ScribeCommand.call` plus native request task | Type fixture; runtime Phase 7 |
 | `GetLeaderboard` | first-class | `ScribeLeaderboards.get` cached read | Type declared |
 | `GetMyRank` | first-class | `ScribeLeaderboards.getMyRank` cached read | Type declared |
-| `OnLeaderboard` | Rovy event | `ScribeLeaderboardChanged` | Event type declared |
+| `OnLeaderboard` | Rovy event | `ScribeLeaderboardChanged` | Deferred normalized-snapshot runtime coverage Phase 6; native integration pending |
 | `GetServiceStatus` | first-class | `ScribeClientState.serviceStatus` / diagnostics | Flush-stable runtime coverage Phase 4; native integration pending |
-| `OnServiceStatus` | Rovy event | `ScribeStatusChanged` | Event type declared |
+| `OnServiceStatus` | Rovy event | `ScribeStatusChanged` | Deferred signal/runtime coverage Phase 6; native integration pending |
 | `GetShared` | first-class | `ScribeSharedReader.get` with shared-only shape | Deep-freeze and visibility-filter runtime coverage Phase 4; native integration pending |
-| `OnSharedChanged` | Rovy event | `ScribeSharedChanged` | Event type declared |
+| `OnSharedChanged` | Rovy event | `ScribeSharedChanged` | Frozen clone/removal runtime coverage Phase 6; native integration pending |
 | `Owns` | first-class | Non-authoritative mirror read in `ScribeOwnership` | Type declared |
 | `OwnsAsync` | Rovy job | Ownership-synced wait represented by a handle/state, never a system yield | Type declared |
-| `ObserveOwned` | Rovy event | `ScribeOwnershipChanged` | Event type declared |
-| `OnOwnershipChanged` | Rovy event | `ScribeOwnershipChanged` | Event type declared |
+| `ObserveOwned` | Rovy event | `ScribeOwnershipChanged` | General ownership-signal bridge runtime Phase 6; keyed service bridge Phase 9 |
+| `OnOwnershipChanged` | Rovy event | `ScribeOwnershipChanged` | Client/server signal runtime coverage Phase 6; native integration pending |
 | `GetSaveInfo` | first-class | Client save-state read | Type declared |
 | `GetGiftCredits` | first-class | Client monetization read | Type declared |
 | `GetPurchases` | first-class | Client monetization read, subject to native replication config | Type declared |
@@ -197,7 +202,7 @@ bridges and native integration coverage remain incomplete.
 | server `GetMyRank` | first-class | Cached `ScribeLeaderboards.getMyRank(name, player)` | Type declared |
 | client `GetLeaderboard` | first-class | Cached `ScribeLeaderboards.get` | Type declared |
 | client `GetMyRank` | first-class | Cached `ScribeLeaderboards.getMyRank(name)` | Type declared |
-| client `OnLeaderboard` | Rovy event | `ScribeLeaderboardChanged` | Event type declared |
+| client `OnLeaderboard` | Rovy event | `ScribeLeaderboardChanged` | Deferred normalized-snapshot runtime coverage Phase 6; native integration pending |
 | `Leaderboards` | configuration pass-through | Typed declaration keyed by numeric schema paths | Type declared |
 | `Stat` | configuration pass-through | Static numeric schema path | Type declared |
 | `Limit` | configuration pass-through | `limit` | Type declared |
@@ -215,15 +220,15 @@ bridges and native integration coverage remain incomplete.
 | `TryHandleReceipt` | Rovy job | `ScribeReceipts.tryHandleReceipt`; native 1.0.11 returns `nil` for unknown products | Type coverage Phase 3; runtime Phase 9 |
 | `Owns` | first-class | Cached ownership read; client remains non-authoritative | Type declared |
 | `OwnsAsync` | Rovy job | Server authoritative ownership check / client synced wait | Type declared |
-| `ObserveOwned` | Rovy event | `ScribeOwnershipChanged` | Event type declared |
-| `OnOwnershipChanged` | Rovy event | `ScribeOwnershipChanged` | Event type declared |
+| `ObserveOwned` | Rovy event | `ScribeOwnershipChanged` | General signal bridge runtime Phase 6; keyed service bridge Phase 9 |
+| `OnOwnershipChanged` | Rovy event | `ScribeOwnershipChanged` | Client/server signal runtime coverage Phase 6; native integration pending |
 | `GrantPerk` | first-class | Buffered authoritative mutation | Type declared |
 | `RevokePerk` | first-class | Buffered authoritative mutation | Type declared |
 | `Purchase` | Rovy job | Buffered atomic purchase with result handle | Type declared |
 | `RecordPurchase` | first-class | Buffered purchase-log append | Type declared |
 | `GetPurchases` | first-class | Immutable purchase-log read | Type declared |
-| `OnGiftReceived` | Rovy event | `ScribeGiftReceived` | Event type declared |
-| `OnGiftCredit` | Rovy event | `ScribeGiftCredit` | Event type declared |
+| `OnGiftReceived` | Rovy event | `ScribeGiftReceived` | Deferred signal/runtime coverage Phase 6; native integration pending |
+| `OnGiftCredit` | Rovy event | `ScribeGiftCredit` | Deferred signal/runtime coverage Phase 6; native integration pending |
 | `Products` | configuration pass-through | Shared IDs/categories/grants plus server-only grant callbacks | Type declared |
 | `Passes` | configuration pass-through | Pass declarations | Type declared |
 | `Perks` | configuration pass-through | Perk declarations | Type declared |
@@ -265,24 +270,24 @@ bridges and native integration coverage remain incomplete.
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
 | `SendMessage` | Rovy job | `ScribeMessaging.send`; native `MessageAsync` yields | Type declared |
-| `OnMessage` | Rovy event | `ScribeMessageReceived` | Event type declared |
+| `OnMessage` | Rovy event | `ScribeMessageReceived` | Frozen payload/deferred signal runtime coverage Phase 6; native integration pending |
 
 ## Signals and lifecycle callbacks
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| `OnSave` | Rovy event | `ScribeSaveCompleted` | Event type declared |
-| `SessionEnded` | Rovy event | `ScribeSessionEnded` | Event type declared |
-| `OnAnomaly` | Rovy event | `ScribeAnomaly` | Event type declared |
-| `OnGiftReceived` | Rovy event | `ScribeGiftReceived` | Event type declared |
-| `OnGiftCredit` | Rovy event | `ScribeGiftCredit` | Event type declared |
-| `OnOwnershipChanged` | Rovy event | `ScribeOwnershipChanged` | Event type declared |
-| `OnMessage` | Rovy event | `ScribeMessageReceived` | Event type declared |
-| `OnLeaderboard` | Rovy event | `ScribeLeaderboardChanged` | Event type declared |
-| `OnServiceStatus` | Rovy event | `ScribeStatusChanged` | Event type declared |
-| `OnSharedChanged` | Rovy event | `ScribeSharedChanged` | Event type declared |
-| `Scribe.OnStatusChanged` | Rovy event | `ScribeStatusChanged` | Event type declared |
-| `Scribe.OnIssue` | Rovy event | `ScribeIssue` | Event type declared |
+| `OnSave` | Rovy event | `ScribeSaveCompleted` | Payload/save-info runtime coverage Phase 6; native integration pending |
+| `SessionEnded` | Rovy event | `ScribeSessionEnded` | Cleanup/reason runtime coverage Phase 6; native integration pending |
+| `OnAnomaly` | Rovy event | `ScribeAnomaly` | Native and wrapper-write failure ingress Phase 6; native integration pending |
+| `OnGiftReceived` | Rovy event | `ScribeGiftReceived` | Runtime coverage Phase 6; native integration pending |
+| `OnGiftCredit` | Rovy event | `ScribeGiftCredit` | Runtime coverage Phase 6; native integration pending |
+| `OnOwnershipChanged` | Rovy event | `ScribeOwnershipChanged` | Client/server runtime coverage Phase 6; native integration pending |
+| `OnMessage` | Rovy event | `ScribeMessageReceived` | Frozen-payload runtime coverage Phase 6; native integration pending |
+| `OnLeaderboard` | Rovy event | `ScribeLeaderboardChanged` | Normalized-snapshot runtime coverage Phase 6; native integration pending |
+| `OnServiceStatus` | Rovy event | `ScribeStatusChanged` | Client runtime coverage Phase 6; native integration pending |
+| `OnSharedChanged` | Rovy event | `ScribeSharedChanged` | Frozen-clone runtime coverage Phase 6; native integration pending |
+| `Scribe.OnStatusChanged` | Rovy event | `ScribeStatusChanged` | Server runtime coverage Phase 6; native integration pending |
+| `Scribe.OnIssue` | Rovy event | `ScribeIssue` | Normalized-log runtime coverage Phase 6; native integration pending |
 
 ## Testing and edit mode
 

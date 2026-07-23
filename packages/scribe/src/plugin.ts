@@ -38,6 +38,10 @@ import {
 } from "./provider";
 import { rovyScribe } from "./registry";
 import {
+	compileScribeEventRoutes,
+	type ScribeEventRoute,
+} from "./event-runtime";
+import {
 	ScribeRuntime,
 	type ScribeRuntimeBoundary,
 	type ScribeRuntimeServerSetup,
@@ -134,15 +138,20 @@ export class ScribeClientPlugin implements Plugin, ScribeBoundaryPluginDelegate 
 	private static readonly extension = registerAppExtension((app, registry) => {
 		if (!isActiveScribeBoundary("client")) return;
 		if (!registryNeedsScribe(registry)) return;
-		new ScribeClientPlugin().build(app);
+		new ScribeClientPlugin().build(app, registry);
 	});
 	readonly boundary = "client";
 	runtime?: ScribeRuntime;
 
 	constructor(private readonly options: ScribeClientPluginOptions = {}) {}
 
-	build(app: App): void {
-		this.runtime = installScribeRuntime(app, this.boundary, this.options);
+	build(app: App, registry: RovyRegistry = rovy.registry): void {
+		this.runtime = installScribeRuntime(
+			app,
+			this.boundary,
+			this.options,
+			compileScribeEventRoutes(registry, rovyScribe.events()),
+		);
 	}
 }
 
@@ -158,15 +167,20 @@ export class ScribeServerPlugin implements Plugin, ScribeBoundaryPluginDelegate 
 	private static readonly extension = registerAppExtension((app, registry) => {
 		if (!isActiveScribeBoundary("server")) return;
 		if (!registryNeedsScribe(registry)) return;
-		new ScribeServerPlugin().build(app);
+		new ScribeServerPlugin().build(app, registry);
 	});
 	readonly boundary = "server";
 	runtime?: ScribeRuntime;
 
 	constructor(private readonly options: ScribeServerPluginOptions = {}) {}
 
-	build(app: App): void {
-		this.runtime = installScribeRuntime(app, this.boundary, this.options);
+	build(app: App, registry: RovyRegistry = rovy.registry): void {
+		this.runtime = installScribeRuntime(
+			app,
+			this.boundary,
+			this.options,
+			compileScribeEventRoutes(registry, rovyScribe.events()),
+		);
 	}
 }
 
@@ -208,6 +222,7 @@ function installScribeRuntime(
 	app: App,
 	boundary: ScribeRuntimeBoundary,
 	options: ScribePluginOptions,
+	eventRoutes: ReadonlyArray<ScribeEventRoute>,
 ): ScribeRuntime {
 	const marked = app as App & Record<string, unknown>;
 	const existing = marked[SCRIBE_RUNTIME_MARKER] as ScribeRuntime | undefined;
@@ -236,6 +251,7 @@ function installScribeRuntime(
 		rovyScribe.dataDefinitions(),
 		options.transport,
 		setups,
+		eventRoutes,
 	);
 	scribeBundleConstructed = true;
 	marked[SCRIBE_RUNTIME_MARKER] = runtime;

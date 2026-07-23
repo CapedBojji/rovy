@@ -123,7 +123,9 @@ export class ScribeValueChanged<
 	readonly definition = undefined! as D;
 	readonly player?: Player;
 	readonly path = new Array<string | number>();
-	readonly before = undefined! as ReadonlyDeep<ScribeValueAtPath<D, Path>>;
+	readonly before = undefined! as
+		| ReadonlyDeep<ScribeValueAtPath<D, Path>>
+		| undefined;
 	readonly after = undefined! as ReadonlyDeep<ScribeValueAtPath<D, Path>>;
 	readonly source = "serverWrite" as ScribeChangeSource;
 	readonly revision = 0;
@@ -233,7 +235,7 @@ export class ScribeLeaderboardChanged<D extends AnyScribeData> {
 export class ScribeSharedChanged<D extends AnyScribeData> {
 	readonly definition = undefined! as D;
 	readonly userId = 0;
-	readonly value = undefined! as ReadonlyDeep<ScribeSharedShape<D>>;
+	readonly value?: ReadonlyDeep<ScribeSharedShape<D>>;
 }
 
 export class ScribeStatusChanged {
