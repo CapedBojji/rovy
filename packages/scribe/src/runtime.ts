@@ -12,6 +12,13 @@ import {
 	createScribeInitializationTree,
 	createScribeNativeImmediateTree,
 } from "./immediate-tree";
+import {
+	createScribeReadTree,
+	ScribeClientStateRuntime,
+	ScribeServerReaderRuntime,
+	ScribeSharedReaderRuntime,
+	type ScribeReadRevisionSource,
+} from "./reader-tree";
 import type {
 	ScribeLogEntry,
 	ScribeMetricSummary,
@@ -81,6 +88,10 @@ export class ScribeRuntime implements FlushParticipant {
 	readonly diagnostics: ScribeDiagnosticsHandle;
 	private readonly bundleById = new Map<string, ScribeInstalledBundle>();
 	private readonly handles = new Map<string, ScribeRuntimeHandle | object>();
+	private readRevision = 0;
+	private readonly revisions: ScribeReadRevisionSource = {
+		revision: () => this.readRevision,
+	};
 
 	constructor(
 		readonly boundary: ScribeRuntimeBoundary,
@@ -125,26 +136,53 @@ export class ScribeRuntime implements FlushParticipant {
 		let handle = this.handles.get(key);
 		if (handle !== undefined) return handle;
 		const bundle = this.requireBundle(dataId);
-		handle = kind === "client-state"
-			? {
-					kind,
-					dataId,
-					definition: bundle.definition.publicToken,
-					runtime: this,
-					ready: false,
-					serviceStatus: this.binding.status(),
-				}
-			: {
+		switch (kind) {
+			case "client-reader":
+				handle = createScribeReadTree(
+					bundle.definition.template,
+					bundle.active,
+					this.revisions,
+					"client",
+				);
+				break;
+			case "client-state":
+				handle = new ScribeClientStateRuntime(
+					bundle.definition.publicToken,
+					bundle.active,
+					() => this.binding.status(),
+				);
+				break;
+			case "shared-reader":
+				handle = new ScribeSharedReaderRuntime(
+					bundle.definition.template,
+					bundle.active,
+					this.revisions,
+				);
+				break;
+			case "server-reader":
+				handle = new ScribeServerReaderRuntime(
+					bundle.definition.template,
+					bundle.active,
+					this.revisions,
+				);
+				break;
+			default:
+				handle = {
 					kind,
 					dataId,
 					definition: bundle.definition.publicToken,
 					runtime: this,
 				};
+		}
 		this.handles.set(key, handle);
 		return handle;
 	}
 
 	flush(_context: FlushContext): boolean {
+		this.readRevision += 1;
+		for (const [, handle] of this.handles) {
+			if (handle instanceof ScribeClientStateRuntime) handle.refresh();
+		}
 		return false;
 	}
 }

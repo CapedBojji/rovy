@@ -35,6 +35,11 @@ one-to-one native declarator compilation, process configuration, and
 construction-time server setup. Reader/writer/event/job runtime coverage remains
 incomplete.
 
+Phase 4 added committed client/server accessor projections, readiness state,
+shared-only reads, zero-based typed container access, and per-flush frozen
+snapshot caching. Writer/event/job runtime and native integration coverage remain
+incomplete.
+
 ## Top-level Scribe module
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
@@ -104,39 +109,39 @@ incomplete.
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| `Get` | first-class | Reader `get()` returns committed deep-read-only snapshot | Fixture |
-| `Clone` | first-class | Reader `clone()` returns fresh mutable clone | Fixture |
-| `Default` | first-class | Reader `default()` | Fixture |
+| `Get` | first-class | Reader `get()` returns committed deep-read-only snapshot | Frozen revision-cache runtime coverage Phase 4; native integration pending |
+| `Clone` | first-class | Reader `clone()` returns fresh mutable clone | Independence runtime coverage Phase 4; native integration pending |
+| `Default` | first-class | Reader `default()` | Runtime coverage Phase 4; native integration pending |
 | `Set` | first-class | Buffered writer `set`; client only through `ScribeLocalWriter` | Negative reader test; writer fixture |
 | `Update` | first-class | Buffered writer `update`, callback evaluated at flush | Type declared; runtime Phase 5 |
 | `Observe` | Rovy event | `@scribeEvent` plus observer/EventReader | Negative direct-signal type test |
 | `Changed` | Rovy event | `ScribeValueChanged` | Event fixture; negative direct-signal test |
 | `Increment` | first-class | Buffered numeric `increment` with economy metadata | Fixture |
 | `Decrement` | first-class | Buffered numeric `decrement` with economy metadata | Transaction fixture |
-| `Min` | first-class | Number reader `min()` | Fixture |
-| `Max` | first-class | Number reader `max()` | Fixture |
+| `Min` | first-class | Number reader `min()` | Runtime coverage Phase 4; native integration pending |
+| `Max` | first-class | Number reader `max()` | Runtime coverage Phase 4; native integration pending |
 | `Toggle` | first-class | Buffered boolean `toggle()` | Type declared |
 | `Insert` | first-class | Buffered array `insert()` | Type declared |
 | `Remove` | first-class | Buffered array/dictionary `remove()`; intentionally returns `void` | Type declared |
 | `RemoveValue` | first-class | Buffered array `removeValue()` | Type declared |
-| `Find` | first-class | Array reader `find()` | Type declared |
-| `Has` | first-class | Array reader `has()` | Type declared |
-| `Count` | first-class | Array/dictionary reader `count()` | Fixture |
+| `Find` | first-class | Array reader `find()`; zero-based result | Structural-value runtime coverage Phase 4; native integration pending |
+| `Has` | first-class | Array reader `has()` | Runtime coverage Phase 4; native integration pending |
+| `Count` | first-class | Array/dictionary reader `count()` | Runtime coverage Phase 4; native integration pending |
 | `OnInsert` | Rovy event | `ScribeArrayInserted` | Event type declared |
 | `OnRemove` | Rovy event | `ScribeArrayRemoved` | Event type declared |
 | `OnKeyAdded` | Rovy event | `ScribeKeyAdded` | Event fixture |
 | `OnKeyRemoved` | Rovy event | `ScribeKeyRemoved` | Event fixture |
 | `SetTimed` | first-class | Buffered timed writer `setTimed()` | Type declared |
 | `ExtendTimed` | first-class | Buffered timed writer `extendTimed()` | Type declared |
-| `Active` | first-class | Timed reader `active()` returns named `{ active, remaining }` record | Fixture; tuple-to-record difference documented |
+| `Active` | first-class | Timed reader `active()` returns named `{ active, remaining }` record | Tuple-to-record runtime coverage Phase 4; native integration pending |
 
 ## Server lifecycle, persistence, and command API
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
 | `WaitForData` | Rovy event | Background lifecycle bridge plus ready/unavailable state/events | Event type declared; runtime Phase 8 |
-| `GetState` | first-class | `ScribeServerReader.state(player)` | Type declared |
-| `Get` | first-class | `get` returns optional; `require` supplies native error-style behavior | Server fixture |
+| `GetState` | first-class | `ScribeServerReader.state(player)` | Non-yielding runtime coverage Phase 4; native integration pending |
+| `Get` | first-class | `get` returns optional; `require` supplies native error-style behavior | Loading/ready/session-ended runtime coverage Phase 4; native integration pending |
 | player index access (`Data[player]`) | intentionally unsupported | Bracket access conflicts with injected service methods; use `get`/`require` | Negative type/runtime misuse test Phase 4 |
 | `Batch` | first-class | Automatic ordinary-write batch per player at every Rovy flush | Runtime Phase 5 |
 | `Transaction` | first-class | `ScribeServerWriter.transaction` replays one native transaction | Fixture |
@@ -157,15 +162,15 @@ incomplete.
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| `IsReady` | first-class | `ScribeClientState.ready` | Fixture |
+| `IsReady` | first-class | `ScribeClientState.ready` | Flush-stable runtime coverage Phase 4; native integration pending |
 | `WaitForData` | Rovy event | Ready state plus ready/unavailable event; no yielding system call | Event/state fixture |
 | `Request` | first-class | Non-yielding `ScribeCommand.call` plus native request task | Type fixture; runtime Phase 7 |
 | `GetLeaderboard` | first-class | `ScribeLeaderboards.get` cached read | Type declared |
 | `GetMyRank` | first-class | `ScribeLeaderboards.getMyRank` cached read | Type declared |
 | `OnLeaderboard` | Rovy event | `ScribeLeaderboardChanged` | Event type declared |
-| `GetServiceStatus` | first-class | `ScribeClientState.serviceStatus` / diagnostics | Fixture |
+| `GetServiceStatus` | first-class | `ScribeClientState.serviceStatus` / diagnostics | Flush-stable runtime coverage Phase 4; native integration pending |
 | `OnServiceStatus` | Rovy event | `ScribeStatusChanged` | Event type declared |
-| `GetShared` | first-class | `ScribeSharedReader.get` with shared-only shape | Fixture |
+| `GetShared` | first-class | `ScribeSharedReader.get` with shared-only shape | Deep-freeze and visibility-filter runtime coverage Phase 4; native integration pending |
 | `OnSharedChanged` | Rovy event | `ScribeSharedChanged` | Event type declared |
 | `Owns` | first-class | Non-authoritative mirror read in `ScribeOwnership` | Type declared |
 | `OwnsAsync` | Rovy job | Ownership-synced wait represented by a handle/state, never a system yield | Type declared |

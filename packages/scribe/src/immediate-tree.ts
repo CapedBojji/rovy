@@ -53,30 +53,35 @@ function createInitializationNode(
 	location: ValueLocation,
 	module?: ScribeNativeModule,
 ): object {
-	const node: UnknownTable = {
-		get: () => cloneAndFreeze(decodeSchemaValue(schema, location.getRaw(), module)),
-		set: (value: unknown) => {
-			location.setRaw(encodeSchemaValue(schema, value, module));
-		},
-		update: (transform: unknown) => {
-			assert(
-				typeIs(transform, "function"),
-				"[rovy/scribe] initialization update requires a transform function",
-			);
-			const current = cloneAndFreeze(
-				decodeSchemaValue(schema, location.getRaw(), module),
-			);
-			const transformed = (transform as (value: unknown) => unknown)(
-				current,
-			);
-			location.setRaw(encodeSchemaValue(schema, transformed, module));
-		},
+	const node: UnknownTable = {};
+	node.get = (_self?: unknown) =>
+		cloneAndFreeze(decodeSchemaValue(schema, location.getRaw(), module));
+	node.set = (selfOrValue: unknown, maybeValue?: unknown) => {
+		const value = methodArgument(node, selfOrValue, maybeValue);
+		location.setRaw(encodeSchemaValue(schema, value, module));
+	};
+	node.update = (selfOrTransform: unknown, maybeTransform?: unknown) => {
+		const transform = methodArgument(
+			node,
+			selfOrTransform,
+			maybeTransform,
+		);
+		assert(
+			typeIs(transform, "function"),
+			"[rovy/scribe] initialization update requires a transform function",
+		);
+		const current = cloneAndFreeze(
+			decodeSchemaValue(schema, location.getRaw(), module),
+		);
+		const transformed = (transform as (value: unknown) => unknown)(current);
+		location.setRaw(encodeSchemaValue(schema, transformed, module));
 	};
 
 	const unwrapped = unwrapSchema(schema);
 	if (isScribeSchemaDescriptor(unwrapped)) {
 		if (unwrapped.kind === "array") {
-			node.at = (index: unknown) => {
+			node.at = (selfOrIndex: unknown, maybeIndex?: unknown) => {
+				const index = methodArgument(node, selfOrIndex, maybeIndex);
 				assertArrayIndex(index);
 				const raw = location.getRaw();
 				const physicalIndex = (index as number) + 1;
@@ -94,7 +99,8 @@ function createInitializationNode(
 			};
 			node.count = () => arrayCount(location.getRaw());
 		} else if (unwrapped.kind === "dictionary") {
-			node.at = (key: unknown) => {
+			node.at = (selfOrKey: unknown, maybeKey?: unknown) => {
+				const key = methodArgument(node, selfOrKey, maybeKey);
 				assert(
 					typeIs(key, "string"),
 					"[rovy/scribe] dictionary at(key) requires a string",
@@ -112,7 +118,8 @@ function createInitializationNode(
 
 	if (isPlainArray(unwrapped)) {
 		const element = (unwrapped as ReadonlyArray<unknown>)[0];
-		node.at = (index: unknown) => {
+		node.at = (selfOrIndex: unknown, maybeIndex?: unknown) => {
+			const index = methodArgument(node, selfOrIndex, maybeIndex);
 			assertArrayIndex(index);
 			const raw = location.getRaw();
 			const physicalIndex = (index as number) + 1;
@@ -149,24 +156,34 @@ function createNativeNode(schema: unknown, nativeNode: object): object {
 		typeIs(nativeNode, "table"),
 		"[rovy/scribe] native Scribe accessor is missing a declared field",
 	);
-	const node: UnknownTable = {
-		get: () => cloneAndFreeze(callNative(nativeNode, "Clone")),
-		clone: () => callNative(nativeNode, "Clone"),
-		default: () => cloneAndFreeze(callNative(nativeNode, "Default")),
-		set: (value: unknown) => {
-			callNative(nativeNode, "Set", value);
-		},
-		update: (transform: unknown) => {
-			assert(
-				typeIs(transform, "function"),
-				"[rovy/scribe] immediate update requires a transform function",
-			);
-			callNative(nativeNode, "Update", (current: unknown) =>
-				(transform as (value: unknown) => unknown)(
-					cloneAndFreeze(current),
-				),
-			);
-		},
+	const node: UnknownTable = {};
+	node.get = (_self?: unknown) =>
+		cloneAndFreeze(callNative(nativeNode, "Clone"));
+	node.clone = (_self?: unknown) => callNative(nativeNode, "Clone");
+	node.default = (_self?: unknown) =>
+		cloneAndFreeze(callNative(nativeNode, "Default"));
+	node.set = (selfOrValue: unknown, maybeValue?: unknown) => {
+		callNative(
+			nativeNode,
+			"Set",
+			methodArgument(node, selfOrValue, maybeValue),
+		);
+	};
+	node.update = (selfOrTransform: unknown, maybeTransform?: unknown) => {
+		const transform = methodArgument(
+			node,
+			selfOrTransform,
+			maybeTransform,
+		);
+		assert(
+			typeIs(transform, "function"),
+			"[rovy/scribe] immediate update requires a transform function",
+		);
+		callNative(nativeNode, "Update", (current: unknown) =>
+			(transform as (value: unknown) => unknown)(
+				cloneAndFreeze(current),
+			),
+		);
 	};
 
 	const unwrapped = unwrapSchema(schema);
@@ -174,11 +191,25 @@ function createNativeNode(schema: unknown, nativeNode: object): object {
 		isScribeSchemaDescriptor(unwrapped) &&
 		unwrapped.kind === "timed"
 	) {
-		node.setTimed = (value: unknown, seconds: unknown) => {
+		node.setTimed = (
+			selfOrValue: unknown,
+			valueOrSeconds: unknown,
+			maybeSeconds?: unknown,
+		) => {
+			const value = selfOrValue === node
+				? valueOrSeconds
+				: selfOrValue;
+			const seconds = selfOrValue === node
+				? maybeSeconds
+				: valueOrSeconds;
 			callNative(nativeNode, "SetTimed", value, seconds);
 		};
-		node.extendTimed = (seconds: unknown) => {
-			callNative(nativeNode, "ExtendTimed", seconds);
+		node.extendTimed = (selfOrSeconds: unknown, maybeSeconds?: unknown) => {
+			callNative(
+				nativeNode,
+				"ExtendTimed",
+				methodArgument(node, selfOrSeconds, maybeSeconds),
+			);
 		};
 		node.active = () => {
 			const [active, remaining] = callNativeTuple(
@@ -195,7 +226,17 @@ function createNativeNode(schema: unknown, nativeNode: object): object {
 	if (isNumberSchema(unwrapped)) {
 		node.min = () => callNative(nativeNode, "Min");
 		node.max = () => callNative(nativeNode, "Max");
-		node.increment = (amount: unknown, economy?: unknown) => {
+		node.increment = (
+			selfOrAmount: unknown,
+			amountOrEconomy?: unknown,
+			maybeEconomy?: unknown,
+		) => {
+			const amount = selfOrAmount === node
+				? amountOrEconomy
+				: selfOrAmount;
+			const economy = selfOrAmount === node
+				? maybeEconomy
+				: amountOrEconomy;
 			callNative(
 				nativeNode,
 				"Increment",
@@ -203,7 +244,17 @@ function createNativeNode(schema: unknown, nativeNode: object): object {
 				compileEconomyMeta(economy as ScribeEconomyMeta | undefined),
 			);
 		};
-		node.decrement = (amount: unknown, economy?: unknown) => {
+		node.decrement = (
+			selfOrAmount: unknown,
+			amountOrEconomy?: unknown,
+			maybeEconomy?: unknown,
+		) => {
+			const amount = selfOrAmount === node
+				? amountOrEconomy
+				: selfOrAmount;
+			const economy = selfOrAmount === node
+				? maybeEconomy
+				: amountOrEconomy;
 			callNative(
 				nativeNode,
 				"Decrement",
@@ -221,7 +272,8 @@ function createNativeNode(schema: unknown, nativeNode: object): object {
 		isScribeSchemaDescriptor(unwrapped) &&
 		unwrapped.kind === "array"
 	) {
-		node.at = (index: unknown) => {
+		node.at = (selfOrIndex: unknown, maybeIndex?: unknown) => {
+			const index = methodArgument(node, selfOrIndex, maybeIndex);
 			assertArrayIndex(index);
 			const count = callNative(nativeNode, "Count") as number;
 			if ((index as number) >= count) return undefined;
@@ -231,14 +283,30 @@ function createNativeNode(schema: unknown, nativeNode: object): object {
 			);
 		};
 		node.count = () => callNative(nativeNode, "Count");
-		node.find = (value: unknown) => {
+		node.find = (selfOrValue: unknown, maybeValue?: unknown) => {
+			const value = methodArgument(node, selfOrValue, maybeValue);
 			const physical = callNative(nativeNode, "Find", value) as
 				| number
 				| undefined;
 			return physical === undefined ? undefined : physical - 1;
 		};
-		node.has = (value: unknown) => callNative(nativeNode, "Has", value);
-		node.insert = (value: unknown, index?: unknown) => {
+		node.has = (selfOrValue: unknown, maybeValue?: unknown) =>
+			callNative(
+				nativeNode,
+				"Has",
+				methodArgument(node, selfOrValue, maybeValue),
+			);
+		node.insert = (
+			selfOrValue: unknown,
+			valueOrIndex?: unknown,
+			maybeIndex?: unknown,
+		) => {
+			const value = selfOrValue === node
+				? valueOrIndex
+				: selfOrValue;
+			const index = selfOrValue === node
+				? maybeIndex
+				: valueOrIndex;
 			callNative(
 				nativeNode,
 				"Insert",
@@ -246,15 +314,22 @@ function createNativeNode(schema: unknown, nativeNode: object): object {
 				index === undefined ? undefined : (index as number) + 1,
 			);
 		};
-		node.remove = (index?: unknown) => {
+		node.remove = (selfOrIndex?: unknown, maybeIndex?: unknown) => {
+			const index = selfOrIndex === node
+				? maybeIndex
+				: selfOrIndex;
 			callNative(
 				nativeNode,
 				"Remove",
 				index === undefined ? undefined : (index as number) + 1,
 			);
 		};
-		node.removeValue = (value: unknown) => {
-			callNative(nativeNode, "RemoveValue", value);
+		node.removeValue = (selfOrValue: unknown, maybeValue?: unknown) => {
+			callNative(
+				nativeNode,
+				"RemoveValue",
+				methodArgument(node, selfOrValue, maybeValue),
+			);
 		};
 		node.clear = () => {
 			callNative(nativeNode, "Clear");
@@ -266,7 +341,8 @@ function createNativeNode(schema: unknown, nativeNode: object): object {
 		isScribeSchemaDescriptor(unwrapped) &&
 		unwrapped.kind === "dictionary"
 	) {
-		node.at = (key: unknown) => {
+		node.at = (selfOrKey: unknown, maybeKey?: unknown) => {
+			const key = methodArgument(node, selfOrKey, maybeKey);
 			assert(
 				typeIs(key, "string"),
 				"[rovy/scribe] dictionary at(key) requires a string",
@@ -277,8 +353,12 @@ function createNativeNode(schema: unknown, nativeNode: object): object {
 			);
 		};
 		node.count = () => callNative(nativeNode, "Count");
-		node.remove = (key: unknown) => {
-			callNative(nativeNode, "Remove", key);
+		node.remove = (selfOrKey: unknown, maybeKey?: unknown) => {
+			callNative(
+				nativeNode,
+				"Remove",
+				methodArgument(node, selfOrKey, maybeKey),
+			);
 		};
 		node.clear = () => {
 			callNative(nativeNode, "Clear");
@@ -290,7 +370,8 @@ function createNativeNode(schema: unknown, nativeNode: object): object {
 
 	if (isPlainArray(unwrapped)) {
 		const element = (unwrapped as ReadonlyArray<unknown>)[0];
-		node.at = (index: unknown) => {
+		node.at = (selfOrIndex: unknown, maybeIndex?: unknown) => {
+			const index = methodArgument(node, selfOrIndex, maybeIndex);
 			assertArrayIndex(index);
 			const count = callNative(nativeNode, "Count") as number;
 			if ((index as number) >= count) return undefined;
@@ -300,14 +381,30 @@ function createNativeNode(schema: unknown, nativeNode: object): object {
 			);
 		};
 		node.count = () => callNative(nativeNode, "Count");
-		node.find = (value: unknown) => {
+		node.find = (selfOrValue: unknown, maybeValue?: unknown) => {
+			const value = methodArgument(node, selfOrValue, maybeValue);
 			const physical = callNative(nativeNode, "Find", value) as
 				| number
 				| undefined;
 			return physical === undefined ? undefined : physical - 1;
 		};
-		node.has = (value: unknown) => callNative(nativeNode, "Has", value);
-		node.insert = (value: unknown, index?: unknown) => {
+		node.has = (selfOrValue: unknown, maybeValue?: unknown) =>
+			callNative(
+				nativeNode,
+				"Has",
+				methodArgument(node, selfOrValue, maybeValue),
+			);
+		node.insert = (
+			selfOrValue: unknown,
+			valueOrIndex?: unknown,
+			maybeIndex?: unknown,
+		) => {
+			const value = selfOrValue === node
+				? valueOrIndex
+				: selfOrValue;
+			const index = selfOrValue === node
+				? maybeIndex
+				: valueOrIndex;
 			callNative(
 				nativeNode,
 				"Insert",
@@ -315,15 +412,22 @@ function createNativeNode(schema: unknown, nativeNode: object): object {
 				index === undefined ? undefined : (index as number) + 1,
 			);
 		};
-		node.remove = (index?: unknown) => {
+		node.remove = (selfOrIndex?: unknown, maybeIndex?: unknown) => {
+			const index = selfOrIndex === node
+				? maybeIndex
+				: selfOrIndex;
 			callNative(
 				nativeNode,
 				"Remove",
 				index === undefined ? undefined : (index as number) + 1,
 			);
 		};
-		node.removeValue = (value: unknown) => {
-			callNative(nativeNode, "RemoveValue", value);
+		node.removeValue = (selfOrValue: unknown, maybeValue?: unknown) => {
+			callNative(
+				nativeNode,
+				"RemoveValue",
+				methodArgument(node, selfOrValue, maybeValue),
+			);
 		};
 		node.clear = () => {
 			callNative(nativeNode, "Clear");
@@ -535,6 +639,14 @@ function callNativeTuple(
 		`[rovy/scribe] native accessor does not expose ${name}`,
 	);
 	return (method as () => LuaTuple<[unknown, unknown?]>)();
+}
+
+function methodArgument(
+	node: object,
+	selfOrValue: unknown,
+	maybeValue: unknown,
+): unknown {
+	return selfOrValue === node ? maybeValue : selfOrValue;
 }
 
 function compileEconomyMeta(

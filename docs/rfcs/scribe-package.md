@@ -1,6 +1,6 @@
 # RFC: `@rovy/scribe`
 
-Status: **Phase 3 schema, configuration, and transformer lowering complete — readers next**
+Status: **Phase 4 committed reader trees complete — buffered writers next**
 
 This RFC proposes a partitioned Rovy package that projects Scribe's field-oriented
 player-data API into stable readers, buffered writers, Rovy events, and non-yielding
@@ -370,3 +370,25 @@ profile table, limited to synchronous `get`, `set`, `update`, container `at`, an
 at that lifecycle point. Product `Grant` runs later with a real native accessor;
 that accessor is projected through the full lowercase, signal-free
 `ScribeImmediateTree<D>` instead of leaking Scribe's PascalCase API.
+
+## Phase 4 reader checkpoint
+
+Client and server readers now project Scribe's native accessors into frozen,
+signal-free lowercase trees. `get()` returns a deeply frozen clone, `clone()`
+returns a fresh mutable copy of that committed snapshot, and static metadata
+reads (`default`, `min`, and `max`) remain available. Arrays and dictionaries
+add stable `.at(...)` child nodes plus read-only container helpers. Array indexes
+and `find()` results use roblox-ts's zero-based convention; the adapter translates
+to Scribe's one-based native accessor indexes.
+
+Each node caches one snapshot per Rovy flush revision. A native value changing
+during a set therefore cannot tear same-set reads; the next set boundary advances
+the revision and observes the committed value. Server readers check
+`GetState` before calling native `Get`, so `get(player)` never yields or turns a
+loading profile into an exception. `require(player)` supplies the explicit error
+path.
+
+`ScribeClientState` snapshots readiness and service status at flush boundaries.
+`ScribeSharedReader` calls native `GetShared`, projects only roots declared with
+`s.shared`, then deep-freezes the result. It cannot leak a server-only or unknown
+native key even if a malformed binding returns one.

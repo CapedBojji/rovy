@@ -1195,6 +1195,7 @@ export const BadData = scribeData({
 		Get: 1,
 		BadBounds: s.int(0, { min: 10, max: 1 }),
 		BadOptional: s.optional(s.timed(0)),
+		BadObject: { get: 1 },
 		BadArray: s.arrayOf({ Changed: 1, Timer: s.timed(0) }, { maxItems: 0 }),
 		Session: s.session({ Created: s.dynamic(() => 1) }),
 	},
@@ -1218,6 +1219,7 @@ export const BadData = scribeData({
 	assert.match(diagnostics, /root field 'Get' collides/);
 	assert.match(diagnostics, /min cannot exceed max/);
 	assert.match(diagnostics, /s\.optional can wrap only/);
+	assert.match(diagnostics, /field 'BadObject\.get' collides/);
 	assert.match(diagnostics, /collides with a Scribe accessor method/);
 	assert.match(diagnostics, /s\.timed is not supported inside typed container elements/);
 	assert.match(diagnostics, /maxItems must be a positive integer literal/);

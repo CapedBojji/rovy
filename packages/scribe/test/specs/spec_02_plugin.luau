@@ -97,9 +97,9 @@ return function(TS, t)
 			app:runSchedule(Update)
 
 			t.expect(#created).toBe(1)
-			t.expect(seen.kind).toBe("server-reader")
-			t.expect(seen.dataId).toBe(data.id)
-			t.expect(seen.definition).toBe(data)
+			t.expect(type(seen.get)).toBe("function")
+			t.expect(type(seen.require)).toBe("function")
+			t.expect(type(seen.state)).toBe("function")
 			t.expect(created[1].options.TransportChannel)
 				.toBe("@rovy/scribe:game/Profile")
 		end)
@@ -207,9 +207,9 @@ return function(TS, t)
 			local initializedValue
 			local initializedNew
 			local onPlayerInit = function(_, setupData, isNew)
-				initializedValue = setupData.Coins.get()
+				initializedValue = setupData.Coins:get()
 				initializedNew = isNew
-				setupData.Coins.set(initializedValue + 5)
+				setupData.Coins:set(initializedValue + 5)
 			end
 			local profileStore = {}
 			local grantData
@@ -225,8 +225,8 @@ return function(TS, t)
 						profileStore = profileStore,
 						productGrants = {
 							Coins = function(context)
-								context.data.Coins.increment(3)
-								grantData = context.data.Coins.get()
+								context.data.Coins:increment(3)
+								grantData = context.data.Coins:get()
 							end,
 						},
 						economy = {
