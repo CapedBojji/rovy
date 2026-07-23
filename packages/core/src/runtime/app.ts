@@ -19,6 +19,7 @@ import type { ResolveCtx } from "./resolve-param";
 import { CommandsImpl } from "./commands";
 import { EventReaderHandle, EventRegistry, EventWriterHandle, wireEvents } from "./events";
 import { flush } from "./flush";
+import type { FlushContext, FlushParticipant } from "./flush";
 import { runAppExtensions, runPostStartAppExtensions } from "./extensions";
 import type { Plugin } from "./plugin";
 import { logRegistry, resolvePluginName } from "./log-registry";
@@ -57,6 +58,8 @@ export class App {
 	private scheduleContext!: ScheduleContext;
 	private started = false;
 	private readonly postFlushListeners = new Array<{ active: boolean; callback: () => void }>();
+	private readonly flushParticipants = new Array<FlushParticipant>();
+	private readonly flushParticipantSet = new Set<FlushParticipant>();
 	private readonly mountRequests = new Array<AppMountRequest>();
 	/** Overrides supplied before start(); applied after resource registration. */
 	private resourceOverrides = new Map<Ctor, object>();
@@ -74,28 +77,36 @@ export class App {
 		this.lifecycle.setApp(this);
 		this.world.lifecycle = this.lifecycle;
 		this.commands = new CommandsImpl(this.world);
-		this.scheduler = new Scheduler(this.world, this.commands);
+		this.scheduler = new Scheduler(
+			this.world,
+			this.commands,
+			(schedule, set) => this.flushBoundary(schedule, set),
+		);
 		// wire deferred command → scheduler / world hooks
 		this.commands.deferredRunSchedule = (s) => this.scheduler.run(s);
 		this.commands.deferredRelate = (s, r, t, d) => this.world.relate(s, r, t, d);
 		this.commands.deferredUnrelate = (s, r, t) => this.world.unrelate(s, r, t);
 		this.world.runScheduleImpl = (s, dt) => this.scheduler.run(s, dt);
-		this.world.flushImpl = () => {
-			this.flushCommands();
-			this.monitors?.reconcileAll();
-			this.notifyPostFlush();
-		};
-		this.scheduler.onFlush(() => {
-			this.monitors?.reconcileAll();
-			this.notifyPostFlush();
-		});
+		this.world.flushImpl = () => this.flushBoundary();
 	}
 
 	/** Apply queued commands to convergence (escape hatch; scheduler flushes at set boundaries). */
 	flush(): this {
-		this.flushCommands();
-		this.monitors?.reconcileAll();
-		this.notifyPostFlush();
+		this.flushBoundary();
+		return this;
+	}
+
+	/**
+	 * Register package-owned buffered work in deterministic registration order.
+	 * The same participant object may only be registered once per App.
+	 */
+	registerFlushParticipant(participant: FlushParticipant): this {
+		assert(
+			!this.flushParticipantSet.has(participant),
+			"[rovy] flush participant registered twice for the same App",
+		);
+		this.flushParticipantSet.add(participant);
+		this.flushParticipants.push(participant);
 		return this;
 	}
 
@@ -480,10 +491,22 @@ export class App {
 		};
 	}
 
-	private flushCommands(): void {
+	private flushBoundary(schedule?: Ctor, set?: Ctor): void {
+		const context: FlushContext = {
+			app: this,
+			world: this.world,
+			commands: this.commands,
+			schedule,
+			set,
+		};
+		// Snapshot registration for this boundary. A participant registered from
+		// inside a callback begins at the next boundary, never midway through one.
+		const participants = [...this.flushParticipants];
 		this.lifecycle.withBatch(() => {
-			flush(this.commands);
+			flush(this.commands, participants, context);
 		});
+		this.monitors?.reconcileAll();
+		this.notifyPostFlush();
 	}
 
 	on_post_flush(callback: () => void): LifecycleUnsubscribe {

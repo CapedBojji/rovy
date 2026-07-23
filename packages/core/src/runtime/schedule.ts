@@ -60,6 +60,8 @@ export class Scheduler {
 	constructor(
 		private world: RovyWorld,
 		private commands: CommandsImpl,
+		/** App-owned package convergence path; standalone schedulers retain command-only flushes. */
+		private readonly boundaryFlush?: (schedule?: Ctor, set?: Ctor) => void,
 	) {}
 
 	/** Declared via app.configureSets before start(). */
@@ -186,14 +188,14 @@ export class Scheduler {
 					runSystem();
 				}
 			}
-			this.flushCommands(); // set boundary
+			this.flushCommands(schedule, setKey === UNGROUPED ? undefined : setKey); // set boundary
 			this.notifyFlushListeners();
 		}
 
 		// final flush + reconcile: trailing commands from the last set's
 		// reconcile (e.g. a monitor onEnter despawn) must apply this run, even
 		// when later sets are empty/skipped.
-		this.flushCommands();
+		this.flushCommands(schedule);
 		this.notifyFlushListeners();
 
 		this.depth -= 1;
@@ -208,7 +210,11 @@ export class Scheduler {
 		ctx.rawDt = prevRawDt;
 	}
 
-	private flushCommands(): void {
+	private flushCommands(schedule?: Ctor, set?: Ctor): void {
+		if (this.boundaryFlush !== undefined) {
+			this.boundaryFlush(schedule, set);
+			return;
+		}
 		const lifecycle = this.world.lifecycle;
 		if (lifecycle !== undefined) lifecycle.withBatch(() => flush(this.commands));
 		else flush(this.commands);

@@ -45,6 +45,7 @@ export type { TraitToken, ModuleProvider, RovyPluginLoadRoot } from "./rovy";
 // Runtime (Phase 2+).
 export { App } from "./runtime/app";
 export type { AppMountOptions, AppMountRequest } from "./runtime/app";
+export type { FlushContext, FlushParticipant } from "./runtime/flush";
 export { RovyWorld } from "./runtime/world";
 export { CommandsImpl } from "./runtime/commands";
 export { Scheduler } from "./runtime/schedule";

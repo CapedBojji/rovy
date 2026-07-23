@@ -22,6 +22,10 @@ Every row has exactly one primary classification:
 Classification is not an implementation claim. In Phase 0, only type declarations,
 compile fixtures, and negative type checks exist.
 
+Phase 1 added the package-neutral core flush-participant prerequisite. It changes
+no Scribe parity classification: no Scribe binding, writer, transformer, or other
+runtime mapping has been implemented yet.
+
 ## Top-level Scribe module
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |

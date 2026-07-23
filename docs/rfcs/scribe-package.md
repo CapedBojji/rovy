@@ -1,6 +1,6 @@
 # RFC: `@rovy/scribe`
 
-Status: **Phase 0 API checkpoint — runtime implementation blocked on review**
+Status: **Phase 1 core flush prerequisite complete — Scribe runtime not started**
 
 This RFC proposes a partitioned Rovy package that projects Scribe's field-oriented
 player-data API into stable readers, buffered writers, Rovy events, and non-yielding
@@ -208,10 +208,29 @@ Native `Server.PromptGift` must be treated as yielding even though its public so
 annotation lacks `@yields`: its implementation waits for durable saves. It is a
 job in the proposed service.
 
-## Flush contract required before writers
+## Phase 1 core flush participant
 
-No writer runtime should begin until core exposes a package-neutral flush
-participant with deterministic convergence:
+The Phase 0 contract was approved on 2026-07-23. Core now exposes the
+package-neutral prerequisite:
+
+```ts
+export interface FlushParticipant {
+	flush(context: FlushContext): boolean;
+}
+
+export interface FlushContext {
+	readonly app: App;
+	readonly world: World;
+	readonly commands: Commands;
+	readonly schedule?: Ctor;
+	readonly set?: Ctor;
+}
+
+app.registerFlushParticipant(participant);
+```
+
+At each scheduler set boundary, and from both `app.flush()` and `world.flush()`,
+core executes:
 
 ```text
 run current set
@@ -225,9 +244,10 @@ run current set
   -> next set
 ```
 
-`app.flush()` and set-boundary flushes must use the same path. Participant order
-must be deterministic, observer-generated writes must converge, and loops must
-fail with a diagnostic after a fixed cap.
+Participants run in registration order. Duplicate registration on one app fails,
+and registration during a flush begins at the next boundary. Observer-generated
+commands and participant work share one convergence loop capped at 1,000 cycles.
+Monitors and legacy post-flush listeners run only after that loop settles.
 
 ## Binding and package boundary
 
@@ -282,7 +302,7 @@ The package has no dependency on `@rovy/datastore` or `@rovy/networking`.
 9. Command completion ordering relative to replication remains unpromised until a
    native ordered-frame integration test proves it.
 
-## Checkpoint exit criteria
+## Phase 0 checkpoint (approved)
 
 - The declaration fixture type-checks with no public `any`.
 - Client types exclude `serverOnly` roots.
@@ -290,8 +310,18 @@ The package has no dependency on `@rovy/datastore` or `@rovy/networking`.
 - Shared types contain only `shared` roots.
 - Reader mutation/subscription calls fail type checking.
 - Every inventoried native member has one parity classification.
-- No runtime package, transformer lowering, or core flush implementation has
-  started.
+- No Scribe runtime package or transformer lowering has started.
 
-Approval of the target Scribe commit and the command result model is required
-before Phase 1.
+The selected target remains Scribe 1.0.10. Command callers and readers use the
+explicit request/result generic pair described above.
+
+## Phase 1 exit criteria
+
+- A fake package write queued in one set commits before the next set.
+- Readers remain stable within the producing set.
+- An observer can queue another package write and converge in the same boundary.
+- Monitors see the final converged state.
+- Participant ordering is deterministic.
+- `app.flush()`, `world.flush()`, and scheduler boundaries share one path.
+- A non-converging participant fails with a named 1,000-cycle diagnostic.
+- Existing core tests continue to pass.
