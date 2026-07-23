@@ -19,6 +19,14 @@ import {
 	ScribeSharedReaderRuntime,
 	type ScribeReadRevisionSource,
 } from "./reader-tree";
+import {
+	ScribeWriteQueue,
+	type ScribeWriteFailure,
+} from "./write-queue";
+import {
+	createScribeLocalWriterRuntime,
+	ScribeServerWriterRuntime,
+} from "./writer-runtime";
 import type {
 	ScribeLogEntry,
 	ScribeMetricSummary,
@@ -88,6 +96,7 @@ export class ScribeRuntime implements FlushParticipant {
 	readonly diagnostics: ScribeDiagnosticsHandle;
 	private readonly bundleById = new Map<string, ScribeInstalledBundle>();
 	private readonly handles = new Map<string, ScribeRuntimeHandle | object>();
+	private readonly writeQueue: ScribeWriteQueue;
 	private readRevision = 0;
 	private readonly revisions: ScribeReadRevisionSource = {
 		revision: () => this.readRevision,
@@ -101,6 +110,10 @@ export class ScribeRuntime implements FlushParticipant {
 		serverSetups?: ReadonlyMap<string, ScribeRuntimeServerSetup>,
 	) {
 		this.diagnostics = new ScribeDiagnosticsHandle(binding);
+		this.writeQueue = new ScribeWriteQueue(
+			boundary,
+			(dataId) => this.requireBundle(dataId),
+		);
 		for (const definition of definitions) {
 			const native = binding.createBundle(
 				compileBundleOptions(
@@ -152,6 +165,13 @@ export class ScribeRuntime implements FlushParticipant {
 					() => this.binding.status(),
 				);
 				break;
+			case "local-writer":
+				handle = createScribeLocalWriterRuntime(
+					dataId,
+					bundle.definition.template,
+					this.writeQueue,
+				);
+				break;
 			case "shared-reader":
 				handle = new ScribeSharedReaderRuntime(
 					bundle.definition.template,
@@ -164,6 +184,13 @@ export class ScribeRuntime implements FlushParticipant {
 					bundle.definition.template,
 					bundle.active,
 					this.revisions,
+				);
+				break;
+			case "server-writer":
+				handle = new ScribeServerWriterRuntime(
+					dataId,
+					bundle.definition.template,
+					this.writeQueue,
 				);
 				break;
 			default:
@@ -179,11 +206,16 @@ export class ScribeRuntime implements FlushParticipant {
 	}
 
 	flush(_context: FlushContext): boolean {
+		const wrote = this.writeQueue.flush();
 		this.readRevision += 1;
 		for (const [, handle] of this.handles) {
 			if (handle instanceof ScribeClientStateRuntime) handle.refresh();
 		}
-		return false;
+		return wrote;
+	}
+
+	drainWriteFailures(): ReadonlyArray<ScribeWriteFailure> {
+		return this.writeQueue.drainFailures();
 	}
 }
 

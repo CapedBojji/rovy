@@ -1,6 +1,6 @@
 # RFC: `@rovy/scribe`
 
-Status: **Phase 4 committed reader trees complete — buffered writers next**
+Status: **Phase 5 buffered writers complete — change journal and events next**
 
 This RFC proposes a partitioned Rovy package that projects Scribe's field-oriented
 player-data API into stable readers, buffered writers, Rovy events, and non-yielding
@@ -392,3 +392,30 @@ path.
 `ScribeSharedReader` calls native `GetShared`, projects only roots declared with
 `s.shared`, then deep-freezes the result. It cannot leak a server-only or unknown
 native key even if a malformed binding returns one.
+
+## Phase 5 buffered writer checkpoint
+
+Injected writer trees now contain only lowercase mutation methods and enqueue
+immutable operation records. Values supplied to `set`, container operations, and
+economy metadata are cloned when queued, so later game-code mutation cannot alter
+what commits. `update` is the deliberate exception: its callback runs at flush
+against the latest native committed value and receives a deeply frozen clone.
+
+Server operations use native `Data.Batch` and remain invisible through the
+revision-cached readers until the flush participant completes. Client-local
+operations apply only to the active native client mirror; they never name a
+player, invoke a server API, or use Scribe's request transport.
+
+Explicit transaction callbacks capture a separate operation group and replay it
+through native `Data.Transaction`. A failed transaction is recorded as one
+failure and relies on Scribe for rollback, including tagged economy operations.
+Transactions retain their exact call position. Ordinary writes on either side of
+a transaction therefore form distinct deterministic batch segments instead of
+being moved across the atomic boundary. Ordinary native `Batch` remains
+coalescing, not atomic: a thrown operation can leave earlier operations applied,
+and the runtime records that failure without claiming rollback.
+
+All array-facing writer indexes are zero-based and translated to Scribe's
+one-based accessors at application time. Optional `set(undefined)` survives the
+queue through a private sentinel. Writer methods return `void`; only explicit
+transactions return an identity handle for later result/event association.

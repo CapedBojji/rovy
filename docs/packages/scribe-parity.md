@@ -40,6 +40,11 @@ shared-only reads, zero-based typed container access, and per-flush frozen
 snapshot caching. Writer/event/job runtime and native integration coverage remain
 incomplete.
 
+Phase 5 added signal-free buffered client-local and authoritative server writer
+trees, ordered operation snapshots, automatic native batches, explicit native
+transactions, economy metadata translation, and flush failure records. Event/job
+bridges and native integration coverage remain incomplete.
+
 ## Top-level Scribe module
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
@@ -112,27 +117,28 @@ incomplete.
 | `Get` | first-class | Reader `get()` returns committed deep-read-only snapshot | Frozen revision-cache runtime coverage Phase 4; native integration pending |
 | `Clone` | first-class | Reader `clone()` returns fresh mutable clone | Independence runtime coverage Phase 4; native integration pending |
 | `Default` | first-class | Reader `default()` | Runtime coverage Phase 4; native integration pending |
-| `Set` | first-class | Buffered writer `set`; client only through `ScribeLocalWriter` | Negative reader test; writer fixture |
-| `Update` | first-class | Buffered writer `update`, callback evaluated at flush | Type declared; runtime Phase 5 |
+| `Set` | first-class | Buffered writer `set`; client only through `ScribeLocalWriter` | Queue/snapshot/runtime coverage Phase 5; native integration pending |
+| `Update` | first-class | Buffered writer `update`, callback evaluated at flush | Ordered frozen-input runtime coverage Phase 5; native integration pending |
 | `Observe` | Rovy event | `@scribeEvent` plus observer/EventReader | Negative direct-signal type test |
 | `Changed` | Rovy event | `ScribeValueChanged` | Event fixture; negative direct-signal test |
-| `Increment` | first-class | Buffered numeric `increment` with economy metadata | Fixture |
-| `Decrement` | first-class | Buffered numeric `decrement` with economy metadata | Transaction fixture |
+| `Increment` | first-class | Buffered numeric `increment` with economy metadata | Ordered batch/runtime coverage Phase 5; native integration pending |
+| `Decrement` | first-class | Buffered numeric `decrement` with economy metadata | Transaction/runtime coverage Phase 5; native integration pending |
 | `Min` | first-class | Number reader `min()` | Runtime coverage Phase 4; native integration pending |
 | `Max` | first-class | Number reader `max()` | Runtime coverage Phase 4; native integration pending |
-| `Toggle` | first-class | Buffered boolean `toggle()` | Type declared |
-| `Insert` | first-class | Buffered array `insert()` | Type declared |
-| `Remove` | first-class | Buffered array/dictionary `remove()`; intentionally returns `void` | Type declared |
-| `RemoveValue` | first-class | Buffered array `removeValue()` | Type declared |
+| `Toggle` | first-class | Buffered boolean `toggle()` | Runtime coverage Phase 5; native integration pending |
+| `Insert` | first-class | Buffered array `insert()` | Zero-based ordered runtime coverage Phase 5; native integration pending |
+| `Remove` | first-class | Buffered array/dictionary `remove()`; intentionally returns `void` | Zero-based/container runtime coverage Phase 5; native integration pending |
+| `RemoveValue` | first-class | Buffered array `removeValue()` | Runtime coverage Phase 5; native integration pending |
 | `Find` | first-class | Array reader `find()`; zero-based result | Structural-value runtime coverage Phase 4; native integration pending |
 | `Has` | first-class | Array reader `has()` | Runtime coverage Phase 4; native integration pending |
 | `Count` | first-class | Array/dictionary reader `count()` | Runtime coverage Phase 4; native integration pending |
+| `Clear` | first-class | Buffered array/dictionary `clear()` | Runtime coverage Phase 5; native integration pending |
 | `OnInsert` | Rovy event | `ScribeArrayInserted` | Event type declared |
 | `OnRemove` | Rovy event | `ScribeArrayRemoved` | Event type declared |
 | `OnKeyAdded` | Rovy event | `ScribeKeyAdded` | Event fixture |
 | `OnKeyRemoved` | Rovy event | `ScribeKeyRemoved` | Event fixture |
-| `SetTimed` | first-class | Buffered timed writer `setTimed()` | Type declared |
-| `ExtendTimed` | first-class | Buffered timed writer `extendTimed()` | Type declared |
+| `SetTimed` | first-class | Buffered timed writer `setTimed()` | Runtime coverage Phase 5; native integration pending |
+| `ExtendTimed` | first-class | Buffered timed writer `extendTimed()` | Runtime coverage Phase 5; native integration pending |
 | `Active` | first-class | Timed reader `active()` returns named `{ active, remaining }` record | Tuple-to-record runtime coverage Phase 4; native integration pending |
 
 ## Server lifecycle, persistence, and command API
@@ -143,8 +149,8 @@ incomplete.
 | `GetState` | first-class | `ScribeServerReader.state(player)` | Non-yielding runtime coverage Phase 4; native integration pending |
 | `Get` | first-class | `get` returns optional; `require` supplies native error-style behavior | Loading/ready/session-ended runtime coverage Phase 4; native integration pending |
 | player index access (`Data[player]`) | intentionally unsupported | Bracket access conflicts with injected service methods; use `get`/`require` | Negative type/runtime misuse test Phase 4 |
-| `Batch` | first-class | Automatic ordinary-write batch per player at every Rovy flush | Runtime Phase 5 |
-| `Transaction` | first-class | `ScribeServerWriter.transaction` replays one native transaction | Fixture |
+| `Batch` | first-class | Automatic ordinary-write batch segments per player at every Rovy flush | Ordering/failure runtime coverage Phase 5; native integration pending |
+| `Transaction` | first-class | `ScribeServerWriter.transaction` replays one native transaction | Position/rollback/failure runtime coverage Phase 5; native integration pending |
 | `Flush` | Rovy job | Renamed `ScribePersistence.saveNow` | Fixture |
 | `GetSaveInfo` | first-class | `ScribePersistence.getSaveInfo` | Type declared |
 | `GetOffline` | Rovy job | `ScribePersistence.getOffline` | Type declared |
@@ -233,7 +239,7 @@ incomplete.
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| tagged `Increment` / `Decrement` | first-class | `ScribeEconomyMeta` on numeric writer operations | Fixture |
+| tagged `Increment` / `Decrement` | first-class | `ScribeEconomyMeta` on numeric writer operations | Native-key translation/runtime coverage Phase 5; native integration pending |
 | `Economy.Resolve` | configuration pass-through | Server setup callback | Type declared |
 | `Economy.Prefix` | configuration pass-through | Shared economy declaration | Type declared |
 | `Economy.Currencies` | configuration pass-through | Shared economy declaration | Type declared |
@@ -247,8 +253,8 @@ incomplete.
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
 | `Timed` | first-class | `s.timed` | Fixture |
-| `SetTimed` | first-class | Buffered `ScribeTimedWriter.setTimed` | Type declared |
-| `ExtendTimed` | first-class | Buffered `ScribeTimedWriter.extendTimed` | Type declared |
+| `SetTimed` | first-class | Buffered `ScribeTimedWriter.setTimed` | Runtime coverage Phase 5; native integration pending |
+| `ExtendTimed` | first-class | Buffered `ScribeTimedWriter.extendTimed` | Runtime coverage Phase 5; native integration pending |
 | `Active` | first-class | `ScribeTimedReader.active` | Fixture |
 | `OnCooldown` | Rovy job | Buffered check-and-arm; result exists only after flush | Type declared |
 | `PeekCooldown` | first-class | Committed `ScribeCooldowns.peek` | Type declared |
