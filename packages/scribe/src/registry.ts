@@ -41,9 +41,11 @@ type AuthorScribeEventDefinition = Omit<RuntimeScribeEventDefinition, "ctor">;
 class RovyScribeRegistry {
 	private readonly dataList = new Array<RuntimeScribeDataDefinition>();
 	private readonly dataById = new Map<string, RuntimeScribeDataDefinition>();
+	private readonly dataByName = new Map<string, RuntimeScribeDataDefinition>();
 	private readonly commandList = new Array<RuntimeScribeCommandDefinition>();
 	private readonly commandById = new Map<string, RuntimeScribeCommandDefinition>();
 	private readonly eventList = new Array<RuntimeScribeEventDefinition>();
+	private readonly resetHooks = new Array<() => void>();
 	private configuredResolver?: ScribeModuleResolver;
 
 	__data<Schema extends object>(
@@ -52,6 +54,10 @@ class RovyScribeRegistry {
 		assert(
 			!this.dataById.has(definition.id),
 			`[rovy/scribe] duplicate data definition id '${definition.id}'`,
+		);
+		assert(
+			!this.dataByName.has(definition.name),
+			`[rovy/scribe] duplicate data definition name '${definition.name}'`,
 		);
 		const token = {
 			id: definition.id,
@@ -63,6 +69,7 @@ class RovyScribeRegistry {
 		} satisfies RuntimeScribeDataDefinition;
 		this.dataList.push(runtime);
 		this.dataById.set(runtime.id, runtime);
+		this.dataByName.set(runtime.name, runtime);
 		return token;
 	}
 
@@ -118,13 +125,19 @@ class RovyScribeRegistry {
 		return this.configuredResolver;
 	}
 
+	__registerResetHook(hook: () => void): void {
+		this.resetHooks.push(hook);
+	}
+
 	__reset(): void {
 		while (this.dataList.size() > 0) this.dataList.pop();
 		while (this.commandList.size() > 0) this.commandList.pop();
 		while (this.eventList.size() > 0) this.eventList.pop();
 		this.dataById.clear();
+		this.dataByName.clear();
 		this.commandById.clear();
 		this.configuredResolver = undefined;
+		for (const hook of this.resetHooks) hook();
 	}
 }
 

@@ -172,6 +172,80 @@ export type ScribeWriteTree<Schema extends object> = {
 	readonly [Key in keyof Schema]: ScribeWriteNode<Schema[Key]>;
 };
 
+/**
+ * Immediate access used only while Scribe is constructing a profile. Unlike a
+ * scheduled writer, these methods update Scribe's pre-ready raw profile table
+ * synchronously and expose no signals, timers, economy operations, or flush.
+ */
+export interface ScribeInitializationValue<T> {
+	get(): ReadonlyDeep<T>;
+	set(value: T): void;
+	update(transform: (current: ReadonlyDeep<T>) => T): void;
+}
+
+type ScribeInitializationObject<Schema extends object, Value> =
+	& ScribeInitializationValue<Value>
+	& {
+		readonly [Key in keyof Schema]: ScribeInitializationNode<Schema[Key]>;
+	};
+
+export interface ScribeInitializationArray<T, Node = ScribeInitializationNode<T>>
+	extends ScribeInitializationValue<ReadonlyArray<T>> {
+	at(index: number): Node | undefined;
+	count(): number;
+}
+
+export interface ScribeInitializationDictionary<
+	T,
+	Node = ScribeInitializationNode<T>,
+> extends ScribeInitializationValue<Readonly<Record<string, T>>> {
+	at(key: string): Node;
+	count(): number;
+}
+
+type ScribeInitializationNodeCore<Schema, Value> =
+	Schema extends ScribeDynamicSchema<infer _Inner>
+		? ScribeInitializationValue<Value>
+		: Schema extends ScribeTimedSchema<infer _Inner>
+			? ScribeInitializationValue<Value>
+			: Schema extends ScribeArraySchema<infer Element>
+				? ScribeInitializationArray<
+						ScribeSchemaValue<Element>,
+						ScribeInitializationNode<Element>
+					>
+				: Schema extends ScribeDictionarySchema<infer Element>
+					? ScribeInitializationDictionary<
+							ScribeSchemaValue<Element>,
+							ScribeInitializationNodeCore<
+								Element,
+								ScribeSchemaValue<Element> | undefined
+							>
+						>
+					: Schema extends ScribeSchema<unknown, ScribeSchemaKind>
+						? ScribeInitializationValue<Value>
+						: Schema extends ReadonlyArray<infer Element>
+							? ScribeInitializationArray<
+									ScribeSchemaValue<Element>,
+									ScribeInitializationNode<Element>
+								>
+							: Schema extends object
+								? ScribeInitializationObject<Schema, Value>
+								: ScribeInitializationValue<Value>;
+
+export type ScribeInitializationNode<Schema> =
+	Schema extends ScribeVisibilitySchema<ScribeVisibility, infer Inner>
+		? ScribeInitializationNode<Inner>
+		: Schema extends ScribeOptionalSchema<infer Inner>
+			? ScribeInitializationNodeCore<
+					Inner,
+					ScribeSchemaValue<Inner> | undefined
+				>
+			: ScribeInitializationNodeCore<Schema, ScribeSchemaValue<Schema>>;
+
+export type ScribeInitializationTree<Schema extends object> = {
+	readonly [Key in keyof Schema]: ScribeInitializationNode<Schema[Key]>;
+};
+
 export type ScribeClientReader<D extends AnyScribeData> = ScribeReadTree<ScribeClientSchema<D>>;
 export type ScribeLocalWriter<D extends AnyScribeData> = ScribeWriteTree<ScribeClientSchema<D>>;
 

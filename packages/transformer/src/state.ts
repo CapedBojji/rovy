@@ -48,12 +48,14 @@ export class TransformState {
 	private readonly coreImportCache = new Map<string, CoreImports>();
 	private readonly networkingImportCache = new Map<string, CoreImports>();
 	private readonly datastoreImportCache = new Map<string, CoreImports>();
+	private readonly scribeImportCache = new Map<string, CoreImports>();
 	private readonly uiImportCache = new Map<string, CoreImports>();
 	private readonly retainedUiImportCache = new Map<string, CoreImports>();
 	private readonly videImportCache = new Map<string, CoreImports>();
 	private readonly pendingRovyImports = new Map<string, ts.Identifier>();
 	private readonly pendingRovyNetImports = new Map<string, ts.Identifier>();
 	private readonly pendingRovyDataImports = new Map<string, ts.Identifier>();
+	private readonly pendingRovyScribeImports = new Map<string, ts.Identifier>();
 	private readonly pendingRovyUiImports = new Map<string, ts.Identifier>();
 	private readonly pendingRovyRetainedUiImports = new Map<string, ts.Identifier>();
 	private readonly pendingRovyVideImports = new Map<string, ts.Identifier>();
@@ -63,6 +65,7 @@ export class TransformState {
 	private readonly uiCallsiteCounters = new Map<string, number>();
 	private readonly netCallsiteCounters = new Map<string, number>();
 	private readonly queryCallsiteCounters = new Map<string, number>();
+	private readonly scribeDataNameOrigins = new Map<string, ts.Node>();
 	private uiWidgetExportNames?: Set<string>;
 	private readonly rojoResolver?: RojoResolver;
 	private readonly partitionStagingRoot?: string;
@@ -104,6 +107,10 @@ export class TransformState {
 
 	getDatastoreImports(file: ts.SourceFile): CoreImports {
 		return this.getImportsForModule(file, "@rovy/datastore", this.datastoreImportCache);
+	}
+
+	getScribeImports(file: ts.SourceFile): CoreImports {
+		return this.getImportsForModule(file, "@rovy/scribe", this.scribeImportCache);
 	}
 
 	getUiImports(file: ts.SourceFile): CoreImports {
@@ -168,6 +175,15 @@ export class TransformState {
 
 	resolveDatastoreName(file: ts.SourceFile, expression: ts.Expression): string | undefined {
 		const imports = this.getDatastoreImports(file);
+		if (ts.isIdentifier(expression)) return imports.named.get(expression.text);
+		if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression)) {
+			if (imports.namespaces.has(expression.expression.text)) return expression.name.text;
+		}
+		return undefined;
+	}
+
+	resolveScribeName(file: ts.SourceFile, expression: ts.Expression): string | undefined {
+		const imports = this.getScribeImports(file);
 		if (ts.isIdentifier(expression)) return imports.named.get(expression.text);
 		if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression)) {
 			if (imports.namespaces.has(expression.expression.text)) return expression.name.text;
@@ -303,6 +319,19 @@ export class TransformState {
 		return identifier;
 	}
 
+	addRovyScribeImport(file: ts.SourceFile): ts.Identifier {
+		for (const [local, exported] of this.getScribeImports(file).named) {
+			if (exported === "rovyScribe") return ts.factory.createIdentifier(local);
+		}
+
+		let identifier = this.pendingRovyScribeImports.get(file.fileName);
+		if (!identifier) {
+			identifier = ts.factory.createUniqueName("__rovyScribe", ts.GeneratedIdentifierFlags.Optimistic);
+			this.pendingRovyScribeImports.set(file.fileName, identifier);
+		}
+		return identifier;
+	}
+
 	addRovyUiImport(file: ts.SourceFile): ts.Identifier {
 		const existingDefault = this.getUiImports(file).defaultName;
 		if (existingDefault !== undefined) return ts.factory.createIdentifier(existingDefault);
@@ -377,6 +406,7 @@ export class TransformState {
 		const rovyImport = this.pendingRovyImports.get(file.fileName);
 		const rovyNetImport = this.pendingRovyNetImports.get(file.fileName);
 		const rovyDataImport = this.pendingRovyDataImports.get(file.fileName);
+		const rovyScribeImport = this.pendingRovyScribeImports.get(file.fileName);
 		const rovyUiImport = this.pendingRovyUiImports.get(file.fileName);
 		const rovyRetainedUiImport = this.pendingRovyRetainedUiImports.get(file.fileName);
 		const rovyVideImport = this.pendingRovyVideImports.get(file.fileName);
@@ -385,6 +415,7 @@ export class TransformState {
 		if (rovyImport) imports.push(importNamed("@rovy/core", "rovy", rovyImport.text));
 		if (rovyNetImport) imports.push(importNamed("@rovy/networking", "rovyNet", rovyNetImport.text));
 		if (rovyDataImport) imports.push(importNamed("@rovy/datastore", "rovyData", rovyDataImport.text));
+		if (rovyScribeImport) imports.push(importNamed("@rovy/scribe", "rovyScribe", rovyScribeImport.text));
 		if (rovyUiImport) imports.push(importDefault("@rovy/imgui", rovyUiImport.text));
 		if (rovyRetainedUiImport) imports.push(importDefault("@rovy/ui", rovyRetainedUiImport.text));
 		if (rovyVideImport) imports.push(importNamed("@rovy/vide", "rovyVide", rovyVideImport.text));
@@ -548,6 +579,18 @@ export class TransformState {
 			messageText: `[rovy-transformer] ${messageText}`,
 		};
 		(this.context as unknown as { addDiagnostic?: (diagnostic: ts.Diagnostic) => void }).addDiagnostic?.(diagnostic);
+	}
+
+	registerScribeDataName(name: string, node: ts.Node): void {
+		const existing = this.scribeDataNameOrigins.get(name);
+		if (existing !== undefined && existing !== node) {
+			this.diagnostic(
+				node,
+				`[rovy/scribe] duplicate data name '${name}' (first declared in ${this.stableIdForNode(existing)})`,
+			);
+			return;
+		}
+		this.scribeDataNameOrigins.set(name, node);
 	}
 
 	stableIdForNode(node: ts.Node): string {
@@ -883,7 +926,13 @@ export class TransformState {
 export function decoratorName(state: TransformState, file: ts.SourceFile, decorator: ts.Decorator): string | undefined {
 	const expression = decorator.expression;
 	const target = ts.isCallExpression(expression) ? expression.expression : expression;
-	return state.resolveCoreName(file, target) ?? state.resolveNetworkingName(file, target) ?? state.resolveDatastoreName(file, target) ?? state.resolveRetainedUiName(file, target) ?? state.resolveUiName(file, target) ?? state.resolveVideName(file, target);
+	return state.resolveCoreName(file, target) ??
+		state.resolveNetworkingName(file, target) ??
+		state.resolveDatastoreName(file, target) ??
+		state.resolveScribeName(file, target) ??
+		state.resolveRetainedUiName(file, target) ??
+		state.resolveUiName(file, target) ??
+		state.resolveVideName(file, target);
 }
 
 export function normalizePath(value: string): string {

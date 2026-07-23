@@ -139,6 +139,7 @@ export interface ScribeRuntimeSchemaDescriptor {
 	};
 	readonly __scribeVisibility?: ScribeVisibility;
 	readonly defaultValue?: unknown;
+	readonly integer?: boolean;
 	readonly options?: object;
 	readonly members?: ReadonlyArray<string>;
 	readonly inner?: unknown;

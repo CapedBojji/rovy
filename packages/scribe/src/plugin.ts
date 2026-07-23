@@ -40,9 +40,14 @@ import { rovyScribe } from "./registry";
 import {
 	ScribeRuntime,
 	type ScribeRuntimeBoundary,
+	type ScribeRuntimeServerSetup,
 } from "./runtime";
 import type { ScribeNativeModule, ScribeSerializable, ScribeTransport } from "./types";
-import type { ScribeReadTree, ScribeWriteTree } from "./trees";
+import type {
+	ScribeInitializationTree as ScribeInitializationSchemaTree,
+	ScribeReadTree,
+	ScribeWriteTree,
+} from "./trees";
 
 export interface ScribeProcessConfiguration {
 	readonly autoSaveInterval?: number;
@@ -62,20 +67,25 @@ export type ScribeImmediateTree<D extends AnyScribeData> =
 	& ScribeReadTree<ScribeFullSchema<D>>
 	& ScribeWriteTree<ScribeFullSchema<D>>;
 
+export type ScribeInitializationTree<D extends AnyScribeData> =
+	ScribeInitializationSchemaTree<ScribeFullSchema<D>>;
+
 export interface ScribeMigration<D extends AnyScribeData> {
 	readonly version: number;
 	readonly migrate: (data: ScribePersistedShape<D>) => ScribePersistedShape<D>;
 }
 
 export interface ScribeProductGrantContext<D extends AnyScribeData> {
-	readonly player: Player;
 	readonly data: ScribeImmediateTree<D>;
-	readonly receiptId: string;
 }
 
 export interface ScribeServerSetup<D extends AnyScribeData> {
 	readonly migrations?: ReadonlyArray<ScribeMigration<D>>;
-	readonly onPlayerInit?: (player: Player, data: ScribeImmediateTree<D>, isNewProfile: boolean) => void;
+	readonly onPlayerInit?: (
+		player: Player,
+		data: ScribeInitializationTree<D>,
+		isNewProfile: boolean,
+	) => void;
 	readonly productGrants?: Readonly<Record<string, (context: ScribeProductGrantContext<D>) => void>>;
 	readonly economy?: {
 		readonly resolve?: (player: Player) => Readonly<Record<string, ScribeSerializable>>;
@@ -107,9 +117,14 @@ export interface ScribeClientPluginOptions extends ScribePluginOptions {}
 
 const SCRIBE_RUNTIME_MARKER = "__rovyScribeRuntime";
 let installedVersion: string | undefined;
+let installedProcessConfiguration:
+	| Readonly<Record<string, unknown>>
+	| undefined;
+let scribeBundleConstructed = false;
 
 @client
 export class ScribeClientPlugin implements Plugin, ScribeBoundaryPluginDelegate {
+	private static readonly resetHook = registerScribePluginResetHook();
 	private static readonly provider = registerScribeBoundaryProvider({
 		boundary: "client",
 		createPlugin(options) {
@@ -133,6 +148,7 @@ export class ScribeClientPlugin implements Plugin, ScribeBoundaryPluginDelegate 
 
 @server
 export class ScribeServerPlugin implements Plugin, ScribeBoundaryPluginDelegate {
+	private static readonly resetHook = registerScribePluginResetHook();
 	private static readonly provider = registerScribeBoundaryProvider({
 		boundary: "server",
 		createPlugin(options) {
@@ -179,6 +195,15 @@ export function scribeVersion(): string {
 	return installedVersion;
 }
 
+function registerScribePluginResetHook(): true {
+	rovyScribe.__registerResetHook(() => {
+		installedVersion = undefined;
+		installedProcessConfiguration = undefined;
+		scribeBundleConstructed = false;
+	});
+	return true;
+}
+
 function installScribeRuntime(
 	app: App,
 	boundary: ScribeRuntimeBoundary,
@@ -200,13 +225,19 @@ function installScribeRuntime(
 	} else {
 		installedVersion = binding.version;
 	}
+	configureScribeProcess(binding, options.configure);
 
+	const setups = boundary === "server"
+		? compileServerSetups(options as ScribeServerPluginOptions)
+		: undefined;
 	const runtime = new ScribeRuntime(
 		boundary,
 		binding,
 		rovyScribe.dataDefinitions(),
 		options.transport,
+		setups,
 	);
+	scribeBundleConstructed = true;
 	marked[SCRIBE_RUNTIME_MARKER] = runtime;
 	app.registerFlushParticipant(runtime);
 	app.insertParam(SCRIBE_DIAGNOSTICS_PARAM, runtime.diagnostics);
@@ -234,6 +265,60 @@ function installScribeRuntime(
 		app.insertParam(SCRIBE_COMMAND_RESPONDER_PARAM, runtime);
 	}
 	return runtime;
+}
+
+function configureScribeProcess(
+	binding: ReturnType<typeof resolveScribeBinding>,
+	configuration?: ScribeProcessConfiguration,
+): void {
+	if (configuration === undefined) return;
+	const compiled: Readonly<Record<string, unknown>> =
+		configuration?.autoSaveInterval !== undefined
+			? { AutoSaveInterval: configuration.autoSaveInterval }
+			: {};
+	if (installedProcessConfiguration !== undefined) {
+		assert(
+			sameProcessConfiguration(installedProcessConfiguration, compiled),
+			"[rovy/scribe] conflicting process-wide Scribe.Configure values across Rovy apps",
+		);
+		return;
+	}
+	assert(
+		!scribeBundleConstructed,
+		"[rovy/scribe] ScribePlugin.configure must be provided before any Scribe bundle is constructed",
+	);
+	installedProcessConfiguration = compiled;
+	binding.configure(compiled);
+}
+
+function sameProcessConfiguration(
+	left: Readonly<Record<string, unknown>>,
+	right: Readonly<Record<string, unknown>>,
+): boolean {
+	return left.AutoSaveInterval === right.AutoSaveInterval;
+}
+
+function compileServerSetups(
+	options: ScribeServerPluginOptions,
+): ReadonlyMap<string, ScribeRuntimeServerSetup> | undefined {
+	if (options.bundles === undefined) return undefined;
+	const output = new Map<string, ScribeRuntimeServerSetup>();
+	for (const configured of options.bundles) {
+		const dataId = configured.definition.id;
+		assert(
+			rovyScribe.data(dataId) !== undefined,
+			`[rovy/scribe] configureScribeServer references unknown data definition '${dataId}'`,
+		);
+		assert(
+			!output.has(dataId),
+			`[rovy/scribe] duplicate server setup for data definition '${dataId}'`,
+		);
+		output.set(
+			dataId,
+			configured.setup as unknown as ScribeRuntimeServerSetup,
+		);
+	}
+	return output;
 }
 
 function registryNeedsScribe(registry: RovyRegistry): boolean {

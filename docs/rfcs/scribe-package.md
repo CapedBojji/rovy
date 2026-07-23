@@ -1,6 +1,6 @@
 # RFC: `@rovy/scribe`
 
-Status: **Phase 2 package skeleton complete — schema lowering next**
+Status: **Phase 3 schema, configuration, and transformer lowering complete — readers next**
 
 This RFC proposes a partitioned Rovy package that projects Scribe's field-oriented
 player-data API into stable readers, buffered writers, Rovy events, and non-yielding
@@ -15,10 +15,10 @@ snapshot is in [`docs/packages/scribe-parity.md`](../packages/scribe-parity.md).
 
 The inventory was made from the official `ericplane/scribe` tag:
 
-- Version: `1.0.10`
-- Tag: `v1.0.10`
-- Commit: `75ca11285e631787ac4386aaef0e6f702893c165`
-- Commit date: 2026-07-21
+- Version: `1.0.11`
+- Tag: `v1.0.11`
+- Commit: `4253d303f3ea9e70b362d9e1e498b805ac3a8d01`
+- Commit date: 2026-07-23
 - Runtime dependency: `lm-loleris/profilestore@1.0.3`
 
 The source files used were `src/init.luau`, `src/Types.luau`,
@@ -26,17 +26,11 @@ The source files used were `src/init.luau`, `src/Types.luau`,
 `src/Server/init.luau`, `src/Client/init.luau`, and the generated-documentation
 inputs under `docgen/guides`.
 
-This exact baseline matters because several surfaces in the implementation plan do
-not exist in Scribe 1.0.10:
-
-- `Scribe.Configure`
-- `Scribe.Reason`
-- `Server.TryHandleReceipt`
-- the `Mode` option
-- the `TargetUserId` option
-
-The wrapper must not claim parity with those members unless a different Scribe
-commit is selected or the functionality is added upstream.
+This exact baseline matters because Scribe 1.0.11 added the process-wide
+`Scribe.Configure`, lifecycle `Scribe.Reason`, routed
+`Server.TryHandleReceipt`, and strict `Mode` / `TargetUserId` surfaces that were
+absent from the original 1.0.10 inventory. The wrapper targets those real native
+members rather than emulating them.
 
 ## Goals
 
@@ -285,21 +279,12 @@ The package has no dependency on `@rovy/datastore` or `@rovy/networking`.
    `local` is a reserved Luau keyword and roblox-ts rejects it as an identifier.
 3. Command polling is fully typed only with
    `ScribeCommand<Command, Result>` / `ScribeCommandReader<Command, Result>`.
-4. `Scribe.Configure` and `Scribe.Reason` are omitted from the native binding
-   because they are absent from 1.0.10.
-5. `TryHandleReceipt` is omitted because 1.0.10 only exposes `HandleReceipt`.
-   A wrapper must not infer whether an unknown receipt belongs to Scribe from a
-   `NotProcessedYet` result.
-6. `mode` and `targetUserId` are omitted from `ScribeDataOptions`; 1.0.10 exposes
-   `useMock`, `viewedUserId`, `overriddenUserId`, `dontSave`, and `resetData`.
-7. `ScribeProcessConfiguration` is only a proposed wrapper conflict model. There
-   is no native `Scribe.Configure` call to make in 1.0.10. The actual global
-   conflicts are ProfileStore's autosave constant and Scribe's process-global
-   health configuration.
-8. Receipt routing cannot be finalized until the target Scribe version is chosen.
-   A `ProcessReceipt` callback is allowed to yield, but a Rovy system is not; the
-   plugin needs a setup-time router, not only a scheduled feature service.
-9. Command completion ordering relative to replication remains unpromised until a
+4. Scribe 1.0.11 product `Grant` callbacks receive only the typed data accessor;
+   they do not receive sender or receipt identifiers. `ScribeProductGrantContext`
+   therefore contains `data` only and does not fabricate unavailable context.
+5. A `ProcessReceipt` callback is allowed to yield, but a Rovy system is not; the
+   plugin needs a setup-time router in addition to the scheduled job facade.
+6. Command completion ordering relative to replication remains unpromised until a
    native ordered-frame integration test proves it.
 
 ## Phase 0 checkpoint (approved)
@@ -312,7 +297,7 @@ The package has no dependency on `@rovy/datastore` or `@rovy/networking`.
 - Every inventoried native member has one parity classification.
 - No Scribe runtime package or transformer lowering has started.
 
-The selected target remains Scribe 1.0.10. Command callers and readers use the
+The selected target is Scribe 1.0.11. Command callers and readers use the
 explicit request/result generic pair described above.
 
 ## Phase 1 exit criteria
@@ -355,3 +340,33 @@ remain isolated.
 Phase 2 deliberately does not project native accessors yet. Injected
 definition-scoped values are identity-bearing skeleton handles until the reader
 and writer phases replace them with their typed implementations.
+
+## Phase 3 schema and transformer checkpoint
+
+`scribeData` now lowers to a stable `rovyScribe.__data` token. The transformer
+validates required storage names, supported option keys, schema depth, bounds,
+container caps, enum defaults, optional/dynamic/timed nesting, visibility,
+reserved accessor names, event paths, structural event kinds, command
+serialization, and runtime boundaries. Authored camel-case options are emitted
+with Scribe's native PascalCase keys and enum values.
+
+`@scribeCommand` and `@scribeEvent` emit package registry metadata;
+`@scribeEvent` also emits the ordinary Rovy event registration. Every injected
+Scribe service lowers to its stable per-definition or per-command external ID,
+and client command calls receive deterministic call-site IDs.
+
+At runtime, schema descriptors are compiled one-for-one through all native Scribe
+1.0.11 declarators before bundle construction. Process configuration is applied
+before the first bundle and conflicting later values fail. Server migrations,
+initialization callbacks, product grants, economy callbacks, and explicit
+ProfileStore setup are attached at construction time. Migration callbacks may
+return a replacement object; the wrapper copies that result into Scribe's
+mutation-based migration table so native fail-closed rollback remains intact.
+
+Scribe invokes `OnPlayerInit` before its native accessor tree exists. The wrapper
+therefore supplies a dedicated `ScribeInitializationTree<D>` over the raw
+profile table, limited to synchronous `get`, `set`, `update`, container `at`, and
+`count`. It does not pretend signals, timers, economy writes, or batching exist
+at that lifecycle point. Product `Grant` runs later with a real native accessor;
+that accessor is projected through the full lowercase, signal-free
+`ScribeImmediateTree<D>` instead of leaking Scribe's PascalCase API.

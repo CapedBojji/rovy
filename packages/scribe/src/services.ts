@@ -90,6 +90,9 @@ export interface ScribeReceiptInfo {
 export interface ScribeReceipts<D extends AnyScribeData> extends ScribeJobResults {
 	readonly definition: D;
 	handleReceipt(receipt: ScribeReceiptInfo): ScribeJobHandle<Enum.ProductPurchaseDecision>;
+	tryHandleReceipt(
+		receipt: ScribeReceiptInfo,
+	): ScribeJobHandle<Enum.ProductPurchaseDecision | undefined>;
 }
 
 export interface ScribeCooldownState {

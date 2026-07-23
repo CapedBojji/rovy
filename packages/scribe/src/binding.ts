@@ -6,6 +6,10 @@ import type {
 	ScribeNativeModule,
 	ScribeStatus,
 } from "./types";
+import {
+	isScribeSchemaDescriptor,
+	type ScribeRuntimeSchemaDescriptor,
+} from "./schema";
 
 export interface ScribeLogFilter {
 	readonly level?: ScribeLogLevel;
@@ -20,6 +24,8 @@ export type NativeScribeBundle = object;
 export interface ScribeBinding {
 	readonly version: string;
 	readonly module?: ScribeNativeModule;
+	configure(config: Readonly<Record<string, unknown>>): void;
+	compileTemplate(template: object): object;
 	createBundle(options: CompiledScribeBundleOptions): NativeScribeBundle;
 	status(): ScribeStatus;
 	addLogSink(sink: (entry: ScribeLogEntry) => void): void;
@@ -32,6 +38,14 @@ export class NativeScribeBinding implements ScribeBinding {
 
 	constructor(readonly module: ScribeNativeModule) {
 		this.version = module.Version;
+	}
+
+	configure(config: Readonly<Record<string, unknown>>): void {
+		this.module.Configure(config as { readonly AutoSaveInterval?: number });
+	}
+
+	compileTemplate(template: object): object {
+		return compileNativeSchemaValue(this.module, template) as object;
 	}
 
 	createBundle(options: CompiledScribeBundleOptions): NativeScribeBundle {
@@ -69,11 +83,20 @@ export interface FakeScribeBundle {
 
 export class FakeScribeBinding implements ScribeBinding {
 	readonly createdBundles = new Array<FakeScribeBundle>();
+	readonly configurations = new Array<Readonly<Record<string, unknown>>>();
 	private readonly sinks = new Array<(entry: ScribeLogEntry) => void>();
 	private readonly logs = new Array<ScribeLogEntry>();
 	private currentStatus: ScribeStatus = "Healthy";
 
-	constructor(readonly version = "1.0.10-fake") {}
+	constructor(readonly version = "1.0.11-fake") {}
+
+	configure(config: Readonly<Record<string, unknown>>): void {
+		this.configurations.push(config);
+	}
+
+	compileTemplate(template: object): object {
+		return compileFakeSchemaValue(template) as object;
+	}
 
 	createBundle(options: CompiledScribeBundleOptions): FakeScribeBundle {
 		const sequence = this.createdBundles.size() + 1;
@@ -126,6 +149,158 @@ export class FakeScribeBinding implements ScribeBinding {
 			"fake.bundles": this.createdBundles.size(),
 		};
 	}
+}
+
+function compileNativeSchemaValue(
+	module: ScribeNativeModule,
+	value: unknown,
+): unknown {
+	if (isScribeSchemaDescriptor(value)) {
+		return compileNativeSchemaDescriptor(module, value);
+	}
+	if (!typeIs(value, "table")) return value;
+	if (isArrayTable(value)) {
+		const output = new Array<defined>();
+		for (const child of value as Array<defined>) {
+			output.push(compileNativeSchemaValue(module, child) as defined);
+		}
+		return output;
+	}
+	const output: Record<string | number, unknown> = {};
+	for (const [key, child] of pairs(value as Record<string | number, unknown>)) {
+		output[key] = compileNativeSchemaValue(module, child);
+	}
+	return output;
+}
+
+function compileNativeSchemaDescriptor(
+	module: ScribeNativeModule,
+	descriptor: ScribeRuntimeSchemaDescriptor,
+): unknown {
+	switch (descriptor.kind) {
+		case "number": {
+			const options = compileSchemaOptions(descriptor.options, {
+				min: "Min",
+				max: "Max",
+			});
+			return descriptor.integer === true
+				? module.Int(descriptor.defaultValue as number, options)
+				: module.Number(descriptor.defaultValue as number, options);
+		}
+		case "string":
+			return module.String(
+				descriptor.defaultValue as string,
+				compileSchemaOptions(descriptor.options, {
+					maxLength: "MaxLength",
+				}),
+			);
+		case "enum":
+			return module.Enum(
+				descriptor.defaultValue as string,
+				descriptor.members ?? [],
+			);
+		case "timed":
+			return module.Timed(
+				compileNativeSchemaValue(module, descriptor.inner),
+			);
+		case "dynamic":
+			return module.Dynamic(descriptor.factory!);
+		case "optional":
+			return module.Optional(
+				compileNativeSchemaValue(module, descriptor.inner),
+			);
+		case "array":
+			return module.ArrayOf(
+				compileNativeSchemaValue(module, descriptor.element),
+				compileSchemaOptions(descriptor.options, {
+					maxItems: "MaxItems",
+				}),
+			);
+		case "dictionary":
+			return module.DictOf(
+				compileNativeSchemaValue(module, descriptor.element),
+				compileSchemaOptions(descriptor.options, {
+					maxKeys: "MaxKeys",
+					maxKeyLength: "MaxKeyLength",
+				}),
+			);
+		case "visibility": {
+			const inner = compileNativeSchemaValue(module, descriptor.inner);
+			if (descriptor.visibility === "serverOnly") return module.ServerOnly(inner);
+			if (descriptor.visibility === "shared") return module.Shared(inner);
+			return module.Session(inner);
+		}
+		case "datatype": {
+			const declarator = (module as unknown as Record<string, unknown>)[
+				descriptor.datatype!
+			];
+			assert(
+				typeIs(declarator, "function"),
+				`[rovy/scribe] native Scribe ${descriptor.datatype} declarator is unavailable`,
+			);
+			return (declarator as (defaultValue: unknown) => unknown)(
+				descriptor.defaultValue,
+			);
+		}
+	}
+}
+
+function compileSchemaOptions(
+	options: object | undefined,
+	keys: Readonly<Record<string, string>>,
+): Readonly<Record<string, number>> | undefined {
+	if (options === undefined) return undefined;
+	const output: Record<string, number> = {};
+	let hasOptions = false;
+	for (const [key, value] of pairs(options as Record<string, unknown>)) {
+		const nativeKey = keys[key];
+		if (nativeKey !== undefined && typeIs(value, "number")) {
+			output[nativeKey] = value;
+			hasOptions = true;
+		}
+	}
+	return hasOptions ? output : undefined;
+}
+
+function compileFakeSchemaValue(value: unknown): unknown {
+	if (isScribeSchemaDescriptor(value)) {
+		const output: Record<string, unknown> = {
+			kind: value.kind,
+		};
+		if (value.defaultValue !== undefined) output.defaultValue = value.defaultValue;
+		if (value.options !== undefined) output.options = value.options;
+		if (value.members !== undefined) output.members = value.members;
+		if (value.visibility !== undefined) output.visibility = value.visibility;
+		if (value.datatype !== undefined) output.datatype = value.datatype;
+		if (value.factory !== undefined) output.factory = value.factory;
+		if (value.inner !== undefined) output.inner = compileFakeSchemaValue(value.inner);
+		if (value.element !== undefined) output.element = compileFakeSchemaValue(value.element);
+		return output;
+	}
+	if (!typeIs(value, "table")) return value;
+	if (isArrayTable(value)) {
+		const output = new Array<defined>();
+		for (const child of value as Array<defined>) {
+			output.push(compileFakeSchemaValue(child) as defined);
+		}
+		return output;
+	}
+	const output: Record<string | number, unknown> = {};
+	for (const [key, child] of pairs(value as Record<string | number, unknown>)) {
+		output[key] = compileFakeSchemaValue(child);
+	}
+	return output;
+}
+
+function isArrayTable(value: object): boolean {
+	let count = 0;
+	let maximum = 0;
+	for (const [key] of pairs(value as Record<string | number, unknown>)) {
+		if (!typeIs(key, "number") || key < 1 || key % 1 !== 0) return false;
+		count += 1;
+		if (key > maximum) maximum = key;
+	}
+	return count === maximum;
 }
 
 export type ScribeModuleResolver = () => ModuleScript | ScribeNativeModule | undefined;

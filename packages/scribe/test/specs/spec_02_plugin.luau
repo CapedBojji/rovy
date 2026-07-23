@@ -33,7 +33,7 @@ return function(TS, t)
 			t.expect(clientPlugin.runtime.boundary).toBe("client")
 			t.expect(serverPlugin.runtime.boundary).toBe("server")
 			t.expect(clientPlugin.runtime).never.toBe(serverPlugin.runtime)
-			t.expect(serverScribe.scribeVersion()).toBe("1.0.10")
+			t.expect(serverScribe.scribeVersion()).toBe("1.0.11")
 		end)
 
 		t.it("active facade delegates to the loaded server provider", function()
@@ -119,6 +119,184 @@ return function(TS, t)
 			app:start()
 
 			t.expect(created[1].options.Transport).toBe(transport)
+		end)
+
+		t.it("configures native Scribe once before bundles and rejects conflicts", function()
+			reset()
+			scheduleOnly()
+			help.registerData(serverScribe, "game/Configured", "Configured")
+			local module, _, _, configured = help.nativeModule()
+
+			local first = App.new()
+			first:addPlugin(serverScribe.ScribeServerPlugin.new({
+				module = module,
+				configure = { autoSaveInterval = 60 },
+			}))
+			first:start()
+			t.expect(#configured).toBe(1)
+			t.expect(configured[1].AutoSaveInterval).toBe(60)
+
+			local same = App.new()
+			same:addPlugin(serverScribe.ScribeServerPlugin.new({
+				module = module,
+				configure = { autoSaveInterval = 60 },
+			}))
+			same:start()
+			t.expect(#configured).toBe(1)
+
+			local conflicting = App.new()
+			conflicting:addPlugin(serverScribe.ScribeServerPlugin.new({
+				module = module,
+				configure = { autoSaveInterval = 30 },
+			}))
+			local ok, err = pcall(function()
+				conflicting:start()
+			end)
+			t.expect(ok).toBe(false)
+			t.expect(
+				tostring(err):find("conflicting process-wide", 1, true) ~= nil
+			).toBe(true)
+		end)
+
+		t.it("rejects first process configuration after a bundle exists", function()
+			reset()
+			scheduleOnly()
+			help.registerData(serverScribe, "game/LateConfig", "LateConfig")
+			local module = help.nativeModule()
+			local first = App.new()
+			first:addPlugin(serverScribe.ScribeServerPlugin.new({ module = module }))
+			first:start()
+
+			local late = App.new()
+			late:addPlugin(serverScribe.ScribeServerPlugin.new({
+				module = module,
+				configure = { autoSaveInterval = 60 },
+			}))
+			local ok, err = pcall(function()
+				late:start()
+			end)
+			t.expect(ok).toBe(false)
+			t.expect(
+				tostring(err):find("before any Scribe bundle", 1, true) ~= nil
+			).toBe(true)
+		end)
+
+		t.it("binds server-only construction callbacks before bundle creation", function()
+			reset()
+			scheduleOnly()
+			local data = serverScribe.rovyScribe:__data({
+				id = "game/Setup",
+				name = "Setup",
+				profileStoreIndex = "Setup",
+				profileKeyPrefix = "PLAYER_",
+				template = { Coins = serverScribe.s:int(0) },
+				options = {
+					Products = {
+						Coins = { Id = 123, Category = "Currency" },
+					},
+					Economy = {
+						Currencies = {
+							Coins = { Label = "Coins" },
+						},
+					},
+				},
+			})
+			local migration = function(value)
+				return { Coins = value.Coins + 1, Migrated = true }
+			end
+			local initializedValue
+			local initializedNew
+			local onPlayerInit = function(_, setupData, isNew)
+				initializedValue = setupData.Coins.get()
+				initializedNew = isNew
+				setupData.Coins.set(initializedValue + 5)
+			end
+			local profileStore = {}
+			local grantData
+			local module, created = help.nativeModule()
+			local plugin = serverScribe.ScribeServerPlugin.new({
+				module = module,
+				bundles = {
+					serverScribe.configureScribeServer(data, {
+						migrations = {
+							{ version = 2, migrate = migration },
+						},
+						onPlayerInit = onPlayerInit,
+						profileStore = profileStore,
+						productGrants = {
+							Coins = function(context)
+								context.data.Coins.increment(3)
+								grantData = context.data.Coins.get()
+							end,
+						},
+						economy = {
+							resolve = function()
+								return { Region = "US" }
+							end,
+							currencyResolve = {
+								Coins = function()
+									return { Source = "Test" }
+								end,
+							},
+							logEconomyEvent = function() end,
+						},
+					}),
+				},
+			})
+			local app = App.new()
+			app:addPlugin(plugin)
+			app:start()
+
+			local options = created[1].options
+			local migrated = { Coins = 4, Old = true }
+			options.Migrations[2](migrated)
+			t.expect(migrated.Coins).toBe(5)
+			t.expect(migrated.Migrated).toBe(true)
+			t.expect(migrated.Old).toBe(nil)
+			t.expect(options.OnPlayerInit).never.toBe(onPlayerInit)
+			local initializing = { Coins = 4 }
+			options.OnPlayerInit(nil, initializing, true)
+			t.expect(initializedValue).toBe(4)
+			t.expect(initializedNew).toBe(true)
+			t.expect(initializing.Coins).toBe(9)
+			t.expect(options.ProfileStore).toBe(profileStore)
+			t.expect(type(options.Products.Coins.Grant)).toBe("function")
+			local accessorValue = 5
+			local accessor = {
+				Coins = {
+					Clone = function()
+						return accessorValue
+					end,
+					Default = function()
+						return 0
+					end,
+					Set = function(value)
+						accessorValue = value
+					end,
+					Update = function(transform)
+						accessorValue = transform(accessorValue)
+					end,
+					Min = function()
+						return 0
+					end,
+					Max = function()
+						return nil
+					end,
+					Increment = function(amount)
+						accessorValue += amount
+					end,
+					Decrement = function(amount)
+						accessorValue -= amount
+					end,
+				},
+			}
+			options.Products.Coins.Grant(accessor)
+			t.expect(grantData).toBe(8)
+			t.expect(accessorValue).toBe(8)
+			t.expect(type(options.Economy.Resolve)).toBe("function")
+			t.expect(type(options.Economy.Currencies.Coins.Resolve)).toBe("function")
+			t.expect(type(options.Economy.LogEconomyEvent)).toBe("function")
+			t.expect(options.Template.Coins.NativeKind).toBe("Int")
 		end)
 
 		t.it("installs when only a Scribe external param is requested", function()

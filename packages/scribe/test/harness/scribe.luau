@@ -20,12 +20,42 @@ end
 function M.nativeModule(version)
 	local created = {}
 	local sinks = {}
+	local configured = {}
+	local declaratorCalls = {}
 	local module = {
-		Version = version or "1.0.10",
+		Version = version or "1.0.11",
 		Datatypes = {},
 		OnStatusChanged = {},
 		OnIssue = {},
+		__declaratorCalls = declaratorCalls,
 	}
+	local function declarator(name)
+		module[name] = function(...)
+			local args = { ... }
+			local marker = {
+				NativeKind = name,
+				Default = args[1],
+				Meta = args[2],
+			}
+			table.insert(declaratorCalls, {
+				name = name,
+				args = args,
+				result = marker,
+			})
+			return marker
+		end
+	end
+	for _, name in {
+		"ServerOnly", "Shared", "Session",
+		"Int", "Number", "String", "Enum", "Timed", "Dynamic", "Optional",
+		"ArrayOf", "DictOf",
+		"Vector3", "Vector2", "Vector3int16", "Vector2int16", "CFrame",
+		"Color3", "BrickColor", "UDim", "UDim2", "Rect", "NumberRange",
+		"NumberSequence", "ColorSequence", "DateTime", "EnumItem", "Font",
+		"PhysicalProperties",
+	} do
+		declarator(name)
+	end
 	module.new = function(options)
 		local sequence = #created + 1
 		local bundle = {
@@ -36,19 +66,22 @@ function M.nativeModule(version)
 		table.insert(created, bundle)
 		return bundle
 	end
-	function module:GetStatus()
+	module.GetStatus = function()
 		return "Healthy"
 	end
-	function module:AddLogSink(sink)
+	module.AddLogSink = function(sink)
 		table.insert(sinks, sink)
 	end
-	function module:GetRecentLogs()
+	module.GetRecentLogs = function()
 		return {}
 	end
-	function module:GetMetrics()
+	module.GetMetrics = function()
 		return { Bundles = #created }
 	end
-	return module, created, sinks
+	module.Configure = function(config)
+		table.insert(configured, config)
+	end
+	return module, created, sinks, configured
 end
 
 function M.sysClass(runFn)

@@ -30,6 +30,7 @@ import {
 	ScribeSharedShape,
 	ScribeNativeModule,
 	ScribeValueChanged,
+	configureScribeServer,
 	s,
 	scribeCommand,
 	scribeData,
@@ -89,6 +90,95 @@ export const PlayerData = scribeData({
 		saveInterval: 60,
 		boundsPolicy: "clamp",
 		wipeGuardPolicy: "block",
+	},
+});
+
+declare const vector3Value: Vector3;
+declare const vector2Value: Vector2;
+declare const vector3int16Value: Vector3int16;
+declare const vector2int16Value: Vector2int16;
+declare const cframeValue: CFrame;
+declare const color3Value: Color3;
+declare const brickColorValue: BrickColor;
+declare const udimValue: UDim;
+declare const udim2Value: UDim2;
+declare const rectValue: Rect;
+declare const numberRangeValue: NumberRange;
+declare const numberSequenceValue: NumberSequence;
+declare const colorSequenceValue: ColorSequence;
+declare const dateTimeValue: DateTime;
+declare const enumItemValue: EnumItem;
+declare const fontValue: Font;
+declare const physicalPropertiesValue: PhysicalProperties;
+
+export const DeclaratorCoverage = scribeData({
+	name: "DeclaratorCoverage",
+	profileStoreIndex: "DeclaratorCoverage",
+	profileKeyPrefix: "DECLARATOR_",
+	template: {
+		Integer: s.int(0, { min: -10, max: 10 }),
+		Number: s.number(0.5, { min: 0, max: 1 }),
+		String: s.string("", { maxLength: 32 }),
+		Enum: s.enum("A", ["A", "B"] as const),
+		Timed: s.timed(0),
+		Dynamic: s.dynamic(() => 1),
+		Optional: s.optional(s.string("")),
+		Array: s.arrayOf(s.int(0), { maxItems: 10 }),
+		Dictionary: s.dictOf(s.string(""), {
+			maxKeys: 10,
+			maxKeyLength: 16,
+		}),
+		Vector3: s.vector3(vector3Value),
+		Vector2: s.vector2(vector2Value),
+		Vector3int16: s.vector3int16(vector3int16Value),
+		Vector2int16: s.vector2int16(vector2int16Value),
+		CFrame: s.cframe(cframeValue),
+		Color3: s.color3(color3Value),
+		BrickColor: s.brickColor(brickColorValue),
+		UDim: s.udim(udimValue),
+		UDim2: s.udim2(udim2Value),
+		Rect: s.rect(rectValue),
+		NumberRange: s.numberRange(numberRangeValue),
+		NumberSequence: s.numberSequence(numberSequenceValue),
+		ColorSequence: s.colorSequence(colorSequenceValue),
+		DateTime: s.dateTime(dateTimeValue),
+		EnumItem: s.enumItem(enumItemValue),
+		Font: s.font(fontValue),
+		PhysicalProperties: s.physicalProperties(physicalPropertiesValue),
+		Server: s.serverOnly({ Hidden: true }),
+		Shared: s.shared({ Visible: true }),
+		Session: s.session({ Temporary: true }),
+	},
+	options: {
+		mode: "Mock",
+		targetUserId: 123,
+	},
+});
+
+export const PlayerDataServerSetup = configureScribeServer(PlayerData, {
+	migrations: [
+		{
+			version: 2,
+			migrate(data) {
+				return {
+					...data,
+					EquippedItem: undefined,
+				};
+			},
+		},
+	],
+	onPlayerInit(_player, data) {
+		const createdAt = data.CreatedAt.get();
+		data.CreatedAt.set(createdAt === 0 ? os.time() : createdAt);
+		data.Inventory.at("StarterSword").set({
+			Amount: 1,
+			Level: 1,
+		});
+	},
+	productGrants: {
+		Coins(context) {
+			context.data.Coins.increment(100);
+		},
 	},
 });
 
@@ -439,10 +529,10 @@ type _ReaderHasNoObserve = ExpectFalse<"observe" extends keyof ClientCoinsReader
 type _ReaderHasNoChanged = ExpectFalse<"changed" extends keyof ClientCoinsReader ? true : false>;
 type _SharedOnlyPublic = Expect<Equal<keyof SharedShape, "Public">>;
 type _SessionNotPersisted = ExpectFalse<"Runtime" extends keyof PersistedShape ? true : false>;
-type _NativeHasNoConfigure = ExpectFalse<"Configure" extends keyof ScribeNativeModule ? true : false>;
-type _NativeHasNoReason = ExpectFalse<"Reason" extends keyof ScribeNativeModule ? true : false>;
-type _ReceiptsHaveNoTryHandle = ExpectFalse<
+type _NativeHasConfigure = Expect<"Configure" extends keyof ScribeNativeModule ? true : false>;
+type _NativeHasReason = Expect<"Reason" extends keyof ScribeNativeModule ? true : false>;
+type _ReceiptsHaveTryHandle = Expect<
 	"tryHandleReceipt" extends keyof ScribeReceipts<typeof PlayerData> ? true : false
 >;
-type _OptionsHaveNoMode = ExpectFalse<"mode" extends keyof ScribeDataOptions ? true : false>;
-type _OptionsHaveNoTargetUserId = ExpectFalse<"targetUserId" extends keyof ScribeDataOptions ? true : false>;
+type _OptionsHaveMode = Expect<"mode" extends keyof ScribeDataOptions ? true : false>;
+type _OptionsHaveTargetUserId = Expect<"targetUserId" extends keyof ScribeDataOptions ? true : false>;

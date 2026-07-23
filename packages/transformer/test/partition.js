@@ -129,6 +129,8 @@ export class ServerTick {
 	const root = fixture(`
 declare function netEvent(options: object): (target: object) => void;
 declare function netFunction(options: object): (target: object) => void;
+declare function scribeEvent(options: object): (target: object) => void;
+declare function scribeCommand(options: object): (target: object) => void;
 declare function client(target: object): void;
 declare function system(options: object): (target: object) => void;
 declare class Update {}
@@ -141,6 +143,12 @@ export class SharedRequest {}
 
 export class SharedResult {}
 
+@scribeEvent({ data: {}, kind: "ready" })
+export class SharedScribeEvent {}
+
+@scribeCommand({ data: {}, result: SharedResult })
+export class SharedScribeCommand {}
+
 @client
 @system({ schedule: Update })
 class ClientConsumer {
@@ -149,7 +157,7 @@ class ClientConsumer {
 `);
 	fs.writeFileSync(
 		path.join(root, "src", "plugins", "combat", "index.ts"),
-		'export { SharedMessage, SharedRequest, SharedResult } from "./runtime";\n',
+		'export { SharedMessage, SharedRequest, SharedResult, SharedScribeEvent, SharedScribeCommand } from "./runtime";\n',
 	);
 	const prepared = preparePartitionedProject(root);
 	assert(prepared, "net declarations should partition without explicit boundary decorators");
@@ -157,6 +165,8 @@ class ClientConsumer {
 		SharedMessage: "shared",
 		SharedRequest: "shared",
 		SharedResult: "shared",
+		SharedScribeCommand: "shared",
+		SharedScribeEvent: "shared",
 	});
 	const sharedSource = fs.readFileSync(
 		path.join(prepared.stagingRoot, "plugins", "combat", "shared", "runtime.ts"),
@@ -164,6 +174,8 @@ class ClientConsumer {
 	);
 	assert.match(sharedSource, /class SharedMessage/);
 	assert.match(sharedSource, /class SharedRequest/);
+	assert.match(sharedSource, /class SharedScribeEvent/);
+	assert.match(sharedSource, /class SharedScribeCommand/);
 	fs.rmSync(root, { recursive: true, force: true });
 }
 

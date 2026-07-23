@@ -2,8 +2,8 @@
 
 This is the Phase 0 parity snapshot for `@rovy/scribe`.
 
-Baseline: `ericplane/scribe@1.0.10`, tag `v1.0.10`, commit
-`75ca11285e631787ac4386aaef0e6f702893c165` (2026-07-21).
+Baseline: `ericplane/scribe@1.0.11`, tag `v1.0.11`, commit
+`4253d303f3ea9e70b362d9e1e498b805ac3a8d01` (2026-07-23).
 
 Every row has exactly one primary classification:
 
@@ -29,6 +29,12 @@ transport pass-through, and diagnostics proxy. It changes no primary parity
 classification. Schema lowering, native accessors, writers, events, commands,
 jobs, and native integration coverage remain incomplete.
 
+Phase 3 added `scribeData`, `@scribeCommand`, and `@scribeEvent` lowering,
+boundary-specific external parameter IDs, schema/configuration diagnostics,
+one-to-one native declarator compilation, process configuration, and
+construction-time server setup. Reader/writer/event/job runtime coverage remains
+incomplete.
+
 ## Top-level Scribe module
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
@@ -36,41 +42,41 @@ jobs, and native integration coverage remain incomplete.
 | `Version` | first-class | `scribeVersion()` and binding version | Binding/runtime unit coverage Phase 2; native integration pending |
 | `new` | first-class | `scribeData` declaration plus plugin-owned bundle construction | Fake-binding runtime coverage Phase 2; native integration pending |
 | callable `Scribe(options)` | first-class | Same mapping as `new`; game code never constructs a second wrapper state | Fake-binding runtime coverage Phase 2; native integration pending |
-| `ServerOnly` | first-class | `s.serverOnly` | Shape projection fixture |
-| `Shared` | first-class | `s.shared` | Shape projection fixture |
-| `Session` | first-class | `s.session` | Shape projection fixture |
-| `Int` | first-class | `s.int` | Declaration fixture |
-| `Number` | first-class | `s.number` | Type declared |
-| `String` | first-class | `s.string` | Declaration fixture |
-| `Enum` | first-class | `s.enum` | Type declared |
-| `Timed` | first-class | `s.timed` | Declaration fixture |
-| `Dynamic` | first-class | `s.dynamic` | Declaration fixture |
-| `Optional` | first-class | `s.optional` | Declaration fixture |
-| `ArrayOf` | first-class | `s.arrayOf` | Type declared |
-| `DictOf` | first-class | `s.dictOf` | Declaration fixture |
-| `Vector3` | first-class | `s.vector3` | Declaration fixture |
-| `Vector2` | first-class | `s.vector2` | Type declared |
-| `Vector3int16` | first-class | `s.vector3int16` | Type declared |
-| `Vector2int16` | first-class | `s.vector2int16` | Type declared |
-| `CFrame` | first-class | `s.cframe` | Type declared |
-| `Color3` | first-class | `s.color3` | Type declared |
-| `BrickColor` | first-class | `s.brickColor` | Type declared |
-| `UDim` | first-class | `s.udim` | Type declared |
-| `UDim2` | first-class | `s.udim2` | Type declared |
-| `Rect` | first-class | `s.rect` | Type declared |
-| `NumberRange` | first-class | `s.numberRange` | Type declared |
-| `NumberSequence` | first-class | `s.numberSequence` | Type declared |
-| `ColorSequence` | first-class | `s.colorSequence` | Type declared |
-| `DateTime` | first-class | `s.dateTime` | Type declared |
-| `EnumItem` | first-class | `s.enumItem` | Type declared |
-| `Font` | first-class | `s.font` | Type declared |
-| `PhysicalProperties` | first-class | `s.physicalProperties` | Type declared |
+| `ServerOnly` | first-class | `s.serverOnly` | Type projection and native declarator coverage Phase 3 |
+| `Shared` | first-class | `s.shared` | Type projection and native declarator coverage Phase 3 |
+| `Session` | first-class | `s.session` | Type projection and native declarator coverage Phase 3 |
+| `Int` | first-class | `s.int` | Type, transformer, and native declarator coverage Phase 3 |
+| `Number` | first-class | `s.number` | Type and native declarator coverage Phase 3 |
+| `String` | first-class | `s.string` | Type, transformer, and native declarator coverage Phase 3 |
+| `Enum` | first-class | `s.enum` | Type and native declarator coverage Phase 3 |
+| `Timed` | first-class | `s.timed` | Type and native declarator coverage Phase 3 |
+| `Dynamic` | first-class | `s.dynamic` | Type and native declarator coverage Phase 3 |
+| `Optional` | first-class | `s.optional` | Type and native declarator coverage Phase 3 |
+| `ArrayOf` | first-class | `s.arrayOf` | Type and native declarator coverage Phase 3 |
+| `DictOf` | first-class | `s.dictOf` | Type, transformer, and native declarator coverage Phase 3 |
+| `Vector3` | first-class | `s.vector3` | Type and native declarator coverage Phase 3 |
+| `Vector2` | first-class | `s.vector2` | Type and native declarator coverage Phase 3 |
+| `Vector3int16` | first-class | `s.vector3int16` | Type and native declarator coverage Phase 3 |
+| `Vector2int16` | first-class | `s.vector2int16` | Type and native declarator coverage Phase 3 |
+| `CFrame` | first-class | `s.cframe` | Type and native declarator coverage Phase 3 |
+| `Color3` | first-class | `s.color3` | Type and native declarator coverage Phase 3 |
+| `BrickColor` | first-class | `s.brickColor` | Type and native declarator coverage Phase 3 |
+| `UDim` | first-class | `s.udim` | Type and native declarator coverage Phase 3 |
+| `UDim2` | first-class | `s.udim2` | Type and native declarator coverage Phase 3 |
+| `Rect` | first-class | `s.rect` | Type and native declarator coverage Phase 3 |
+| `NumberRange` | first-class | `s.numberRange` | Type and native declarator coverage Phase 3 |
+| `NumberSequence` | first-class | `s.numberSequence` | Type and native declarator coverage Phase 3 |
+| `ColorSequence` | first-class | `s.colorSequence` | Type and native declarator coverage Phase 3 |
+| `DateTime` | first-class | `s.dateTime` | Type and native declarator coverage Phase 3 |
+| `EnumItem` | first-class | `s.enumItem` | Type and native declarator coverage Phase 3 |
+| `Font` | first-class | `s.font` | Type and native declarator coverage Phase 3 |
+| `PhysicalProperties` | first-class | `s.physicalProperties` | Type and native declarator coverage Phase 3 |
 | `Datatypes.IsSupported` | unsafe escape hatch | `ScribeUnsafe.datatypes`; migration/tooling only | Type declared; runtime Phase 10 |
 | `Datatypes.Pack` | unsafe escape hatch | `ScribeUnsafe.datatypes.pack` | Type declared; runtime Phase 10 |
 | `Datatypes.Unpack` | unsafe escape hatch | `ScribeUnsafe.datatypes.unpack` | Type declared; runtime Phase 10 |
 | `Datatypes.NONFINITE` | intentionally unsupported | Internal validation prefix, not a documented game API; exposing it would couple Rovy to an implementation detail | Negative public-surface type test required in Phase 10 |
-| `Reason` | intentionally unsupported | No such member exists in Scribe 1.0.10 | Negative native-binding type test in `__typecheck.ts`; target-version review required |
-| `Configure` | intentionally unsupported | No top-level configure function exists in Scribe 1.0.10 | Negative native-binding type test in `__typecheck.ts`; wrapper conflict checks remain separate |
+| `Reason` | first-class | Typed `ScribeReasonConstants` from the native module | Binding type coverage Phase 3; runtime export Phase 8 |
+| `Configure` | configuration pass-through | `ScribePlugin.configure`, exactly once before bundle construction | Binding and conflict unit coverage Phase 3 |
 | `GetStatus` | first-class | `ScribeDiagnostics.status` | Binding proxy/unit coverage Phase 2; signal/native coverage pending |
 | `OnStatusChanged` | Rovy event | `ScribeStatusChanged` | Event type declared; runtime Phase 10 |
 | `OnIssue` | Rovy event | `ScribeIssue` | Event type declared; runtime Phase 10 |
@@ -116,7 +122,6 @@ jobs, and native integration coverage remain incomplete.
 | `Find` | first-class | Array reader `find()` | Type declared |
 | `Has` | first-class | Array reader `has()` | Type declared |
 | `Count` | first-class | Array/dictionary reader `count()` | Fixture |
-| `Clear` | first-class | Buffered array/dictionary `clear()` | Type declared |
 | `OnInsert` | Rovy event | `ScribeArrayInserted` | Event type declared |
 | `OnRemove` | Rovy event | `ScribeArrayRemoved` | Event type declared |
 | `OnKeyAdded` | Rovy event | `ScribeKeyAdded` | Event fixture |
@@ -196,7 +201,7 @@ jobs, and native integration coverage remain incomplete.
 | `PromptGift` | Rovy job | `ScribeMonetization.promptGift`; native implementation waits for durable saves | Type declared |
 | `GetGiftCredits` | first-class | `ScribeMonetization.getGiftCredits` | Type declared |
 | `HandleReceipt` | Rovy job | Receipt service/setup bridge; must run outside scheduled systems and preserve fail-closed result | Type declared; setup contract unresolved |
-| `TryHandleReceipt` | intentionally unsupported | No such public method exists in Scribe 1.0.10; `NotProcessedYet` does not distinguish unknown products from retryable known products | Negative receipt-service type test in `__typecheck.ts`; upstream extension required |
+| `TryHandleReceipt` | Rovy job | `ScribeReceipts.tryHandleReceipt`; native 1.0.11 returns `nil` for unknown products | Type coverage Phase 3; runtime Phase 9 |
 | `Owns` | first-class | Cached ownership read; client remains non-authoritative | Type declared |
 | `OwnsAsync` | Rovy job | Server authoritative ownership check / client synced wait | Type declared |
 | `ObserveOwned` | Rovy event | `ScribeOwnershipChanged` | Event type declared |
@@ -273,8 +278,8 @@ jobs, and native integration coverage remain incomplete.
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
 | `UseMock` | configuration pass-through | `useMock` | Type declared |
-| `Mode` | intentionally unsupported | No `Mode` option exists in Scribe 1.0.10 | Negative options type test in `__typecheck.ts` |
-| `TargetUserId` | intentionally unsupported | No `TargetUserId` option exists in Scribe 1.0.10 | Negative options type test in `__typecheck.ts` |
+| `Mode` | configuration pass-through | `mode: "Live" | "Mock" | "NoSave"` | Type and transformer coverage Phase 3 |
+| `TargetUserId` | configuration pass-through | `targetUserId` | Type and transformer coverage Phase 3 |
 | `ViewedUserId` | configuration pass-through | `viewedUserId` | Type declared |
 | `OverriddenUserId` | configuration pass-through | `overriddenUserId` | Type declared |
 | `DontSave` | configuration pass-through | `dontSave` | Type declared |
@@ -291,8 +296,8 @@ jobs, and native integration coverage remain incomplete.
 | `ProfileKeyPrefix` | configuration pass-through | `profileKeyPrefix` (required) | Fixture |
 | `Transport` | configuration pass-through | Plugin `transport`; opaque buffer contract preserved | Type declared |
 | `TransportChannel` | configuration pass-through | `transportChannel`; derive from data ID when absent | Type declared |
-| `Migrations` | configuration pass-through | `configureScribeServer(...).migrations` | Type declared |
-| `OnPlayerInit` | configuration pass-through | `configureScribeServer(...).onPlayerInit` | Type declared |
+| `Migrations` | configuration pass-through | `configureScribeServer(...).migrations` | Typed replacement-to-native-mutation adapter coverage Phase 3 |
+| `OnPlayerInit` | configuration pass-through | Dedicated synchronous `ScribeInitializationTree`; native callback still runs before Ready | Type and raw-table adapter coverage Phase 3 |
 | `SaveInterval` | configuration pass-through | `saveInterval`; process-global conflict detection required | Fixture |
 | `ProfileStore` option | unsafe escape hatch | Setup-only explicit ProfileStore binding; raw access remains unsafe | Type declared |
 | `UseMock` | configuration pass-through | `useMock` | Type declared |

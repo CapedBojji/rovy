@@ -36,6 +36,8 @@ const DECORATORS = new Set([
 	"event",
 	"netEvent",
 	"netFunction",
+	"scribeEvent",
+	"scribeCommand",
 	"system",
 	"observer",
 	"monitor",
@@ -58,6 +60,8 @@ const RUNTIME_DECORATORS = new Set([
 	"event",
 	"netEvent",
 	"netFunction",
+	"scribeEvent",
+	"scribeCommand",
 	"system",
 	"observer",
 	"monitor",
@@ -68,7 +72,12 @@ const RUNTIME_DECORATORS = new Set([
 	"view",
 	"ui",
 ]);
-const SHARED_BY_DEFAULT_DECORATORS = new Set(["netEvent", "netFunction"]);
+const SHARED_BY_DEFAULT_DECORATORS = new Set([
+	"netEvent",
+	"netFunction",
+	"scribeEvent",
+	"scribeCommand",
+]);
 
 type MonitorMethod = "onEnter" | "onExit" | "onChange";
 
@@ -195,13 +204,20 @@ function transformVariableStatement(
 			return ts.visitEachChild(declaration, visitor, state.context);
 		}
 		const document = buildDocumentDeclaration(state, sourceFile, declaration.name, declaration.initializer);
-		if (document === undefined) return ts.visitEachChild(declaration, visitor, state.context);
+		const scribeData = buildScribeDataDeclaration(
+			state,
+			sourceFile,
+			declaration.name,
+			declaration.initializer,
+		);
+		const lowered = document ?? scribeData;
+		if (lowered === undefined) return ts.visitEachChild(declaration, visitor, state.context);
 		return ts.factory.updateVariableDeclaration(
 			declaration,
 			declaration.name,
 			declaration.exclamationToken,
 			declaration.type,
-			document,
+			lowered,
 		);
 	});
 	return ts.factory.updateVariableStatement(
@@ -212,6 +228,1212 @@ function transformVariableStatement(
 }
 
 type DocumentDeclarationKind = "player" | "keyed" | "shared";
+
+const SCRIBE_DATA_OPTION_KEYS = new Map<string, string>([
+	["saveInterval", "SaveInterval"],
+	["mode", "Mode"],
+	["targetUserId", "TargetUserId"],
+	["useMock", "UseMock"],
+	["viewedUserId", "ViewedUserId"],
+	["overriddenUserId", "OverriddenUserId"],
+	["dontSave", "DontSave"],
+	["resetData", "ResetData"],
+	["loadFailurePolicy", "LoadFailurePolicy"],
+	["versionAheadPolicy", "VersionAheadPolicy"],
+	["kickOnSessionEnd", "KickOnSessionEnd"],
+	["loadFailureMessage", "LoadFailureMessage"],
+	["sessionEndMessage", "SessionEndMessage"],
+	["commandRateLimit", "CommandRateLimit"],
+	["requestTimeout", "RequestTimeout"],
+	["maxInboundBytes", "MaxInboundBytes"],
+	["boundsPolicy", "BoundsPolicy"],
+	["wipeGuardPolicy", "WipeGuardPolicy"],
+	["wipeGuardShrinkRatio", "WipeGuardShrinkRatio"],
+	["logLevel", "LogLevel"],
+	["statusThresholds", "StatusThresholds"],
+	["banner", "Banner"],
+	["transportChannel", "TransportChannel"],
+	["purchaseLog", "PurchaseLog"],
+	["leaderboards", "Leaderboards"],
+	["products", "Products"],
+	["passes", "Passes"],
+	["perks", "Perks"],
+	["ownReceipts", "OwnReceipts"],
+	["economy", "Economy"],
+]);
+
+const SCRIBE_GIFTING_OPTION_KEYS = new Map<string, string>([
+	["cooldown", "GiftCooldown"],
+	["maxPending", "GiftMaxPending"],
+	["intentTtl", "GiftIntentTTL"],
+	["allowDuplicate", "AllowDuplicateGifts"],
+	["noIntentPolicy", "NoGiftIntentPolicy"],
+]);
+
+const SCRIBE_PURCHASE_LOG_KEYS = [
+	"robuxCap",
+	"inGameCap",
+	"replicateRobux",
+	"replicateInGame",
+	"categories",
+] as const;
+
+const SCRIBE_STATUS_THRESHOLD_KEYS = [
+	"failWindow",
+	"failCount",
+	"recoverStreak",
+] as const;
+
+const SCRIBE_LEADERBOARD_KEYS = [
+	"stat",
+	"limit",
+	"scale",
+	"replicate",
+	"storeName",
+] as const;
+
+const SCRIBE_PRODUCT_KEYS = ["id", "category", "grants"] as const;
+const SCRIBE_PASS_KEYS = ["id", "category"] as const;
+const SCRIBE_ECONOMY_KEYS = ["prefix", "currencies"] as const;
+const SCRIBE_ECONOMY_CURRENCY_KEYS = ["label", "fields"] as const;
+const SCRIBE_ECONOMY_FIELD_KEYS = ["name", "prefix"] as const;
+
+const SCRIBE_PASCAL_NESTED_KEYS = new Map<string, string>([
+	["robuxCap", "RobuxCap"],
+	["inGameCap", "InGameCap"],
+	["replicateRobux", "ReplicateRobux"],
+	["replicateInGame", "ReplicateInGame"],
+	["categories", "Categories"],
+	["failWindow", "FailWindow"],
+	["failCount", "FailCount"],
+	["recoverStreak", "RecoverStreak"],
+	["stat", "Stat"],
+	["limit", "Limit"],
+	["scale", "Scale"],
+	["replicate", "Replicate"],
+	["storeName", "StoreName"],
+	["id", "Id"],
+	["category", "Category"],
+	["grants", "Grants"],
+	["prefix", "Prefix"],
+	["currencies", "Currencies"],
+	["label", "Label"],
+	["fields", "Fields"],
+	["name", "Name"],
+]);
+
+const SCRIBE_ROOT_RESERVED_NAMES = new Set([
+	"WaitForData",
+	"GetState",
+	"Get",
+	"Batch",
+	"Transaction",
+	"Flush",
+	"GetSaveInfo",
+	"GetOffline",
+	"UpdateOffline",
+	"ListVersions",
+	"GetVersion",
+	"RestoreVersion",
+	"Erase",
+	"Export",
+	"ProfileStore",
+	"Raw",
+	"Command",
+	"IsReady",
+	"Request",
+	"GetLeaderboard",
+	"GetMyRank",
+	"OnLeaderboard",
+	"GetServiceStatus",
+	"OnServiceStatus",
+	"GetShared",
+	"OnSharedChanged",
+	"Owns",
+	"OwnsAsync",
+	"ObserveOwned",
+	"OnOwnershipChanged",
+	"GetGiftCredits",
+	"GetPurchases",
+	"Mock",
+	"MockCommand",
+]);
+
+const SCRIBE_ACCESSOR_RESERVED_NAMES = new Set([
+	"Get",
+	"Clone",
+	"Default",
+	"Set",
+	"Update",
+	"Observe",
+	"Changed",
+	"Increment",
+	"Decrement",
+	"Min",
+	"Max",
+	"Toggle",
+	"Insert",
+	"Remove",
+	"RemoveValue",
+	"Find",
+	"Has",
+	"Count",
+	"Clear",
+	"OnInsert",
+	"OnRemove",
+	"OnKeyAdded",
+	"OnKeyRemoved",
+	"SetTimed",
+	"ExtendTimed",
+	"Active",
+]);
+
+function buildScribeDataDeclaration(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	name: ts.Identifier,
+	initializer: ts.Expression,
+): ts.Expression | undefined {
+	if (!ts.isCallExpression(initializer)) return undefined;
+	if (state.resolveScribeName(sourceFile, initializer.expression) !== "scribeData") return undefined;
+	const declaration = initializer.arguments[0];
+	if (!declaration || !ts.isObjectLiteralExpression(declaration)) {
+		state.diagnostic(initializer, "[rovy/scribe] scribeData requires one declaration object");
+		return initializer;
+	}
+
+	const dataName = requiredScribeOption(state, declaration, "name", initializer);
+	const profileStoreIndex = requiredScribeOption(
+		state,
+		declaration,
+		"profileStoreIndex",
+		initializer,
+	);
+	const profileKeyPrefix = requiredScribeOption(
+		state,
+		declaration,
+		"profileKeyPrefix",
+		initializer,
+	);
+	const template = requiredScribeOption(state, declaration, "template", initializer);
+	validateRequiredNonEmptyString(state, dataName, "name");
+	validateRequiredNonEmptyString(state, profileStoreIndex, "profileStoreIndex");
+	validateRequiredNonEmptyString(state, profileKeyPrefix, "profileKeyPrefix");
+	if (ts.isStringLiteral(dataName) && dataName.text.length > 0) {
+		state.registerScribeDataName(dataName.text, name);
+	}
+	if (ts.isObjectLiteralExpression(template)) {
+		validateScribeTemplate(state, sourceFile, template);
+	} else if (template.kind !== ts.SyntaxKind.UndefinedKeyword) {
+		state.diagnostic(template, "[rovy/scribe] template must be an inline object literal");
+	}
+	const options = propertyValue(declaration, "options");
+	if (options !== undefined && !ts.isObjectLiteralExpression(options)) {
+		state.diagnostic(options, "[rovy/scribe] options must be an inline object literal");
+	}
+	validateScribeDataDeclarationKeys(state, declaration);
+
+	return call(field(state.addRovyScribeImport(sourceFile), "__data"), [
+		obj(
+			[
+				prop("id", str(scribeDataIdForDeclaration(state, name))),
+				prop("name", dataName),
+				prop("profileStoreIndex", profileStoreIndex),
+				prop("profileKeyPrefix", profileKeyPrefix),
+				prop("template", template),
+				prop(
+					"options",
+					options !== undefined && ts.isObjectLiteralExpression(options)
+						? compileScribeDataOptions(state, options, template)
+						: obj([], false),
+				),
+			],
+			true,
+		),
+	]);
+}
+
+function validateRequiredNonEmptyString(
+	state: TransformState,
+	value: ts.Expression,
+	key: string,
+): void {
+	if (!ts.isStringLiteral(value) || value.text.length === 0) {
+		state.diagnostic(
+			value,
+			`[rovy/scribe] scribeData '${key}' must be a non-empty string literal`,
+		);
+	}
+}
+
+function requiredScribeOption(
+	state: TransformState,
+	options: ts.ObjectLiteralExpression,
+	key: string,
+	node: ts.Node,
+): ts.Expression {
+	const value = propertyValue(options, key);
+	if (value !== undefined) return value;
+	state.diagnostic(node, `[rovy/scribe] scribeData option '${key}' is required`);
+	return id("undefined");
+}
+
+function validateScribeDataDeclarationKeys(
+	state: TransformState,
+	declaration: ts.ObjectLiteralExpression,
+): void {
+	const known = new Set(["name", "profileStoreIndex", "profileKeyPrefix", "template", "options"]);
+	for (const property of declaration.properties) {
+		if (ts.isSpreadAssignment(property)) {
+			state.diagnostic(property, "[rovy/scribe] scribeData declarations cannot use spread properties");
+			continue;
+		}
+		const key = propertyNameText(property.name);
+		if (key === undefined) {
+			state.diagnostic(property, "[rovy/scribe] scribeData declaration keys must be static");
+		} else if (!known.has(key)) {
+			state.diagnostic(property, `[rovy/scribe] unknown scribeData key '${key}'`);
+		}
+	}
+}
+
+function compileScribeDataOptions(
+	state: TransformState,
+	options: ts.ObjectLiteralExpression,
+	template: ts.Expression,
+): ts.ObjectLiteralExpression {
+	const compiled: ts.ObjectLiteralElementLike[] = [];
+	for (const property of options.properties) {
+		if (ts.isSpreadAssignment(property)) {
+			state.diagnostic(property, "[rovy/scribe] options cannot use spread properties");
+			continue;
+		}
+		const key = propertyNameText(property.name);
+		if (key === undefined) {
+			state.diagnostic(property, "[rovy/scribe] option keys must be static");
+			continue;
+		}
+		const value = propertyInitializer(property);
+		if (value === undefined) {
+			state.diagnostic(property, `[rovy/scribe] option '${key}' requires a value`);
+			continue;
+		}
+		if (key === "gifting") {
+			if (!ts.isObjectLiteralExpression(value)) {
+				state.diagnostic(value, "[rovy/scribe] gifting must be an inline object literal");
+				continue;
+			}
+			validateScribeGiftingValues(state, value);
+			for (const giftProperty of value.properties) {
+				if (ts.isSpreadAssignment(giftProperty)) {
+					state.diagnostic(giftProperty, "[rovy/scribe] gifting cannot use spread properties");
+					continue;
+				}
+				const giftKey = propertyNameText(giftProperty.name);
+				const nativeKey = giftKey === undefined
+					? undefined
+					: SCRIBE_GIFTING_OPTION_KEYS.get(giftKey);
+				const giftValue = propertyInitializer(giftProperty);
+				if (nativeKey === undefined) {
+					state.diagnostic(giftProperty, `[rovy/scribe] unknown gifting option '${giftKey ?? "<computed>"}'`);
+				} else if (giftValue !== undefined) {
+					compiled.push(
+						prop(nativeKey, compileScribeOptionValueForKey(giftKey!, giftValue)),
+					);
+				}
+			}
+			continue;
+		}
+		const nativeKey = SCRIBE_DATA_OPTION_KEYS.get(key);
+		if (nativeKey === undefined) {
+			state.diagnostic(property, `[rovy/scribe] unknown Scribe option '${key}'`);
+			continue;
+		}
+		validateScribeDataOptionValue(state, key, value, template);
+		compiled.push(prop(nativeKey, compileScribeOptionValueForKey(key, value)));
+	}
+	return obj(compiled, true);
+}
+
+function validateScribeDataOptionValue(
+	state: TransformState,
+	key: string,
+	value: ts.Expression,
+	template: ts.Expression,
+): void {
+	switch (key) {
+		case "mode":
+			validateStringOption(
+				state,
+				value,
+				["Live", "Mock", "NoSave"],
+				"[rovy/scribe] mode",
+			);
+			return;
+		case "loadFailurePolicy":
+			validateStringOption(
+				state,
+				value,
+				["kick", "wait"],
+				"[rovy/scribe] loadFailurePolicy",
+			);
+			return;
+		case "versionAheadPolicy":
+			validateStringOption(
+				state,
+				value,
+				["kick", "allow"],
+				"[rovy/scribe] versionAheadPolicy",
+			);
+			return;
+		case "boundsPolicy":
+			validateStringOption(
+				state,
+				value,
+				["clamp", "reject"],
+				"[rovy/scribe] boundsPolicy",
+			);
+			return;
+		case "wipeGuardPolicy":
+			validateStringOption(
+				state,
+				value,
+				["warn", "block"],
+				"[rovy/scribe] wipeGuardPolicy",
+			);
+			return;
+		case "logLevel":
+			validateStringOption(
+				state,
+				value,
+				["Debug", "Info", "Warn", "Error", "Fatal"],
+				"[rovy/scribe] logLevel",
+			);
+			return;
+		case "purchaseLog":
+			validateInlineScribeObject(
+				state,
+				value,
+				SCRIBE_PURCHASE_LOG_KEYS,
+				"purchaseLog",
+			);
+			return;
+		case "statusThresholds":
+			validateInlineScribeObject(
+				state,
+				value,
+				SCRIBE_STATUS_THRESHOLD_KEYS,
+				"statusThresholds",
+			);
+			return;
+		case "leaderboards":
+			validateScribeNamedConfigs(
+				state,
+				value,
+				"leaderboards",
+				SCRIBE_LEADERBOARD_KEYS,
+				(name, config) => {
+					const stat = propertyValue(config, "stat");
+					if (stat === undefined || !ts.isStringLiteral(stat)) {
+						state.diagnostic(
+							stat ?? config,
+							`[rovy/scribe] leaderboard '${name}' requires a string literal stat`,
+						);
+					} else if (
+						!scribeTemplatePathIsNumeric(state, template, stat.text)
+					) {
+						state.diagnostic(
+							stat,
+							`[rovy/scribe] leaderboard '${name}' stat '${stat.text}' must reference a numeric schema leaf`,
+						);
+					}
+				},
+			);
+			return;
+		case "products":
+			validateScribeNamedConfigs(
+				state,
+				value,
+				"products",
+				SCRIBE_PRODUCT_KEYS,
+				(name, config) => {
+					if (propertyValue(config, "id") === undefined) {
+						state.diagnostic(
+							config,
+							`[rovy/scribe] product '${name}' requires id`,
+						);
+					}
+				},
+			);
+			return;
+		case "passes":
+			validateScribeNamedConfigs(
+				state,
+				value,
+				"passes",
+				SCRIBE_PASS_KEYS,
+				(name, config) => {
+					if (propertyValue(config, "id") === undefined) {
+						state.diagnostic(
+							config,
+							`[rovy/scribe] pass '${name}' requires id`,
+						);
+					}
+				},
+			);
+			return;
+		case "economy":
+			validateScribeEconomyOption(state, value);
+			return;
+		case "perks":
+			if (
+				!ts.isArrayLiteralExpression(value) ||
+				value.elements.some(
+					(element) =>
+						ts.isSpreadElement(element) ||
+						!ts.isStringLiteralLike(element),
+				)
+			) {
+				state.diagnostic(
+					value,
+					"[rovy/scribe] perks must be an inline array of string literals",
+				);
+			}
+			return;
+	}
+}
+
+function validateScribeGiftingValues(
+	state: TransformState,
+	value: ts.ObjectLiteralExpression,
+): void {
+	const policy = propertyValue(value, "noIntentPolicy");
+	if (policy !== undefined) {
+		validateStringOption(
+			state,
+			policy,
+			["grantOrCredit", "hold"],
+			"[rovy/scribe] gifting.noIntentPolicy",
+		);
+	}
+}
+
+function validateInlineScribeObject(
+	state: TransformState,
+	value: ts.Expression,
+	allowed: ReadonlyArray<string>,
+	label: string,
+): ts.ObjectLiteralExpression | undefined {
+	if (!ts.isObjectLiteralExpression(value)) {
+		state.diagnostic(
+			value,
+			`[rovy/scribe] ${label} must be an inline object literal`,
+		);
+		return undefined;
+	}
+	validateOnlyKnownObjectKeys(
+		state,
+		value,
+		allowed,
+		`[rovy/scribe] ${label}`,
+	);
+	return value;
+}
+
+function validateScribeNamedConfigs(
+	state: TransformState,
+	value: ts.Expression,
+	label: string,
+	allowed: ReadonlyArray<string>,
+	validate: (name: string, config: ts.ObjectLiteralExpression) => void,
+): void {
+	if (!ts.isObjectLiteralExpression(value)) {
+		state.diagnostic(
+			value,
+			`[rovy/scribe] ${label} must be an inline object literal`,
+		);
+		return;
+	}
+	for (const property of value.properties) {
+		if (ts.isSpreadAssignment(property)) {
+			state.diagnostic(
+				property,
+				`[rovy/scribe] ${label} cannot use spread properties`,
+			);
+			continue;
+		}
+		const name = propertyNameText(property.name);
+		const config = propertyInitializer(property);
+		if (
+			name === undefined ||
+			config === undefined ||
+			!ts.isObjectLiteralExpression(config)
+		) {
+			state.diagnostic(
+				property,
+				`[rovy/scribe] ${label} entries must be named inline object literals`,
+			);
+			continue;
+		}
+		validateOnlyKnownObjectKeys(
+			state,
+			config,
+			allowed,
+			`[rovy/scribe] ${label}.${name}`,
+		);
+		validate(name, config);
+	}
+}
+
+function validateScribeEconomyOption(
+	state: TransformState,
+	value: ts.Expression,
+): void {
+	const economy = validateInlineScribeObject(
+		state,
+		value,
+		SCRIBE_ECONOMY_KEYS,
+		"economy",
+	);
+	if (economy === undefined) return;
+	const currencies = propertyValue(economy, "currencies");
+	if (currencies === undefined) return;
+	validateScribeNamedConfigs(
+		state,
+		currencies,
+		"economy.currencies",
+		SCRIBE_ECONOMY_CURRENCY_KEYS,
+		(_name, currency) => {
+			const fields = propertyValue(currency, "fields");
+			if (fields === undefined) return;
+			if (!ts.isArrayLiteralExpression(fields)) {
+				state.diagnostic(
+					fields,
+					"[rovy/scribe] economy currency fields must be an inline array",
+				);
+				return;
+			}
+			for (const field of fields.elements) {
+				if (ts.isStringLiteralLike(field)) continue;
+				if (!ts.isObjectLiteralExpression(field)) {
+					state.diagnostic(
+						field,
+						"[rovy/scribe] economy fields must be strings or inline declarations",
+					);
+					continue;
+				}
+				validateOnlyKnownObjectKeys(
+					state,
+					field,
+					SCRIBE_ECONOMY_FIELD_KEYS,
+					"[rovy/scribe] economy field",
+				);
+				const name = propertyValue(field, "name");
+				if (name === undefined || !ts.isStringLiteralLike(name)) {
+					state.diagnostic(
+						name ?? field,
+						"[rovy/scribe] economy field requires a string literal name",
+					);
+				}
+			}
+		},
+	);
+}
+
+function scribeTemplatePathIsNumeric(
+	state: TransformState,
+	template: ts.Expression,
+	path: string,
+): boolean {
+	let current = template;
+	for (const segment of path.split(".")) {
+		current = unwrapScribeSchemaExpression(
+			state,
+			current.getSourceFile(),
+			current,
+		).expression;
+		if (!ts.isObjectLiteralExpression(current)) return false;
+		const child = propertyValue(current, segment);
+		if (child === undefined) return false;
+		current = child;
+	}
+	current = unwrapScribeSchemaExpression(
+		state,
+		current.getSourceFile(),
+		current,
+	).expression;
+	const helper = scribeSchemaHelperCall(
+		state,
+		current.getSourceFile(),
+		current,
+	);
+	if (helper === "int" || helper === "number") return true;
+	if (ts.isNumericLiteral(current)) return true;
+	if (
+		helper === "dynamic" &&
+		ts.isCallExpression(current) &&
+		current.arguments[0] !== undefined
+	) {
+		const factoryType = state.typeChecker?.getTypeAtLocation(
+			current.arguments[0],
+		);
+		const returnType = factoryType
+			?.getCallSignatures()[0]
+			?.getReturnType();
+		return returnType !== undefined &&
+			(returnType.flags & ts.TypeFlags.NumberLike) !== 0;
+	}
+	return false;
+}
+
+function unwrapScribeSchemaExpression(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	expression: ts.Expression,
+): { readonly expression: ts.Expression } {
+	let current = expression;
+	while (true) {
+		const helper = scribeSchemaHelperCall(state, sourceFile, current);
+		if (
+			helper !== "serverOnly" &&
+			helper !== "shared" &&
+			helper !== "session" &&
+			helper !== "optional"
+		) {
+			break;
+		}
+		const inner = (current as ts.CallExpression).arguments[0];
+		if (inner === undefined) break;
+		current = inner;
+	}
+	return { expression: current };
+}
+
+function compileScribeOptionValueForKey(
+	key: string,
+	value: ts.Expression,
+): ts.Expression {
+	if (key === "purchaseLog" && ts.isObjectLiteralExpression(value)) {
+		return obj(
+			value.properties.map((property) => {
+				if (ts.isSpreadAssignment(property)) return property;
+				const propertyKey = propertyNameText(property.name);
+				const initial = propertyInitializer(property) ?? id("undefined");
+				return prop(
+					propertyKey === "categories"
+						? "PurchaseLogCategories"
+						: SCRIBE_PASCAL_NESTED_KEYS.get(propertyKey ?? "") ??
+							propertyKey ??
+							"Unknown",
+					compileScribeOptionValue(initial),
+				);
+			}),
+			true,
+		);
+	}
+	if (ts.isStringLiteral(value)) {
+		const translated = new Map<string, Readonly<Record<string, string>>>([
+			["loadFailurePolicy", { kick: "Kick", wait: "Wait" }],
+			["versionAheadPolicy", { kick: "Kick", allow: "Allow" }],
+			["boundsPolicy", { clamp: "Clamp", reject: "Reject" }],
+			["wipeGuardPolicy", { warn: "Warn", block: "Block" }],
+			["noIntentPolicy", { grantOrCredit: "GrantOrCredit", hold: "Hold" }],
+		]).get(key)?.[value.text];
+		if (translated !== undefined) return str(translated);
+	}
+	return compileScribeOptionValue(value);
+}
+
+function compileScribeOptionValue(value: ts.Expression): ts.Expression {
+	if (ts.isObjectLiteralExpression(value)) {
+		const properties: ts.ObjectLiteralElementLike[] = [];
+		for (const property of value.properties) {
+			if (ts.isSpreadAssignment(property)) {
+				properties.push(property);
+				continue;
+			}
+			const key = propertyNameText(property.name);
+			const initial = propertyInitializer(property);
+			if (key !== undefined && initial !== undefined) {
+				properties.push(
+					prop(
+						SCRIBE_PASCAL_NESTED_KEYS.get(key) ?? key,
+						compileScribeOptionValue(initial),
+					),
+				);
+			}
+		}
+		return obj(properties, value.properties.length > 1);
+	}
+	if (ts.isArrayLiteralExpression(value)) {
+		return arr(
+			value.elements.map((element) =>
+				ts.isSpreadElement(element)
+					? element
+					: compileScribeOptionValue(element)),
+			value.elements.length > 2,
+		);
+	}
+	return value;
+}
+
+function propertyInitializer(
+	property: ts.ObjectLiteralElementLike,
+): ts.Expression | undefined {
+	if (ts.isPropertyAssignment(property)) return property.initializer;
+	if (ts.isShorthandPropertyAssignment(property)) return property.name;
+	return undefined;
+}
+
+function scribeDataIdForDeclaration(state: TransformState, node: ts.Node): string {
+	const name = ts.isIdentifier(node) ? node.text : node.getText();
+	return `${state.stableIdForNode(node)}/${name}`;
+}
+
+interface ScribeSchemaValidationContext {
+	readonly path: ReadonlyArray<string>;
+	readonly depth: number;
+	readonly rootField: boolean;
+	readonly inTypedElement: boolean;
+	readonly inSession: boolean;
+	readonly inOpaqueContainer: boolean;
+}
+
+function validateScribeTemplate(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	template: ts.ObjectLiteralExpression,
+): void {
+	for (const property of template.properties) {
+		if (ts.isSpreadAssignment(property)) {
+			state.diagnostic(property, "[rovy/scribe] template objects cannot use spread properties");
+			continue;
+		}
+		const key = propertyNameText(property.name);
+		const value = propertyInitializer(property);
+		if (key === undefined || value === undefined) {
+			state.diagnostic(property, "[rovy/scribe] template fields require static names and values");
+			continue;
+		}
+		if (SCRIBE_ROOT_RESERVED_NAMES.has(key)) {
+			state.diagnostic(property.name, `[rovy/scribe] root field '${key}' collides with the native Scribe API`);
+		}
+		validateScribeSchemaExpression(state, sourceFile, value, {
+			path: [key],
+			depth: 1,
+			rootField: true,
+			inTypedElement: false,
+			inSession: false,
+			inOpaqueContainer: false,
+		});
+	}
+}
+
+function validateScribeSchemaExpression(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	expression: ts.Expression,
+	context: ScribeSchemaValidationContext,
+): void {
+	if (context.depth > 25) {
+		state.diagnostic(
+			expression,
+			`[rovy/scribe] schema path '${context.path.join(".")}' exceeds Scribe's maximum depth of 25`,
+		);
+		return;
+	}
+
+	const helper = scribeSchemaHelperCall(state, sourceFile, expression);
+	if (helper !== undefined) {
+		validateScribeSchemaHelper(state, sourceFile, expression as ts.CallExpression, helper, context);
+		return;
+	}
+
+	if (ts.isObjectLiteralExpression(expression)) {
+		for (const property of expression.properties) {
+			if (ts.isSpreadAssignment(property)) {
+				state.diagnostic(property, "[rovy/scribe] schema objects cannot use spread properties");
+				continue;
+			}
+			const key = propertyNameText(property.name);
+			const value = propertyInitializer(property);
+			if (key === undefined || value === undefined) {
+				state.diagnostic(property, "[rovy/scribe] schema fields require static names and values");
+				continue;
+			}
+			if (SCRIBE_ACCESSOR_RESERVED_NAMES.has(key)) {
+				state.diagnostic(
+					property.name,
+					`[rovy/scribe] field '${[...context.path, key].join(".")}' collides with a Scribe accessor method`,
+				);
+			}
+			validateScribeSchemaExpression(state, sourceFile, value, {
+				...context,
+				path: [...context.path, key],
+				depth: context.depth + 1,
+				rootField: false,
+			});
+		}
+		return;
+	}
+
+	if (ts.isArrayLiteralExpression(expression)) {
+		for (const element of expression.elements) {
+			if (ts.isSpreadElement(element)) {
+				state.diagnostic(element, "[rovy/scribe] persisted array defaults cannot use spread elements");
+				continue;
+			}
+			if (containsScribeSchemaHelper(state, sourceFile, element)) {
+				state.diagnostic(
+					element,
+					"[rovy/scribe] declarators inside plain arrays are ambiguous; use s.arrayOf(...)",
+				);
+			}
+			validateSerializableScribeDefault(state, element, context.path);
+		}
+		return;
+	}
+
+	validateSerializableScribeDefault(state, expression, context.path);
+}
+
+function validateScribeSchemaHelper(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	callExpression: ts.CallExpression,
+	helper: string,
+	context: ScribeSchemaValidationContext,
+): void {
+	const args = callExpression.arguments;
+	const first = args[0];
+	const option = args[1];
+	const at = context.path.join(".");
+	const forbiddenInElement = helper === "timed" ||
+		helper === "dynamic" ||
+		helper === "shared" ||
+		helper === "session";
+	if (context.inTypedElement && forbiddenInElement) {
+		state.diagnostic(
+			callExpression,
+			`[rovy/scribe] s.${helper} is not supported inside typed container elements at '${at}'`,
+		);
+	}
+	if (context.inOpaqueContainer) {
+		state.diagnostic(
+			callExpression,
+			`[rovy/scribe] s.${helper} cannot appear inside a plain persisted container at '${at}'`,
+		);
+	}
+
+	switch (helper) {
+		case "int":
+		case "number": {
+			if (first === undefined) {
+				state.diagnostic(callExpression, `[rovy/scribe] s.${helper} requires a numeric default`);
+			} else {
+				validateFiniteNumericLiteral(state, first, `s.${helper} default`);
+				if (helper === "int") {
+					const value = numericLiteralValue(first);
+					if (value !== undefined && !Number.isInteger(value)) {
+						state.diagnostic(first, "[rovy/scribe] s.int default must be an integer");
+					}
+				}
+			}
+			validateScribeNumberOptions(state, option, helper);
+			return;
+		}
+		case "string":
+			if (first === undefined || !ts.isStringLiteralLike(first)) {
+				state.diagnostic(first ?? callExpression, "[rovy/scribe] s.string requires a string literal default");
+			}
+			validatePositiveIntegerOption(state, option, ["maxLength"], "s.string");
+			return;
+		case "enum":
+			validateScribeEnum(state, callExpression);
+			return;
+		case "timed":
+			if (first === undefined) {
+				state.diagnostic(callExpression, "[rovy/scribe] s.timed requires a default");
+			} else {
+				validateScribeSchemaExpression(state, sourceFile, first, {
+					...context,
+					rootField: false,
+					depth: context.depth + 1,
+				});
+			}
+			return;
+		case "dynamic":
+			if (
+				first === undefined ||
+				(!ts.isArrowFunction(first) && !ts.isFunctionExpression(first) && !ts.isIdentifier(first))
+			) {
+				state.diagnostic(
+					first ?? callExpression,
+					"[rovy/scribe] s.dynamic requires a non-yielding factory function",
+				);
+			}
+			if (context.inSession) {
+				state.diagnostic(callExpression, "[rovy/scribe] s.dynamic cannot appear inside s.session");
+			}
+			return;
+		case "optional": {
+			if (first === undefined) {
+				state.diagnostic(callExpression, "[rovy/scribe] s.optional requires an inner leaf declarator");
+				return;
+			}
+			const inner = scribeSchemaHelperCall(state, sourceFile, first);
+			if (
+				inner === "timed" ||
+				inner === "dynamic" ||
+				inner === "arrayOf" ||
+				inner === "dictOf" ||
+				ts.isObjectLiteralExpression(first) ||
+				ts.isArrayLiteralExpression(first)
+			) {
+				state.diagnostic(
+					first,
+					"[rovy/scribe] s.optional can wrap only a non-timed, non-dynamic leaf",
+				);
+			}
+			validateScribeSchemaExpression(state, sourceFile, first, {
+				...context,
+				rootField: false,
+				depth: context.depth + 1,
+			});
+			return;
+		}
+		case "arrayOf":
+		case "dictOf": {
+			if (first === undefined) {
+				state.diagnostic(callExpression, `[rovy/scribe] s.${helper} requires an element shape`);
+			} else {
+				validateScribeSchemaExpression(state, sourceFile, first, {
+					...context,
+					path: [...context.path, helper === "arrayOf" ? "[index]" : "[key]"],
+					depth: context.depth + 1,
+					rootField: false,
+					inTypedElement: true,
+				});
+			}
+			validateScribeContainerOptions(state, option, helper);
+			return;
+		}
+		case "serverOnly":
+		case "shared":
+		case "session":
+			if ((helper === "shared" || helper === "session") && !context.rootField) {
+				state.diagnostic(
+					callExpression,
+					`[rovy/scribe] s.${helper} is only supported on root fields`,
+				);
+			}
+			if (first === undefined) {
+				state.diagnostic(callExpression, `[rovy/scribe] s.${helper} requires an inner value`);
+			} else {
+				validateScribeSchemaExpression(state, sourceFile, first, {
+					...context,
+					rootField: false,
+					depth: context.depth + 1,
+					inSession: context.inSession || helper === "session",
+				});
+			}
+			return;
+		case "vector3":
+		case "vector2":
+		case "vector3int16":
+		case "vector2int16":
+		case "cframe":
+		case "color3":
+		case "brickColor":
+		case "udim":
+		case "udim2":
+		case "rect":
+		case "numberRange":
+		case "numberSequence":
+		case "colorSequence":
+		case "dateTime":
+		case "enumItem":
+		case "font":
+		case "physicalProperties":
+			if (first === undefined) {
+				state.diagnostic(callExpression, `[rovy/scribe] s.${helper} requires a default value`);
+			}
+			return;
+		default:
+			state.diagnostic(callExpression, `[rovy/scribe] unknown schema helper s.${helper}`);
+	}
+}
+
+function scribeSchemaHelperCall(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	expression: ts.Expression,
+): string | undefined {
+	if (!ts.isCallExpression(expression) || !ts.isPropertyAccessExpression(expression.expression)) {
+		return undefined;
+	}
+	if (state.resolveScribeName(sourceFile, expression.expression.expression) !== "s") return undefined;
+	return expression.expression.name.text;
+}
+
+function containsScribeSchemaHelper(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.Node,
+): boolean {
+	let found = false;
+	const visit = (current: ts.Node): void => {
+		if (found) return;
+		if (ts.isExpression(current) && scribeSchemaHelperCall(state, sourceFile, current) !== undefined) {
+			found = true;
+			return;
+		}
+		ts.forEachChild(current, visit);
+	};
+	visit(node);
+	return found;
+}
+
+function validateScribeNumberOptions(
+	state: TransformState,
+	options: ts.Expression | undefined,
+	label: string,
+): void {
+	if (options === undefined) return;
+	if (!ts.isObjectLiteralExpression(options)) {
+		state.diagnostic(options, `[rovy/scribe] s.${label} options must be an inline object literal`);
+		return;
+	}
+	let min: number | undefined;
+	let max: number | undefined;
+	for (const property of options.properties) {
+		const key = ts.isSpreadAssignment(property) ? undefined : propertyNameText(property.name);
+		const value = ts.isSpreadAssignment(property) ? undefined : propertyInitializer(property);
+		if (key !== "min" && key !== "max") {
+			state.diagnostic(property, `[rovy/scribe] unknown s.${label} option '${key ?? "<computed>"}'`);
+			continue;
+		}
+		if (value !== undefined) {
+			validateFiniteNumericLiteral(state, value, `s.${label}.${key}`);
+			const numeric = numericLiteralValue(value);
+			if (key === "min") min = numeric;
+			else max = numeric;
+		}
+	}
+	if (min !== undefined && max !== undefined && min > max) {
+		state.diagnostic(options, `[rovy/scribe] s.${label} min cannot exceed max`);
+	}
+}
+
+function validatePositiveIntegerOption(
+	state: TransformState,
+	options: ts.Expression | undefined,
+	allowed: ReadonlyArray<string>,
+	label: string,
+): void {
+	if (options === undefined) return;
+	if (!ts.isObjectLiteralExpression(options)) {
+		state.diagnostic(options, `[rovy/scribe] ${label} options must be an inline object literal`);
+		return;
+	}
+	for (const property of options.properties) {
+		const key = ts.isSpreadAssignment(property) ? undefined : propertyNameText(property.name);
+		const value = ts.isSpreadAssignment(property) ? undefined : propertyInitializer(property);
+		if (key === undefined || !allowed.includes(key)) {
+			state.diagnostic(property, `[rovy/scribe] unknown ${label} option '${key ?? "<computed>"}'`);
+			continue;
+		}
+		const numeric = value === undefined ? undefined : numericLiteralValue(value);
+		if (numeric === undefined || !Number.isInteger(numeric) || numeric < 1) {
+			state.diagnostic(value ?? property, `[rovy/scribe] ${label}.${key} must be a positive integer literal`);
+		}
+	}
+}
+
+function validateScribeContainerOptions(
+	state: TransformState,
+	options: ts.Expression | undefined,
+	helper: string,
+): void {
+	validatePositiveIntegerOption(
+		state,
+		options,
+		helper === "arrayOf" ? ["maxItems"] : ["maxKeys", "maxKeyLength"],
+		`s.${helper}`,
+	);
+}
+
+function validateScribeEnum(
+	state: TransformState,
+	callExpression: ts.CallExpression,
+): void {
+	const defaultValue = callExpression.arguments[0];
+	const members = callExpression.arguments[1];
+	if (defaultValue === undefined || !ts.isStringLiteralLike(defaultValue)) {
+		state.diagnostic(defaultValue ?? callExpression, "[rovy/scribe] s.enum default must be a string literal");
+	}
+	if (members === undefined || !ts.isArrayLiteralExpression(members)) {
+		state.diagnostic(members ?? callExpression, "[rovy/scribe] s.enum members must be an inline string array");
+		return;
+	}
+	const values = new Set<string>();
+	for (const member of members.elements) {
+		if (!ts.isStringLiteralLike(member)) {
+			state.diagnostic(member, "[rovy/scribe] s.enum members must be string literals");
+			continue;
+		}
+		if (values.has(member.text)) {
+			state.diagnostic(member, `[rovy/scribe] duplicate s.enum member '${member.text}'`);
+		}
+		values.add(member.text);
+	}
+	if (ts.isStringLiteralLike(defaultValue) && !values.has(defaultValue.text)) {
+		state.diagnostic(defaultValue, "[rovy/scribe] s.enum default must appear in members");
+	}
+}
+
+function validateFiniteNumericLiteral(
+	state: TransformState,
+	expression: ts.Expression,
+	label: string,
+): void {
+	const value = numericLiteralValue(expression);
+	if (value === undefined || !Number.isFinite(value)) {
+		state.diagnostic(expression, `[rovy/scribe] ${label} must be a finite numeric literal`);
+	}
+}
+
+function numericLiteralValue(expression: ts.Expression): number | undefined {
+	if (ts.isNumericLiteral(expression)) return Number(expression.text);
+	if (
+		ts.isPrefixUnaryExpression(expression) &&
+		(expression.operator === ts.SyntaxKind.MinusToken ||
+			expression.operator === ts.SyntaxKind.PlusToken) &&
+		ts.isNumericLiteral(expression.operand)
+	) {
+		const value = Number(expression.operand.text);
+		return expression.operator === ts.SyntaxKind.MinusToken ? -value : value;
+	}
+	return undefined;
+}
+
+function validateSerializableScribeDefault(
+	state: TransformState,
+	expression: ts.Expression,
+	path: ReadonlyArray<string>,
+): void {
+	if (
+		ts.isArrowFunction(expression) ||
+		ts.isFunctionExpression(expression) ||
+		ts.isClassExpression(expression) ||
+		ts.isBigIntLiteral(expression)
+	) {
+		state.diagnostic(
+			expression,
+			`[rovy/scribe] nonserializable default at '${path.join(".")}'`,
+		);
+	}
+}
 
 function buildDocumentDeclaration(
 	state: TransformState,
@@ -411,6 +1633,18 @@ function transformCall(
 			node.typeArguments,
 			[
 				...node.arguments.map((arg) => ts.visitNode(arg, visitor, ts.isExpression) ?? arg),
+				str(state.nextNetCallsiteKey(node)),
+			],
+		);
+	}
+	if (isScribeCommandCallExpression(state, sourceFile, node)) {
+		return ts.factory.updateCallExpression(
+			node,
+			node.expression,
+			node.typeArguments,
+			[
+				...node.arguments.map((arg) =>
+					ts.visitNode(arg, visitor, ts.isExpression) ?? arg),
 				str(state.nextNetCallsiteKey(node)),
 			],
 		);
@@ -817,6 +2051,33 @@ function transformClass(
 				);
 				break;
 			}
+			case "scribeCommand": {
+				validateScribeCommand(state, node, decorator);
+				afterStatements.push(
+					regCall(state.addRovyScribeImport(sourceFile), "__command", [
+						className,
+						buildScribeCommandMeta(state, node, decorator, classId),
+					]),
+				);
+				break;
+			}
+			case "scribeEvent": {
+				validateScribeEvent(state, sourceFile, node, decorator);
+				afterStatements.push(
+					regCall(
+						rovy,
+						"__event",
+						[className, buildEventMeta(undefined, pluginBinding)].filter(isExpression),
+					),
+				);
+				afterStatements.push(
+					regCall(state.addRovyScribeImport(sourceFile), "__event", [
+						className,
+						buildScribeEventMeta(state, node, decorator, classId),
+					]),
+				);
+				break;
+			}
 			case "system": {
 				const method = methodNamed(node, "run");
 				const params = method ? lowerParams(state, sourceFile, method.parameters, { kind: "system", classId }) : emptyParams();
@@ -1077,6 +2338,9 @@ function validateClass(state: TransformState, node: ts.ClassDeclaration, decorat
 
 	if (decorators.some((d) => d.name === "netEvent") && decorators.some((d) => d.name === "event")) {
 		state.diagnostic(node, "@netEvent implies @event; remove the extra @event decorator");
+	}
+	if (decorators.some((d) => d.name === "scribeEvent") && decorators.some((d) => d.name === "event")) {
+		state.diagnostic(node, "@scribeEvent implies @event; remove the extra @event decorator");
 	}
 
 	if (decorators.some((d) => d.name === "inspect") && !decorators.some((d) => d.name === "resource")) {
@@ -2034,6 +3298,74 @@ function buildNetFunctionMeta(
 	);
 }
 
+function buildScribeCommandMeta(
+	state: TransformState,
+	node: ts.ClassDeclaration,
+	decorator: DecoratorInfo,
+	classId: string,
+): ts.ObjectLiteralExpression {
+	const options = objectArg(decorator);
+	const data = propertyValue(options, "data");
+	const result = propertyValue(options, "result");
+	const resultClass = result !== undefined
+		? classDeclarationForExpression(state, result)
+		: undefined;
+	return obj(
+		[
+			prop("id", str(classId)),
+			prop("name", str(node.name?.text ?? "AnonymousScribeCommand")),
+			prop(
+				"dataId",
+				str(data !== undefined
+					? scribeDataIdFromExpression(state, data, "@scribeCommand data")
+					: "unknown"),
+			),
+			prop("fields", arr(constructorFieldNames(node).map(str), false)),
+			prop("result", result ?? id("undefined")),
+			prop(
+				"resultFields",
+				arr(
+					(resultClass !== undefined
+						? constructorFieldNames(resultClass)
+						: []).map(str),
+					false,
+				),
+			),
+		],
+		true,
+	);
+}
+
+function buildScribeEventMeta(
+	state: TransformState,
+	node: ts.ClassDeclaration,
+	decorator: DecoratorInfo,
+	classId: string,
+): ts.ObjectLiteralExpression {
+	const options = objectArg(decorator);
+	const data = propertyValue(options, "data");
+	const command = propertyValue(options, "command");
+	const kind = propertyValue(options, "kind") ?? str("unknown");
+	const path = propertyValue(options, "path");
+	return obj(
+		stripUndefinedProperties([
+			prop("id", str(classId)),
+			data !== undefined
+				? prop("dataId", str(scribeDataIdFromExpression(state, data, "@scribeEvent data")))
+				: undefined,
+			command !== undefined
+				? prop(
+						"commandId",
+						str(scribeCommandIdFromExpression(state, command, "@scribeEvent command")),
+					)
+				: undefined,
+			prop("kind", kind),
+			path !== undefined ? prop("path", path) : undefined,
+		]),
+		true,
+	);
+}
+
 function constructorFieldNames(node: ts.ClassDeclaration): string[] {
 	const ctor = node.members.find(ts.isConstructorDeclaration);
 	const fields: string[] = [];
@@ -2124,6 +3456,286 @@ function validateNetFunction(state: TransformState, node: ts.ClassDeclaration, d
 		return;
 	}
 	if (resultClass !== undefined) validateNetSerializableConstructor(state, resultClass, "@netFunction result fields");
+}
+
+function validateScribeCommand(
+	state: TransformState,
+	node: ts.ClassDeclaration,
+	decorator: DecoratorInfo,
+): void {
+	const options = objectArg(decorator);
+	if (options === undefined) {
+		state.diagnostic(decorator.node, "@scribeCommand requires options");
+		return;
+	}
+	const data = propertyValue(options, "data");
+	const result = propertyValue(options, "result");
+	if (data === undefined) {
+		state.diagnostic(decorator.node, "@scribeCommand requires data");
+	} else {
+		scribeDataIdFromExpression(state, data, "@scribeCommand data");
+	}
+	if (result === undefined) {
+		state.diagnostic(decorator.node, "@scribeCommand requires result");
+	}
+	validateScribeSerializableConstructor(state, node, "@scribeCommand request");
+	const resultClass = result !== undefined
+		? classDeclarationForExpression(state, result)
+		: undefined;
+	if (result !== undefined && resultClass === undefined) {
+		state.diagnostic(result, "@scribeCommand result must reference a result class");
+	} else if (resultClass !== undefined) {
+		validateScribeSerializableConstructor(state, resultClass, "@scribeCommand result");
+	}
+	validateOnlyKnownObjectKeys(state, options, ["data", "result"], "@scribeCommand");
+}
+
+const SCRIBE_EVENT_KINDS = [
+	"ready",
+	"unavailable",
+	"sessionEnded",
+	"save",
+	"anomaly",
+	"giftReceived",
+	"giftCredit",
+	"ownershipChanged",
+	"message",
+	"leaderboard",
+	"serviceStatus",
+	"sharedChanged",
+	"issue",
+	"jobCompleted",
+	"changed",
+	"inserted",
+	"removed",
+	"keyAdded",
+	"keyRemoved",
+	"commandCompleted",
+] as const;
+
+function validateScribeEvent(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.ClassDeclaration,
+	decorator: DecoratorInfo,
+): void {
+	const options = objectArg(decorator);
+	if (options === undefined) {
+		state.diagnostic(decorator.node, "@scribeEvent requires options");
+		return;
+	}
+	const data = propertyValue(options, "data");
+	const command = propertyValue(options, "command");
+	const kindExpression = propertyValue(options, "kind");
+	const path = propertyValue(options, "path");
+	validateStringOption(
+		state,
+		kindExpression,
+		SCRIBE_EVENT_KINDS,
+		"@scribeEvent kind",
+	);
+	if (kindExpression === undefined) {
+		state.diagnostic(decorator.node, "@scribeEvent requires kind");
+		return;
+	}
+	const kind = stringOptionValue(kindExpression);
+	if (kind === "commandCompleted") {
+		if (command === undefined) {
+			state.diagnostic(decorator.node, "@scribeEvent commandCompleted requires command");
+		} else {
+			scribeCommandIdFromExpression(state, command, "@scribeEvent command");
+		}
+		if (data !== undefined) {
+			state.diagnostic(data, "@scribeEvent commandCompleted cannot also specify data");
+		}
+		if (path !== undefined) {
+			state.diagnostic(path, "@scribeEvent commandCompleted cannot specify path");
+		}
+		validateOnlyKnownObjectKeys(state, options, ["command", "kind"], "@scribeEvent");
+		return;
+	}
+	if (data === undefined) {
+		state.diagnostic(decorator.node, "@scribeEvent requires data");
+		validateOnlyKnownObjectKeys(state, options, ["data", "kind", "path"], "@scribeEvent");
+		return;
+	}
+	const declaration = scribeDataDeclarationFromExpression(state, data);
+	if (declaration === undefined) {
+		state.diagnostic(data, "@scribeEvent data must reference a scribeData declaration");
+	}
+
+	const pathKind =
+		kind === "changed"
+			? "value"
+			: kind === "inserted" || kind === "removed"
+				? "array"
+				: kind === "keyAdded" || kind === "keyRemoved"
+					? "dictionary"
+					: undefined;
+	if (pathKind === undefined) {
+		if (path !== undefined) {
+			state.diagnostic(path, `@scribeEvent kind '${kind ?? "unknown"}' does not accept path`);
+		}
+	} else if (path === undefined || !ts.isStringLiteral(path)) {
+		state.diagnostic(path ?? decorator.node, `@scribeEvent kind '${kind}' requires a string literal path`);
+	} else if (declaration !== undefined) {
+		const resolved = resolveScribeTemplatePath(state, sourceFile, declaration, path.text);
+		if (resolved === undefined) {
+			state.diagnostic(path, `@scribeEvent path '${path.text}' does not exist in the Scribe schema`);
+		} else {
+			if (pathKind === "array" && resolved.kind !== "array") {
+				state.diagnostic(path, `@scribeEvent kind '${kind}' requires an s.arrayOf path`);
+			}
+			if (pathKind === "dictionary" && resolved.kind !== "dictionary") {
+				state.diagnostic(path, `@scribeEvent kind '${kind}' requires an s.dictOf path`);
+			}
+			const explicitBoundary = classBoundaryFromInfo(state, node);
+			const boundary = explicitBoundary ?? state.resolveBoundary(sourceFile);
+			if (resolved.serverOnly && boundary !== "server") {
+				state.diagnostic(
+					path,
+					`@scribeEvent client-visible path '${path.text}' cannot reference s.serverOnly data`,
+				);
+			}
+		}
+	}
+	validateOnlyKnownObjectKeys(state, options, ["data", "kind", "path"], "@scribeEvent");
+}
+
+function validateOnlyKnownObjectKeys(
+	state: TransformState,
+	options: ts.ObjectLiteralExpression,
+	allowed: ReadonlyArray<string>,
+	label: string,
+): void {
+	for (const property of options.properties) {
+		if (ts.isSpreadAssignment(property)) {
+			state.diagnostic(property, `${label} options cannot use spread properties`);
+			continue;
+		}
+		const key = propertyNameText(property.name);
+		if (key === undefined || !allowed.includes(key)) {
+			state.diagnostic(property, `${label} has unknown option '${key ?? "<computed>"}'`);
+		}
+	}
+}
+
+function validateScribeSerializableConstructor(
+	state: TransformState,
+	node: ts.ClassDeclaration,
+	label: string,
+): void {
+	const ctor = node.members.find(ts.isConstructorDeclaration);
+	for (const param of ctor?.parameters ?? []) {
+		if (param.type === undefined) {
+			state.diagnostic(param, `${label} fields require explicit serializable types`);
+			continue;
+		}
+		validateScribeSerializableType(state, param.type, `${label} field '${param.name.getText()}'`, new Set());
+	}
+}
+
+function validateScribeSerializableType(
+	state: TransformState,
+	node: ts.TypeNode,
+	label: string,
+	seen: Set<ts.Node>,
+): void {
+	if (seen.has(node)) return;
+	seen.add(node);
+	if (
+		node.kind === ts.SyntaxKind.StringKeyword ||
+		node.kind === ts.SyntaxKind.NumberKeyword ||
+		node.kind === ts.SyntaxKind.BooleanKeyword ||
+		node.kind === ts.SyntaxKind.UndefinedKeyword ||
+		node.kind === ts.SyntaxKind.NullKeyword ||
+		ts.isLiteralTypeNode(node)
+	) {
+		return;
+	}
+	if (ts.isUnionTypeNode(node)) {
+		for (const part of node.types) validateScribeSerializableType(state, part, label, seen);
+		return;
+	}
+	if (ts.isArrayTypeNode(node)) {
+		validateScribeSerializableType(state, node.elementType, label, seen);
+		return;
+	}
+	if (ts.isTupleTypeNode(node)) {
+		for (const element of node.elements) {
+			const inner = ts.isNamedTupleMember(element) ? element.type : element;
+			validateScribeSerializableType(state, inner, label, seen);
+		}
+		return;
+	}
+	if (ts.isTypeLiteralNode(node)) {
+		for (const member of node.members) {
+			if (!ts.isPropertySignature(member) || member.type === undefined) {
+				state.diagnostic(member, `${label} contains a nonserializable member`);
+				continue;
+			}
+			validateScribeSerializableType(state, member.type, label, seen);
+		}
+		return;
+	}
+	if (ts.isTypeReferenceNode(node)) {
+		const name = lastTypeName(node.typeName);
+		if (
+			name === "buffer" ||
+			name === "Vector3" ||
+			name === "Vector2" ||
+			name === "Vector3int16" ||
+			name === "Vector2int16" ||
+			name === "CFrame" ||
+			name === "Color3" ||
+			name === "BrickColor" ||
+			name === "UDim" ||
+			name === "UDim2" ||
+			name === "Rect" ||
+			name === "NumberRange" ||
+			name === "NumberSequence" ||
+			name === "ColorSequence" ||
+			name === "DateTime" ||
+			name === "EnumItem" ||
+			name === "Font" ||
+			name === "PhysicalProperties"
+		) {
+			return;
+		}
+		if (name === "Array" || name === "ReadonlyArray") {
+			const element = node.typeArguments?.[0];
+			if (element !== undefined) validateScribeSerializableType(state, element, label, seen);
+			return;
+		}
+		if (name === "Record" || name === "Readonly") {
+			for (const typeArg of node.typeArguments ?? []) {
+				validateScribeSerializableType(state, typeArg, label, seen);
+			}
+			return;
+		}
+		const declaration = typeDeclarationForTypeReference(state, node);
+		if (declaration !== undefined) {
+			if (ts.isClassDeclaration(declaration)) {
+				validateScribeSerializableConstructor(state, declaration, label);
+				return;
+			}
+			if (ts.isInterfaceDeclaration(declaration)) {
+				for (const member of declaration.members) {
+					if (!ts.isPropertySignature(member) || member.type === undefined) {
+						state.diagnostic(member, `${label} contains a nonserializable member`);
+					} else {
+						validateScribeSerializableType(state, member.type, label, seen);
+					}
+				}
+				return;
+			}
+			if (ts.isTypeAliasDeclaration(declaration)) {
+				validateScribeSerializableType(state, declaration.type, label, seen);
+				return;
+			}
+		}
+	}
+	state.diagnostic(node, `${label} uses nonserializable type '${node.getText()}'`);
 }
 
 function validateNetSerializableConstructor(state: TransformState, node: ts.ClassDeclaration, label: string): void {
@@ -2566,6 +4178,40 @@ function lowerParam(
 			validateNetworkingBoundary(state, sourceFile, type, "server", "NetFunctionReader");
 			return externalParam(`@rovy/networking/NetFunctionReader:${netFunctionIdFromTypeArg(state, type)}`);
 		}
+		const scribeDataParam = scribeDataParamInfo(state, sourceFile, type);
+		if (scribeDataParam !== undefined) {
+			if (scribeDataParam.boundary !== "both") {
+				validateNetworkingBoundary(
+					state,
+					sourceFile,
+					type,
+					scribeDataParam.boundary,
+					scribeDataParam.name,
+				);
+			}
+			return externalParam(
+				`${scribeDataParam.prefix}${scribeDataIdFromInjectedType(state, type)}`,
+			);
+		}
+		if (isScribeType(state, sourceFile, type, "ScribeCommand")) {
+			validateNetworkingBoundary(state, sourceFile, type, "client", "ScribeCommand");
+			return externalParam(
+				`@rovy/scribe/command-client:${scribeCommandIdFromTypeArg(state, type)}`,
+			);
+		}
+		if (isScribeType(state, sourceFile, type, "ScribeCommandReader")) {
+			validateNetworkingBoundary(state, sourceFile, type, "server", "ScribeCommandReader");
+			return externalParam(
+				`@rovy/scribe/command-reader:${scribeCommandIdFromTypeArg(state, type)}`,
+			);
+		}
+		if (isScribeType(state, sourceFile, type, "ScribeCommandResponder")) {
+			validateNetworkingBoundary(state, sourceFile, type, "server", "ScribeCommandResponder");
+			return externalParam("@rovy/scribe/command-responder");
+		}
+		if (isScribeType(state, sourceFile, type, "ScribeDiagnostics")) {
+			return externalParam("@rovy/scribe/diagnostics");
+		}
 			if (isDatastoreType(state, sourceFile, type, "DocumentReader")) {
 				const documentId = documentIdFromInjectedDocumentType(state, type);
 				return externalParam(`@rovy/datastore/reader:${documentId}`);
@@ -2845,6 +4491,47 @@ function isNetFunctionCallExpression(
 	});
 }
 
+function isScribeCommandCallExpression(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	node: ts.CallExpression,
+): boolean {
+	if (!ts.isPropertyAccessExpression(node.expression) || node.expression.name.text !== "call") {
+		return false;
+	}
+	const checker = state.typeChecker;
+	if (checker === undefined) return false;
+	const receiver = node.expression.expression;
+	if (ts.isIdentifier(receiver)) {
+		const symbol = checker.getSymbolAtLocation(receiver);
+		for (const declaration of symbol?.declarations ?? []) {
+			if (
+				ts.isParameter(declaration) &&
+				declaration.type !== undefined &&
+				ts.isTypeReferenceNode(declaration.type) &&
+				isScribeType(state, sourceFile, declaration.type, "ScribeCommand")
+			) {
+				return true;
+			}
+		}
+	}
+	const type = checker.getTypeAtLocation(receiver);
+	const symbol = type.aliasSymbol ?? type.symbol;
+	if (symbol === undefined) return false;
+	return (symbol.declarations ?? []).some((declaration) => {
+		if (
+			!ts.isInterfaceDeclaration(declaration) &&
+			!ts.isClassDeclaration(declaration)
+		) {
+			return false;
+		}
+		if (declaration.name?.text !== "ScribeCommand") return false;
+		const fileName = declaration.getSourceFile().fileName;
+		return fileName.includes("@rovy/scribe") ||
+			fileName.includes("packages/scribe");
+	});
+}
+
 function isDatastoreType(
 	state: TransformState,
 	sourceFile: ts.SourceFile,
@@ -2855,6 +4542,55 @@ function isDatastoreType(
 	const name = type.typeName;
 	if (ts.isIdentifier(name)) return imports.named.get(name.text) === exportName;
 	return ts.isIdentifier(name.left) && imports.namespaces.has(name.left.text) && name.right.text === exportName;
+}
+
+function isScribeType(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	type: ts.TypeReferenceNode,
+	exportName: string,
+): boolean {
+	const imports = state.getScribeImports(sourceFile);
+	const name = type.typeName;
+	if (ts.isIdentifier(name)) return imports.named.get(name.text) === exportName;
+	return ts.isIdentifier(name.left) &&
+		imports.namespaces.has(name.left.text) &&
+		name.right.text === exportName;
+}
+
+interface ScribeDataParamInfo {
+	readonly name: string;
+	readonly prefix: string;
+	readonly boundary: "client" | "server" | "both";
+}
+
+const SCRIBE_DATA_PARAM_INFOS: ReadonlyArray<ScribeDataParamInfo> = [
+	{ name: "ScribeClientReader", prefix: "@rovy/scribe/client-reader:", boundary: "client" },
+	{ name: "ScribeClientState", prefix: "@rovy/scribe/client-state:", boundary: "client" },
+	{ name: "ScribeLocalWriter", prefix: "@rovy/scribe/local-writer:", boundary: "client" },
+	{ name: "ScribeSharedReader", prefix: "@rovy/scribe/shared-reader:", boundary: "client" },
+	{ name: "ScribeServerReader", prefix: "@rovy/scribe/server-reader:", boundary: "server" },
+	{ name: "ScribeServerWriter", prefix: "@rovy/scribe/server-writer:", boundary: "server" },
+	{ name: "ScribePersistence", prefix: "@rovy/scribe/persistence:", boundary: "server" },
+	{ name: "ScribeLeaderboards", prefix: "@rovy/scribe/leaderboards:", boundary: "both" },
+	{ name: "ScribeMonetization", prefix: "@rovy/scribe/monetization:", boundary: "server" },
+	{ name: "ScribeOwnership", prefix: "@rovy/scribe/ownership:", boundary: "both" },
+	{ name: "ScribeReceipts", prefix: "@rovy/scribe/receipts:", boundary: "server" },
+	{ name: "ScribeCooldowns", prefix: "@rovy/scribe/cooldowns:", boundary: "server" },
+	{ name: "ScribeMessaging", prefix: "@rovy/scribe/messaging:", boundary: "server" },
+	{ name: "ScribeTestRuntime", prefix: "@rovy/scribe/testing:", boundary: "both" },
+	{ name: "ScribeUnsafe", prefix: "@rovy/scribe/unsafe:", boundary: "both" },
+];
+
+function scribeDataParamInfo(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	type: ts.TypeReferenceNode,
+): ScribeDataParamInfo | undefined {
+	for (const info of SCRIBE_DATA_PARAM_INFOS) {
+		if (isScribeType(state, sourceFile, type, info.name)) return info;
+	}
+	return undefined;
 }
 
 function isVideType(
@@ -2896,6 +4632,60 @@ function netFunctionIdFromTypeArg(state: TransformState, node: ts.TypeReferenceN
 		return classScopedId(state.stableIdForNode(declaration), declaration.name.text);
 	}
 	state.diagnostic(typeArg, `${lastTypeName(node.typeName)} requires an @netFunction request class`);
+	return "unknown";
+}
+
+function scribeDataIdFromInjectedType(
+	state: TransformState,
+	node: ts.TypeReferenceNode,
+): string {
+	const typeArg = node.typeArguments?.[0];
+	if (!typeArg || !ts.isTypeQueryNode(typeArg)) {
+		state.diagnostic(
+			typeArg ?? node,
+			`[rovy/scribe] ${lastTypeName(node.typeName)} requires typeof DataDefinition`,
+		);
+		return "unknown";
+	}
+	const declaration = declarationForEntityName(state, typeArg.exprName);
+	if (declaration !== undefined) {
+		return scribeDataIdForDeclaration(state, declaration.name);
+	}
+	state.diagnostic(
+		typeArg,
+		`[rovy/scribe] ${lastTypeName(node.typeName)} requires a scribeData declaration`,
+	);
+	return "unknown";
+}
+
+function scribeCommandIdFromTypeArg(
+	state: TransformState,
+	node: ts.TypeReferenceNode,
+): string {
+	const typeArg = node.typeArguments?.[0];
+	if (!typeArg || !ts.isTypeReferenceNode(typeArg)) {
+		state.diagnostic(
+			typeArg ?? node,
+			`[rovy/scribe] ${lastTypeName(node.typeName)} requires an @scribeCommand class`,
+		);
+		return "unknown";
+	}
+	const declaration = typeDeclarationForTypeReference(state, typeArg);
+	if (
+		declaration !== undefined &&
+		ts.isClassDeclaration(declaration) &&
+		declaration.name !== undefined &&
+		state.classInfo.get(declaration)?.decorators.includes("scribeCommand")
+	) {
+		return classScopedId(
+			state.stableIdForNode(declaration),
+			declaration.name.text,
+		);
+	}
+	state.diagnostic(
+		typeArg,
+		`[rovy/scribe] ${lastTypeName(node.typeName)} requires an @scribeCommand class`,
+	);
 	return "unknown";
 }
 
@@ -2950,6 +4740,140 @@ function declarationForEntityName(state: TransformState, name: ts.EntityName): t
 		if (ts.isVariableDeclaration(declaration)) return declaration;
 	}
 	return undefined;
+}
+
+function scribeDataDeclarationFromExpression(
+	state: TransformState,
+	expression: ts.Expression,
+): ts.VariableDeclaration | undefined {
+	const checker = state.typeChecker;
+	if (checker === undefined) return undefined;
+	const symbol = checker.getSymbolAtLocation(expression);
+	const resolved = symbol !== undefined && (symbol.flags & ts.SymbolFlags.Alias) !== 0
+		? checker.getAliasedSymbol(symbol)
+		: symbol;
+	for (const declaration of resolved?.declarations ?? []) {
+		if (!ts.isVariableDeclaration(declaration) || declaration.initializer === undefined) continue;
+		const initializer = declaration.initializer;
+		if (
+			ts.isCallExpression(initializer) &&
+			state.resolveScribeName(initializer.getSourceFile(), initializer.expression) === "scribeData"
+		) {
+			return declaration;
+		}
+	}
+	return undefined;
+}
+
+function scribeDataIdFromExpression(
+	state: TransformState,
+	expression: ts.Expression,
+	label: string,
+): string {
+	const declaration = scribeDataDeclarationFromExpression(state, expression);
+	if (declaration !== undefined) {
+		return scribeDataIdForDeclaration(state, declaration.name);
+	}
+	state.diagnostic(expression, `${label} must reference a scribeData declaration`);
+	return "unknown";
+}
+
+function scribeCommandIdFromExpression(
+	state: TransformState,
+	expression: ts.Expression,
+	label: string,
+): string {
+	const declaration = classDeclarationForExpression(state, expression);
+	if (
+		declaration !== undefined &&
+		declaration.name !== undefined &&
+		state.classInfo.get(declaration)?.decorators.includes("scribeCommand")
+	) {
+		return classScopedId(
+			state.stableIdForNode(declaration),
+			declaration.name.text,
+		);
+	}
+	state.diagnostic(expression, `${label} must reference an @scribeCommand class`);
+	return "unknown";
+}
+
+function classBoundaryFromInfo(
+	state: TransformState,
+	node: ts.ClassDeclaration,
+): "client" | "server" | "shared" | undefined {
+	const decorators = state.classInfo.get(node)?.decorators ?? [];
+	if (decorators.includes("client")) return "client";
+	if (decorators.includes("server")) return "server";
+	if (decorators.includes("shared")) return "shared";
+	return undefined;
+}
+
+function resolveScribeTemplatePath(
+	state: TransformState,
+	_sourceFile: ts.SourceFile,
+	declaration: ts.VariableDeclaration,
+	path: string,
+): { readonly kind: "value" | "array" | "dictionary"; readonly serverOnly: boolean } | undefined {
+	const initializer = declaration.initializer;
+	if (!initializer || !ts.isCallExpression(initializer)) return undefined;
+	const authored = initializer.arguments[0];
+	if (!authored || !ts.isObjectLiteralExpression(authored)) return undefined;
+	const schemaSourceFile = declaration.getSourceFile();
+	let current = propertyValue(authored, "template");
+	if (!current || !ts.isObjectLiteralExpression(current)) return undefined;
+	let serverOnly = false;
+	for (const segment of path.split(".")) {
+		const unwrapped = unwrapScribeVisibilityExpression(
+			state,
+			schemaSourceFile,
+			current,
+			serverOnly,
+		);
+		current = unwrapped.expression;
+		serverOnly = unwrapped.serverOnly;
+		if (!ts.isObjectLiteralExpression(current)) return undefined;
+		current = propertyValue(current, segment);
+		if (current === undefined) return undefined;
+	}
+	const unwrapped = unwrapScribeVisibilityExpression(
+		state,
+		schemaSourceFile,
+		current,
+		serverOnly,
+	);
+	current = unwrapped.expression;
+	serverOnly = unwrapped.serverOnly;
+	const helper = scribeSchemaHelperCall(state, schemaSourceFile, current);
+	return {
+		kind: helper === "arrayOf"
+			? "array"
+			: helper === "dictOf"
+				? "dictionary"
+				: "value",
+		serverOnly,
+	};
+}
+
+function unwrapScribeVisibilityExpression(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	expression: ts.Expression,
+	initialServerOnly: boolean,
+): { readonly expression: ts.Expression; readonly serverOnly: boolean } {
+	let current = expression;
+	let serverOnly = initialServerOnly;
+	while (true) {
+		const helper = scribeSchemaHelperCall(state, sourceFile, current);
+		if (helper !== "serverOnly" && helper !== "shared" && helper !== "session") {
+			break;
+		}
+		if (helper === "serverOnly") serverOnly = true;
+		const next = (current as ts.CallExpression).arguments[0];
+		if (next === undefined) break;
+		current = next;
+	}
+	return { expression: current, serverOnly };
 }
 
 function ctorArg(state: TransformState, node: ts.TypeReferenceNode): ts.Expression {

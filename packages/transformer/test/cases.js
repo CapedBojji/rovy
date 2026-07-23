@@ -74,6 +74,26 @@ import {
 		playerDocument,
 		rovyData,
 	} from "@rovy/datastore";
+	import {
+		ScribeClientReader,
+		ScribeClientState,
+		ScribeCommand,
+		ScribeCommandReader,
+		ScribeCommandResponder,
+		ScribeDiagnostics,
+		ScribeLeaderboards,
+		ScribeLocalWriter,
+		ScribePersistence,
+		ScribeServerReader,
+		ScribeServerWriter,
+		ScribeSharedReader,
+		ScribeValueChanged,
+		rovyScribe,
+		s,
+		scribeCommand,
+		scribeData,
+		scribeEvent,
+	} from "@rovy/scribe";
 	import RovyUi, { Style, StyleScope, button, scope, useEffect, useInstance, useState } from "@rovy/imgui";
 	import RetainedUi, {
 		$componentTrigger,
@@ -980,6 +1000,233 @@ class ProfileSystem {
 	assert.match(result.printed, /id: "@rovy\/datastore\/opener:src\/main\/PlayerProfile"/);
 	assert.match(result.printed, /eventCtor\("opened", "src\/main\/PlayerProfile"\)/);
 	assert.match(result.printed, /eventCtor\("changed", "src\/main\/PlayerProfile"\)/);
+});
+
+runCase("scribeData lowers to registry metadata with native option casing", () => {
+	const result = compileFixture(`
+${header}
+export const PlayerData = scribeData({
+	name: "PlayerData",
+	profileStoreIndex: "PlayerData",
+	profileKeyPrefix: "PLAYER_",
+	template: {
+		Coins: s.int(0, { min: 0, max: 1000 }),
+		Name: s.string("", { maxLength: 32 }),
+		Inventory: s.dictOf({ Amount: s.int(1, { min: 1 }) }, { maxKeys: 200 }),
+		Public: s.shared({ Title: "" }),
+		Secret: s.serverOnly({ Flagged: false }),
+		Runtime: s.session({ InCombat: false }),
+	},
+	options: {
+		saveInterval: 60,
+		boundsPolicy: "clamp",
+		wipeGuardPolicy: "block",
+		purchaseLog: { robuxCap: 50, replicateRobux: true },
+		gifting: { cooldown: 10, noIntentPolicy: "grantOrCredit" },
+		statusThresholds: { failWindow: 30, failCount: 3 },
+		leaderboards: {
+			Coins: { stat: "Coins", limit: 25, replicate: true },
+		},
+		products: {
+			CoinPack: { id: 123, category: "Currency", grants: "VIP" },
+		},
+		passes: {
+			VIP: { id: 456, category: "Access" },
+		},
+		economy: {
+			prefix: true,
+			currencies: {
+				Coins: {
+					label: "Coins",
+					fields: ["Region", { name: "Platform", prefix: true }],
+				},
+			},
+		},
+	},
+});
+`);
+	assertNoDiagnostics(result, "scribeData lowering");
+	assert.match(result.printed, /rovyScribe\.__data\(\{ id: "src\/main\/PlayerData"/);
+	assert.match(result.printed, /SaveInterval: 60/);
+	assert.match(result.printed, /BoundsPolicy: "Clamp"/);
+	assert.match(result.printed, /WipeGuardPolicy: "Block"/);
+	assert.match(result.printed, /PurchaseLog: \{ RobuxCap: 50, ReplicateRobux: true \}/);
+	assert.match(result.printed, /GiftCooldown: 10/);
+	assert.match(result.printed, /NoGiftIntentPolicy: "GrantOrCredit"/);
+	assert.match(result.printed, /StatusThresholds: \{ FailWindow: 30, FailCount: 3 \}/);
+	assert.match(result.printed, /Leaderboards: \{ Coins: \{ Stat: "Coins", Limit: 25, Replicate: true \} \}/);
+	assert.match(result.printed, /Products: \{ CoinPack: \{ Id: 123, Category: "Currency", Grants: "VIP" \} \}/);
+	assert.match(result.printed, /Economy: \{ Prefix: true, Currencies:/);
+});
+
+runCase("scribe command and event contracts emit shared registry metadata", () => {
+	const result = compileFixture(`
+${header}
+export const PlayerData = scribeData({
+	name: "PlayerData",
+	profileStoreIndex: "PlayerData",
+	profileKeyPrefix: "PLAYER_",
+	template: {
+		Coins: s.int(0),
+		Inventory: s.dictOf({ Amount: s.int(1) }),
+	},
+});
+export class EquipResult {
+	constructor(public readonly ok: boolean, public readonly reason?: "missing" | "invalid") {}
+}
+@scribeCommand({ data: PlayerData, result: EquipResult })
+export class EquipItem {
+	constructor(public readonly itemId: string) {}
+}
+@scribeEvent({ data: PlayerData, kind: "changed", path: "Coins" })
+export class CoinsChanged extends ScribeValueChanged<typeof PlayerData, "Coins"> {}
+@scribeEvent({ data: PlayerData, kind: "keyAdded", path: "Inventory" })
+export class InventoryAdded {}
+@scribeEvent({ command: EquipItem, kind: "commandCompleted" })
+export class EquipCompleted {}
+`);
+	assertNoDiagnostics(result, "scribe contracts");
+	assert.match(result.printed, /rovyScribe\.__command\(EquipItem, \{ id: "src\/main@EquipItem"/);
+	assert.match(result.printed, /dataId: "src\/main\/PlayerData"/);
+	assert.match(result.printed, /fields: \["itemId"\]/);
+	assert.match(result.printed, /resultFields: \["ok", "reason"\]/);
+	assert.match(result.printed, /rovy\.__event\(CoinsChanged/);
+	assert.match(result.printed, /rovyScribe\.__event\(CoinsChanged, \{ id: "src\/main@CoinsChanged"/);
+	assert.match(result.printed, /kind: "changed", path: "Coins"/);
+	assert.match(result.printed, /commandId: "src\/main@EquipItem", kind: "commandCompleted"/);
+});
+
+runCase("scribe injected params lower to stable boundary-specific external ids", () => {
+	const clientResult = compileFixture(`
+${header}
+export const PlayerData = scribeData({
+	name: "PlayerData",
+	profileStoreIndex: "PlayerData",
+	profileKeyPrefix: "PLAYER_",
+	template: { Coins: s.int(0) },
+});
+class Result { constructor(public readonly ok: boolean) {} }
+@scribeCommand({ data: PlayerData, result: Result })
+class Fetch { constructor(public readonly key: string) {} }
+@schedule class Update {}
+@client
+@system({ schedule: Update })
+class ClientSystem {
+	run(
+		reader: ScribeClientReader<typeof PlayerData>,
+		state: ScribeClientState<typeof PlayerData>,
+		local: ScribeLocalWriter<typeof PlayerData>,
+		sharedReader: ScribeSharedReader<typeof PlayerData>,
+		boards: ScribeLeaderboards<typeof PlayerData>,
+		command: ScribeCommand<Fetch>,
+		diagnostics: ScribeDiagnostics,
+	) {
+		command.call(new Fetch("coins"));
+	}
+}
+`, { fileName: "client/main.ts" });
+	assertNoDiagnostics(clientResult, "scribe client params");
+	assert.match(clientResult.printed, /id: "@rovy\/scribe\/client-reader:src\/client\/main\/PlayerData"/);
+	assert.match(clientResult.printed, /id: "@rovy\/scribe\/client-state:src\/client\/main\/PlayerData"/);
+	assert.match(clientResult.printed, /id: "@rovy\/scribe\/local-writer:src\/client\/main\/PlayerData"/);
+	assert.match(clientResult.printed, /id: "@rovy\/scribe\/shared-reader:src\/client\/main\/PlayerData"/);
+	assert.match(clientResult.printed, /id: "@rovy\/scribe\/leaderboards:src\/client\/main\/PlayerData"/);
+	assert.match(clientResult.printed, /id: "@rovy\/scribe\/command-client:src\/client\/main@Fetch"/);
+	assert.match(clientResult.printed, /id: "@rovy\/scribe\/diagnostics"/);
+	assert.match(clientResult.printed, /command\.call\(new Fetch\("coins"\), "src\/client\/main:0"\)/);
+
+	const serverResult = compileFixture(`
+${header}
+export const PlayerData = scribeData({
+	name: "PlayerData",
+	profileStoreIndex: "PlayerData",
+	profileKeyPrefix: "PLAYER_",
+	template: { Coins: s.int(0) },
+});
+class Result { constructor(public readonly ok: boolean) {} }
+@scribeCommand({ data: PlayerData, result: Result })
+class Fetch { constructor(public readonly key: string) {} }
+@schedule class Update {}
+@server
+@system({ schedule: Update })
+class ServerSystem {
+	run(
+		reader: ScribeServerReader<typeof PlayerData>,
+		writer: ScribeServerWriter<typeof PlayerData>,
+		persistence: ScribePersistence<typeof PlayerData>,
+		requests: ScribeCommandReader<Fetch>,
+		responder: ScribeCommandResponder,
+	) {}
+}
+`, { fileName: "server/main.ts" });
+	assertNoDiagnostics(serverResult, "scribe server params");
+	assert.match(serverResult.printed, /id: "@rovy\/scribe\/server-reader:src\/server\/main\/PlayerData"/);
+	assert.match(serverResult.printed, /id: "@rovy\/scribe\/server-writer:src\/server\/main\/PlayerData"/);
+	assert.match(serverResult.printed, /id: "@rovy\/scribe\/persistence:src\/server\/main\/PlayerData"/);
+	assert.match(serverResult.printed, /id: "@rovy\/scribe\/command-reader:src\/server\/main@Fetch"/);
+	assert.match(serverResult.printed, /id: "@rovy\/scribe\/command-responder"/);
+});
+
+runCase("scribe boundary and schema diagnostics fail before runtime", () => {
+	const boundary = compileFixture(`
+${header}
+export const PlayerData = scribeData({
+	name: "PlayerData",
+	profileStoreIndex: "PlayerData",
+	profileKeyPrefix: "PLAYER_",
+	template: { Coins: s.int(0) },
+});
+@schedule class Update {}
+@client
+@system({ schedule: Update })
+class BadClient {
+	run(writer: ScribeServerWriter<typeof PlayerData>) {}
+}
+`, { fileName: "client/main.ts" });
+	assert.match(boundary.diagnostics.join("\n"), /ScribeServerWriter can only be injected from the server boundary/);
+
+	const schema = compileFixture(`
+${header}
+export const BadData = scribeData({
+	name: "BadData",
+	profileStoreIndex: "Bad",
+	profileKeyPrefix: "BAD_",
+	template: {
+		Get: 1,
+		BadBounds: s.int(0, { min: 10, max: 1 }),
+		BadOptional: s.optional(s.timed(0)),
+		BadArray: s.arrayOf({ Changed: 1, Timer: s.timed(0) }, { maxItems: 0 }),
+		Session: s.session({ Created: s.dynamic(() => 1) }),
+	},
+	options: {
+		typoOption: true,
+		purchaseLog: { typo: true },
+		leaderboards: {
+			Bad: { stat: "Public", typo: true },
+		},
+		economy: {
+			currencies: {
+				Coins: {
+					fields: [{ typo: true }],
+				},
+			},
+		},
+	},
+});
+`);
+	const diagnostics = schema.diagnostics.join("\n");
+	assert.match(diagnostics, /root field 'Get' collides/);
+	assert.match(diagnostics, /min cannot exceed max/);
+	assert.match(diagnostics, /s\.optional can wrap only/);
+	assert.match(diagnostics, /collides with a Scribe accessor method/);
+	assert.match(diagnostics, /s\.timed is not supported inside typed container elements/);
+	assert.match(diagnostics, /maxItems must be a positive integer literal/);
+	assert.match(diagnostics, /s\.dynamic cannot appear inside s\.session/);
+	assert.match(diagnostics, /unknown Scribe option 'typoOption'/);
+	assert.match(diagnostics, /purchaseLog has unknown option 'typo'/);
+	assert.match(diagnostics, /leaderboards\.Bad has unknown option 'typo'/);
+	assert.match(diagnostics, /stat 'Public' must reference a numeric schema leaf/);
+	assert.match(diagnostics, /economy field has unknown option 'typo'/);
 });
 
 runCase("@server/@client guard system registration and lowered params", () => {

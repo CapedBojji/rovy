@@ -197,6 +197,8 @@ export interface ScribeEconomyDeclaration {
 
 export interface ScribeDataOptions<Schema extends object = object> {
 	readonly saveInterval?: number;
+	readonly mode?: "Live" | "Mock" | "NoSave";
+	readonly targetUserId?: number;
 	readonly useMock?: boolean;
 	readonly viewedUserId?: number;
 	readonly overriddenUserId?: number;

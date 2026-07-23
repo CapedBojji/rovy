@@ -46,6 +46,21 @@ export type ScribeSerializable =
 
 export type ScribeStatus = "Healthy" | "Degraded" | "Outage";
 export type ScribeSessionState = "Loading" | "Ready" | "SessionEnded";
+export type ScribeLifecycleReason =
+	| "load-failed"
+	| "migration-failed"
+	| "session-ended"
+	| "player-left"
+	| "shutdown"
+	| "timeout";
+export interface ScribeReasonConstants {
+	readonly LoadFailed: "load-failed";
+	readonly MigrationFailed: "migration-failed";
+	readonly SessionEnded: "session-ended";
+	readonly PlayerLeft: "player-left";
+	readonly Shutdown: "shutdown";
+	readonly Timeout: "timeout";
+}
 export type ScribeLogLevel = "Debug" | "Info" | "Warn" | "Error" | "Fatal";
 export type ScribeLogCategory =
 	| "Persistence"
@@ -144,51 +159,53 @@ export interface ScribeNativeModule {
 	(options: Readonly<Record<string, unknown>>): unknown;
 	readonly Version: string;
 	readonly new: (options: Readonly<Record<string, unknown>>) => unknown;
-	ServerOnly<T>(value: T): T;
-	Shared<T>(value: T): T;
-	Session<T>(value: T): T;
-	Int(defaultValue: number, metadata?: Readonly<Record<string, number>>): number;
-	Number(defaultValue: number, metadata?: Readonly<Record<string, number>>): number;
-	String(defaultValue: string, metadata?: Readonly<Record<string, number>>): string;
-	Enum<Member extends string>(defaultValue: Member, members: ReadonlyArray<Member>): Member;
-	Timed<T>(defaultValue: T): T;
-	Dynamic<T>(factory: () => T): T;
-	Optional<T>(inner: T): T | undefined;
-	ArrayOf<T>(shape: T, options?: Readonly<Record<string, number>>): Array<T>;
-	DictOf<T>(shape: T, options?: Readonly<Record<string, number>>): Record<string, T>;
-	Vector3(defaultValue: Vector3): Vector3;
-	Vector2(defaultValue: Vector2): Vector2;
-	Vector3int16(defaultValue: Vector3int16): Vector3int16;
-	Vector2int16(defaultValue: Vector2int16): Vector2int16;
-	CFrame(defaultValue: CFrame): CFrame;
-	Color3(defaultValue: Color3): Color3;
-	BrickColor(defaultValue: BrickColor): BrickColor;
-	UDim(defaultValue: UDim): UDim;
-	UDim2(defaultValue: UDim2): UDim2;
-	Rect(defaultValue: Rect): Rect;
-	NumberRange(defaultValue: NumberRange): NumberRange;
-	NumberSequence(defaultValue: NumberSequence): NumberSequence;
-	ColorSequence(defaultValue: ColorSequence): ColorSequence;
-	DateTime(defaultValue: DateTime): DateTime;
-	EnumItem(defaultValue: EnumItem): EnumItem;
-	Font(defaultValue: Font): Font;
-	PhysicalProperties(defaultValue: PhysicalProperties): PhysicalProperties;
+	readonly ServerOnly: <T>(value: T) => T;
+	readonly Shared: <T>(value: T) => T;
+	readonly Session: <T>(value: T) => T;
+	readonly Int: (defaultValue: number, metadata?: Readonly<Record<string, number>>) => number;
+	readonly Number: (defaultValue: number, metadata?: Readonly<Record<string, number>>) => number;
+	readonly String: (defaultValue: string, metadata?: Readonly<Record<string, number>>) => string;
+	readonly Enum: <Member extends string>(defaultValue: Member, members: ReadonlyArray<Member>) => Member;
+	readonly Timed: <T>(defaultValue: T) => T;
+	readonly Dynamic: <T>(factory: () => T) => T;
+	readonly Optional: <T>(inner: T) => T | undefined;
+	readonly ArrayOf: <T>(shape: T, options?: Readonly<Record<string, number>>) => Array<T>;
+	readonly DictOf: <T>(shape: T, options?: Readonly<Record<string, number>>) => Record<string, T>;
+	readonly Vector3: (defaultValue: Vector3) => Vector3;
+	readonly Vector2: (defaultValue: Vector2) => Vector2;
+	readonly Vector3int16: (defaultValue: Vector3int16) => Vector3int16;
+	readonly Vector2int16: (defaultValue: Vector2int16) => Vector2int16;
+	readonly CFrame: (defaultValue: CFrame) => CFrame;
+	readonly Color3: (defaultValue: Color3) => Color3;
+	readonly BrickColor: (defaultValue: BrickColor) => BrickColor;
+	readonly UDim: (defaultValue: UDim) => UDim;
+	readonly UDim2: (defaultValue: UDim2) => UDim2;
+	readonly Rect: (defaultValue: Rect) => Rect;
+	readonly NumberRange: (defaultValue: NumberRange) => NumberRange;
+	readonly NumberSequence: (defaultValue: NumberSequence) => NumberSequence;
+	readonly ColorSequence: (defaultValue: ColorSequence) => ColorSequence;
+	readonly DateTime: (defaultValue: DateTime) => DateTime;
+	readonly EnumItem: (defaultValue: EnumItem) => EnumItem;
+	readonly Font: (defaultValue: Font) => Font;
+	readonly PhysicalProperties: (defaultValue: PhysicalProperties) => PhysicalProperties;
 	readonly Datatypes: {
-		IsSupported(name: string): boolean;
-		Pack(name: string, value: ScribeRobloxDatatype): buffer;
-		Unpack(name: string, bytes: buffer): ScribeRobloxDatatype;
+		readonly IsSupported: (name: string) => boolean;
+		readonly Pack: (name: string, value: ScribeRobloxDatatype) => buffer;
+		readonly Unpack: (name: string, bytes: buffer) => ScribeRobloxDatatype;
 	};
-	GetStatus(): ScribeStatus;
+	readonly Reason: ScribeReasonConstants;
+	readonly Configure: (config: { readonly AutoSaveInterval?: number }) => void;
+	readonly GetStatus: () => ScribeStatus;
 	readonly OnStatusChanged: ScribeNativeSignal<readonly [status: ScribeStatus]>;
 	readonly OnIssue: ScribeNativeSignal<readonly [entry: ScribeLogEntry]>;
-	AddLogSink(sink: (entry: ScribeLogEntry) => void): void;
-	GetRecentLogs(filter?: {
+	readonly AddLogSink: (sink: (entry: ScribeLogEntry) => void) => void;
+	readonly GetRecentLogs: (filter?: {
 		readonly level?: ScribeLogLevel;
 		readonly category?: ScribeLogCategory;
 		readonly code?: string;
 		readonly limit?: number;
-	}): ReadonlyArray<ScribeLogEntry>;
-	GetMetrics(): Readonly<Record<string, number | ScribeMetricSummary>>;
+	}) => ReadonlyArray<ScribeLogEntry>;
+	readonly GetMetrics: () => Readonly<Record<string, number | ScribeMetricSummary>>;
 }
 
 export interface ScribeMetricSummary {

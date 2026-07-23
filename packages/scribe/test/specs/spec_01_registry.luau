@@ -89,7 +89,7 @@ return function(TS, t)
 		end)
 
 		t.it("fake binding creates isolated deterministic bundles and diagnostics", function()
-			local fake = binding.FakeScribeBinding.new("1.0.10-test")
+			local fake = binding.FakeScribeBinding.new("1.0.11-test")
 			local first = fake:createBundle({ ProfileStoreIndex = "One" })
 			local second = fake:createBundle({ ProfileStoreIndex = "Two" })
 			t.expect(first.sequence).toBe(1)
@@ -111,6 +111,56 @@ return function(TS, t)
 			fake:pushLog(entry)
 			t.expect(seen).toBe(entry)
 			t.expect(#fake:recentLogs({ code = "TEST" })).toBe(1)
+		end)
+
+		t.it("compiles every descriptor through the matching native declarator", function()
+			local module, _, _, configured = help.nativeModule("1.0.11")
+			local native = binding.NativeScribeBinding.new(module)
+			native:configure({ AutoSaveInterval = 60 })
+			t.expect(#configured).toBe(1)
+			t.expect(configured[1].AutoSaveInterval).toBe(60)
+
+			local factory = function()
+				return 42
+			end
+			local template = native:compileTemplate({
+				Coins = scribe.s:int(0, { min = 0, max = 100 }),
+				Ratio = scribe.s:number(0.5, { min = 0, max = 1 }),
+				Name = scribe.s:string("", { maxLength = 32 }),
+				Mode = scribe.s:enum("A", { "A", "B" }),
+				Boost = scribe.s:timed(1),
+				Created = scribe.s:dynamic(factory),
+				Nickname = scribe.s:optional(scribe.s:string("")),
+				Items = scribe.s:arrayOf(scribe.s:int(1), { maxItems = 5 }),
+				ById = scribe.s:dictOf(scribe.s:string(""), {
+					maxKeys = 6,
+					maxKeyLength = 8,
+				}),
+				Public = scribe.s:shared({ Title = "" }),
+				Secret = scribe.s:serverOnly({ Flagged = false }),
+				Runtime = scribe.s:session({ Active = false }),
+				Position = scribe.s:vector3({ X = 0, Y = 0, Z = 0 }),
+			})
+
+			t.expect(template.Coins.NativeKind).toBe("Int")
+			t.expect(template.Coins.Meta.Min).toBe(0)
+			t.expect(template.Coins.Meta.Max).toBe(100)
+			t.expect(template.Ratio.NativeKind).toBe("Number")
+			t.expect(template.Name.Meta.MaxLength).toBe(32)
+			t.expect(template.Mode.NativeKind).toBe("Enum")
+			t.expect(template.Boost.NativeKind).toBe("Timed")
+			t.expect(template.Created.NativeKind).toBe("Dynamic")
+			t.expect(template.Created.Default).toBe(factory)
+			t.expect(template.Nickname.NativeKind).toBe("Optional")
+			t.expect(template.Nickname.Default.NativeKind).toBe("String")
+			t.expect(template.Items.NativeKind).toBe("ArrayOf")
+			t.expect(template.Items.Meta.MaxItems).toBe(5)
+			t.expect(template.ById.Meta.MaxKeys).toBe(6)
+			t.expect(template.ById.Meta.MaxKeyLength).toBe(8)
+			t.expect(template.Public.NativeKind).toBe("Shared")
+			t.expect(template.Secret.NativeKind).toBe("ServerOnly")
+			t.expect(template.Runtime.NativeKind).toBe("Session")
+			t.expect(template.Position.NativeKind).toBe("Vector3")
 		end)
 	end)
 end

@@ -54,6 +54,8 @@ const RUNTIME_DECORATORS = new Set([
 	"event",
 	"netEvent",
 	"netFunction",
+	"scribeEvent",
+	"scribeCommand",
 	"system",
 	"observer",
 	"monitor",
@@ -64,7 +66,12 @@ const RUNTIME_DECORATORS = new Set([
 	"view",
 	"ui",
 ]);
-const SHARED_BY_DEFAULT_DECORATORS = new Set(["netEvent", "netFunction"]);
+const SHARED_BY_DEFAULT_DECORATORS = new Set([
+	"netEvent",
+	"netFunction",
+	"scribeEvent",
+	"scribeCommand",
+]);
 const PLUGIN_MARKER = ".rovy.plugin.json";
 
 /**
