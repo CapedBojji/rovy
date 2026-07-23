@@ -48,6 +48,7 @@ import {
 	schedule,
 	server,
 	client,
+	shared,
 	system,
 	trait,
 	plugin,
@@ -994,6 +995,7 @@ class ServerSystem {
 `);
 	assertNoDiagnostics(serverResult, "server system guard");
 	assert.match(serverResult.printed, /class ServerSystem/);
+	assert.match(serverResult.printed, /rovy\.__boundary\(ServerSystem, "server"\)/);
 	assert.match(serverResult.printed, /if \(game\.GetService\("RunService"\)\.IsServer\(\)\) \{ rovy\.__query/);
 	assert.match(serverResult.printed, /__system\(ServerSystem/);
 
@@ -1007,6 +1009,7 @@ class ClientSystem {
 }
 `);
 	assertNoDiagnostics(clientResult, "client system guard");
+	assert.match(clientResult.printed, /rovy\.__boundary\(ClientSystem, "client"\)/);
 	assert.match(clientResult.printed, /if \(game\.GetService\("RunService"\)\.IsClient\(\)\) \{ rovy\.__system\(ClientSystem/);
 
 	const invalid = compileFixture(`
@@ -1019,7 +1022,61 @@ class ConfusedSystem {
 	run() {}
 }
 `);
-	assert.match(invalid.diagnostics.join("\n"), /@server and @client cannot be used on the same class/);
+	assert.match(invalid.diagnostics.join("\n"), /@server, @client, and @shared are mutually exclusive/);
+});
+
+runCase("plugin roots require boundaries except shared-default network contracts", () => {
+	const missing = compileFixture(`
+${header}
+@component class MissingBoundary {}
+`, {
+		fileName: "plugins/combat/index.ts",
+		files: { "plugins/combat/.rovy.plugin.json": "{}" },
+	});
+	assert.match(
+		missing.diagnostics.join("\n"),
+		/runtime declarations inside a \.rovy\.plugin\.json root require exactly one of @server, @client, or @shared/,
+	);
+
+	const marked = compileFixture(`
+${header}
+@shared
+@component
+class SharedUnit {}
+`, {
+		fileName: "plugins/combat/index.ts",
+		files: { "plugins/combat/.rovy.plugin.json": "{}" },
+	});
+	assertNoDiagnostics(marked, "shared plugin declaration");
+	assert.match(marked.printed, /rovy\.__boundary\(SharedUnit, "shared"\)/);
+	assert.match(marked.printed, /__component\(SharedUnit,/);
+	assert.doesNotMatch(marked.printed, /RunService/);
+
+	const networking = compileFixture(`
+${header}
+class NetResult {}
+
+@netEvent({ direction: "clientToServer" })
+class SharedMessage {}
+
+@netFunction({ direction: "clientToServer", result: NetResult })
+class SharedRequest {}
+`, {
+		fileName: "plugins/combat/index.ts",
+		files: { "plugins/combat/.rovy.plugin.json": "{}" },
+	});
+	assertNoDiagnostics(networking, "shared-default network contracts");
+	assert.match(networking.printed, /__netEvent\(SharedMessage,/);
+	assert.match(networking.printed, /__netFunction\(SharedRequest,/);
+});
+
+runCase("boundary decorators can classify ordinary classes", () => {
+	const result = compileFixture(`
+${header}
+@server
+export class ServerHelper {}
+`);
+	assertNoDiagnostics(result, "ordinary boundary class");
 });
 
 runCase("traits and pairs lower in query descriptors and trait macro rewrites", () => {

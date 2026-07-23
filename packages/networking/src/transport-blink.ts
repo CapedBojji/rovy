@@ -10,10 +10,6 @@ import type {
 	NetOutboxItem,
 } from "./types";
 
-/**
- * Shape of one generated Blink polling event. Blink emits `Casing = Pascal`
- * names matching the `@netEvent` class, so `module[reg.name]` resolves.
- */
 export interface BlinkEvent {
 	Fire(this: void, ...args: Array<unknown>): void;
 	FireAll?(this: void, data: unknown): void;
@@ -27,104 +23,114 @@ export interface BlinkModule {
 	StepReplication?(this: void): void;
 }
 
-/**
- * Adapter over a Blink-generated polling module. The transformer already emits
- * a per-event Blink schema; once that schema is compiled to a module, pass it
- * via `NetPlugin({ blink })` to use the binary transport instead of
- * RemoteEvents.
- */
-export class BlinkTransport implements NetTransport {
+export class ClientBlinkTransport implements NetTransport {
 	private ctx?: NetTransportContext;
-
 	constructor(
 		private readonly module: BlinkModule,
 		private readonly events: ReadonlyArray<NetEventReg>,
 		private readonly functions: ReadonlyArray<NetFunctionReg> = [],
 	) {}
-
 	start(ctx: NetTransportContext): void {
+		assert(ctx.boundary === "client", "[rovy-net] ClientBlinkTransport requires the client boundary");
 		this.ctx = ctx;
 	}
-
 	send(item: NetOutboxItem, payload: NetPayload): void {
-		const blinkEvent = this.module[item.meta.name] as BlinkEvent | undefined;
-		assert(blinkEvent !== undefined, `[rovy-net] Blink module missing event '${item.meta.name}'`);
-		const target = item.target;
-		if (this.ctx?.boundary === "client") {
-			blinkEvent.Fire(payload);
-			return;
+		const event = this.event(item.meta.name);
+		event.Fire(payload);
+	}
+	sendFunctionRequest(item: NetFunctionRequestOutboxItem, envelope: NetFunctionRequestEnvelope): void {
+		this.event(item.meta.requestName).Fire(envelope);
+	}
+	sendFunctionResult(_item: NetFunctionResultOutboxItem, _envelope: NetFunctionResultEnvelope): void {}
+	pump(): void {
+		const ctx = this.ctx;
+		if (ctx === undefined) return;
+		for (const meta of this.events) {
+			if (meta.direction !== "serverToClient") continue;
+			const event = this.module[meta.name] as BlinkEvent | undefined;
+			if (event === undefined) continue;
+			for (const [, data] of event.Iter()) ctx.deliver(meta.name, data as NetPayload);
 		}
-		switch (target.kind) {
+		for (const meta of this.functions) {
+			const event = this.module[meta.resultWireName] as BlinkEvent | undefined;
+			if (event === undefined) continue;
+			for (const [, data] of event.Iter()) {
+				ctx.deliverFunctionResult?.(meta.name, data as NetFunctionResultEnvelope);
+			}
+		}
+	}
+	commit(): void {
+		this.module.StepReplication?.();
+	}
+	private event(name: string): BlinkEvent {
+		const event = this.module[name] as BlinkEvent | undefined;
+		assert(event !== undefined, `[rovy-net] Blink module missing event '${name}'`);
+		return event;
+	}
+}
+
+export class ServerBlinkTransport implements NetTransport {
+	private ctx?: NetTransportContext;
+	constructor(
+		private readonly module: BlinkModule,
+		private readonly events: ReadonlyArray<NetEventReg>,
+		private readonly functions: ReadonlyArray<NetFunctionReg> = [],
+	) {}
+	start(ctx: NetTransportContext): void {
+		assert(ctx.boundary === "server", "[rovy-net] ServerBlinkTransport requires the server boundary");
+		this.ctx = ctx;
+	}
+	send(item: NetOutboxItem, payload: NetPayload): void {
+		const event = this.event(item.meta.name);
+		switch (item.target.kind) {
 			case "player":
-				blinkEvent.Fire(target.player, payload);
+				event.Fire(item.target.player, payload);
 				break;
 			case "players":
-				assert(blinkEvent.FireList !== undefined, "[rovy-net] Blink event missing FireList");
-				blinkEvent.FireList(target.players, payload);
+				assert(event.FireList !== undefined, "[rovy-net] Blink event missing FireList");
+				event.FireList(item.target.players, payload);
 				break;
 			case "broadcast":
-				assert(blinkEvent.FireAll !== undefined, "[rovy-net] Blink event missing FireAll");
-				blinkEvent.FireAll(payload);
+				assert(event.FireAll !== undefined, "[rovy-net] Blink event missing FireAll");
+				event.FireAll(payload);
 				break;
 			case "broadcastExcept":
-				assert(blinkEvent.FireExcept !== undefined, "[rovy-net] Blink event missing FireExcept");
-				blinkEvent.FireExcept(target.except, payload);
+				assert(event.FireExcept !== undefined, "[rovy-net] Blink event missing FireExcept");
+				event.FireExcept(item.target.except, payload);
 				break;
 			case "server":
 				break;
 		}
 	}
-
-	sendFunctionRequest(item: NetFunctionRequestOutboxItem, envelope: NetFunctionRequestEnvelope): void {
-		const blinkEvent = this.module[item.meta.requestName] as BlinkEvent | undefined;
-		assert(blinkEvent !== undefined, `[rovy-net] Blink module missing function request '${item.meta.requestName}'`);
-		if (this.ctx?.boundary === "client") blinkEvent.Fire(envelope);
-	}
-
+	sendFunctionRequest(_item: NetFunctionRequestOutboxItem, _envelope: NetFunctionRequestEnvelope): void {}
 	sendFunctionResult(item: NetFunctionResultOutboxItem, envelope: NetFunctionResultEnvelope): void {
-		const blinkEvent = this.module[item.call.meta.resultWireName] as BlinkEvent | undefined;
-		assert(blinkEvent !== undefined, `[rovy-net] Blink module missing function result '${item.call.meta.resultWireName}'`);
-		if (this.ctx?.boundary === "server") blinkEvent.Fire(item.target.player, envelope);
+		this.event(item.call.meta.resultWireName).Fire(item.target.player, envelope);
 	}
-
 	pump(): void {
 		const ctx = this.ctx;
 		if (ctx === undefined) return;
-		const inboundDirection = ctx.boundary === "server" ? "clientToServer" : "serverToClient";
 		for (const meta of this.events) {
-			if (meta.direction !== inboundDirection) continue;
-			const blinkEvent = this.module[meta.name] as BlinkEvent | undefined;
-			if (blinkEvent === undefined) continue;
-			if (ctx.boundary === "server") {
-				for (const [, player, data] of blinkEvent.Iter()) {
-					ctx.deliver(meta.name, data as NetPayload, player as Player);
-				}
-			} else {
-				for (const [, data] of blinkEvent.Iter()) {
-					ctx.deliver(meta.name, data as NetPayload);
-				}
+			if (meta.direction !== "clientToServer") continue;
+			const event = this.module[meta.name] as BlinkEvent | undefined;
+			if (event === undefined) continue;
+			for (const [, player, data] of event.Iter()) {
+				ctx.deliver(meta.name, data as NetPayload, player as Player);
 			}
 		}
-		if (ctx.boundary === "server") {
-			for (const meta of this.functions) {
-				const blinkEvent = this.module[meta.requestName] as BlinkEvent | undefined;
-				if (blinkEvent === undefined) continue;
-				for (const [, player, data] of blinkEvent.Iter()) {
-					ctx.deliverFunctionRequest?.(meta.name, data as NetFunctionRequestEnvelope, player as Player);
-				}
-			}
-		} else {
-			for (const meta of this.functions) {
-				const blinkEvent = this.module[meta.resultWireName] as BlinkEvent | undefined;
-				if (blinkEvent === undefined) continue;
-				for (const [, data] of blinkEvent.Iter()) {
-					ctx.deliverFunctionResult?.(meta.name, data as NetFunctionResultEnvelope);
-				}
+		for (const meta of this.functions) {
+			const event = this.module[meta.requestName] as BlinkEvent | undefined;
+			if (event === undefined) continue;
+			for (const [, player, data] of event.Iter()) {
+				ctx.deliverFunctionRequest?.(meta.name, data as NetFunctionRequestEnvelope, player as Player);
 			}
 		}
 	}
-
 	commit(): void {
 		this.module.StepReplication?.();
+	}
+	private event(name: string): BlinkEvent {
+		const event = this.module[name] as BlinkEvent | undefined;
+		assert(event !== undefined, `[rovy-net] Blink module missing event '${name}'`);
+		return event;
 	}
 }

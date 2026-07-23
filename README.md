@@ -41,8 +41,8 @@ new App().start();
 ## Features
 
 - **Decorator-based authoring** — `@component`, `@resource`, `@event`, `@system`,
-  `@observer`, `@monitor`, `@relation`, `@schedule`, `@plugin`, plus `@server` /
-  `@client` guards for shared modules. The transformer wires registration for you.
+  `@observer`, `@monitor`, `@relation`, `@schedule`, `@plugin`, plus `@shared`,
+  `@server`, and `@client` boundaries. The transformer wires registration for you.
 - **Compile-time queries & injection** — `Query<...>` terms and system parameters are
   resolved and hoisted at build time; zero runtime reflection.
 - **Interface-based traits** — `trait<T>()` turns plain interfaces into queryable,
@@ -73,7 +73,7 @@ new App().start();
 
 ```sh
 npm i @rovy/core
-npm i -D rovy-transformer
+npm i -D rovy-transformer rovy-build
 ```
 
 Register the transformer in `tsconfig.json`:
@@ -87,6 +87,9 @@ Register the transformer in `tsconfig.json`:
 ```
 
 Full setup: [Installation guide](https://capedbojji.github.io/rovy/guide/installation).
+
+Use `rovy compile` or `rovy build` rather than invoking `rbxtsc` directly when
+the project contains `.rovy.plugin.json` monolith plugin roots.
 
 ## Repository layout
 

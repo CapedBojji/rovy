@@ -9,22 +9,67 @@ A plugin extends `App` before the registry finalizes. Plugins also act as an own
 
 ## Folder plugins
 
-A folder is treated as a Rovy plugin load root when it contains `.rovy.plugin.json`.
+A folder is treated as a partitioned Rovy plugin root when it contains
+`.rovy.plugin.json`. Plugin source is monolithic: do not author `client`,
+`server`, or `shared` subfolders.
+
+The marker may be empty or point at the shipped schema:
+
+```json
+{
+  "$schema": "./node_modules/@rovy/core/schema/rovy-plugin.schema.json"
+}
+```
 
 ```txt
 src/plugins/combat/
   .rovy.plugin.json
-  shared/
-    index.ts
-  client/
-    index.ts
-  server/
-    index.ts
+  index.ts
+  combat.ts
+  damage.ts
+  ui.ts
 ```
 
-When you call `rovy.loadPaths("src/plugins/combat")`, the transformer marks that lowered Roblox Instance as a plugin root. At runtime, Rovy requires `shared/**` on both sides, plus `client/**` on the client or `server/**` on the server. Sibling folders under the plugin root are ignored by plugin-root loading.
+Every Rovy runtime declaration in this tree must carry exactly one boundary,
+except `@netEvent` and `@netFunction`. Network contracts default to shared
+because both sides must register the same wire metadata:
 
-Plugin roots are also detected inside broader loaded trees. If `rovy.loadPaths("src")` or another parent path reaches a child folder with `.rovy.plugin.json`, that child folder is loaded as a plugin root instead of being required as a normal subtree.
+```ts
+import { client, component, server, shared, system } from "@rovy/core";
+
+@shared
+@component
+export class Health {
+  constructor(public value = 100) {}
+}
+
+@server
+@system({ schedule: CombatUpdate })
+export class ApplyDamage {
+  run() {}
+}
+
+@client
+@system({ schedule: CombatUpdate })
+export class RenderDamage {
+  run() {}
+}
+```
+
+At build time, Rovy follows runtime references from those marked declarations.
+Ordinary functions, constants, and undecorated classes used by one side stay on
+that side. Values reached from both sides move into one shared module. Public
+values with no internal runtime consumer default to shared.
+
+The generated output contains `shared`, `client`, and `server` trees plus one
+stable root facade. Client code cannot reach server declarations, server code
+cannot reach client declarations, and shared code cannot reach either side.
+Diagnostics include the dependency path that crossed the boundary. Type-only
+references do not create runtime edges.
+
+`rovy.loadPaths("src/plugins/combat")` lowers to the generated root facade.
+The facade loads shared plus the current runtime side. Authored boundary
+subfolders are a build error; there is no compatibility mode.
 
 ## `Plugin` interface
 

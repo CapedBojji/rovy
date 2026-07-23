@@ -33,7 +33,8 @@ local function fakeEvent()
 end
 
 return function(TS, t)
-	local net = TS.loadPath("out/init")
+	local clientNet = nethelp.load(TS, "client")
+	local serverNet = nethelp.load(TS, "server")
 
 	local C2S = nethelp.eventClass({ "n" })
 	local c2sReg = nethelp.reg(C2S, { name = "C2S", direction = "clientToServer", fields = { "n" } })
@@ -46,7 +47,7 @@ return function(TS, t)
 			mod.StepReplication = function()
 				mod.steps += 1
 			end
-			local tr = net.BlinkTransport.new(mod, { c2sReg, s2cReg })
+			local tr = serverNet.ServerBlinkTransport.new(mod, { c2sReg, s2cReg })
 			tr:start({ boundary = "server", deliver = function() end })
 			return mod, tr
 		end
@@ -83,7 +84,7 @@ return function(TS, t)
 	t.describe("BlinkTransport client send + pump", function()
 		t.it("client send uses Fire(payload) only", function()
 			local mod = { C2S = fakeEvent(), S2C = fakeEvent() }
-			local tr = net.BlinkTransport.new(mod, { c2sReg, s2cReg })
+			local tr = clientNet.ClientBlinkTransport.new(mod, { c2sReg, s2cReg })
 			tr:start({ boundary = "client", deliver = function() end })
 			tr:send({ meta = c2sReg, target = { kind = "server" } }, { n = 9 })
 			t.expect(mod.C2S.sent[1].kind).toBe("fire")
@@ -96,7 +97,7 @@ return function(TS, t)
 			local p = { Name = "sender" }
 			mod.C2S.queue = { { p, { n = 5 } } }
 			local got = {}
-			local tr = net.BlinkTransport.new(mod, { c2sReg, s2cReg })
+			local tr = serverNet.ServerBlinkTransport.new(mod, { c2sReg, s2cReg })
 			tr:start({
 				boundary = "server",
 				deliver = function(name, payload, sender)
@@ -114,7 +115,7 @@ return function(TS, t)
 			local mod = { C2S = fakeEvent(), S2C = fakeEvent() }
 			mod.S2C.queue = { { { n = 8 } } }
 			local got
-			local tr = net.BlinkTransport.new(mod, { c2sReg, s2cReg })
+			local tr = clientNet.ClientBlinkTransport.new(mod, { c2sReg, s2cReg })
 			tr:start({
 				boundary = "client",
 				deliver = function(name, payload, sender)

@@ -15,6 +15,7 @@ export {
 	plugin,
 	server,
 	client,
+	shared,
 	event,
 	system,
 	observer,

@@ -4,15 +4,15 @@
 
 Systems are classes decorated with `@system`. The decorator carries scheduling config. The transformer reads param types on `run`, builds query descriptors, and injects a `rovy.__system` registration after the class. No manual `addSystems` calls.
 
-## Server and client guards
+## Runtime boundaries
 
-Use `@server` or `@client` on a system, observer, or monitor when the module lives
-in shared code but should only register on one side. This is useful for plugins
-that expose shared modules but include systems with server-only or client-only
-behavior.
+Use `@shared`, `@server`, or `@client` to classify runtime declarations in a
+partitioned plugin. Every decorated declaration under `.rovy.plugin.json`
+requires exactly one marker, except `@netEvent` and `@netFunction`; those wire
+contracts are shared by default.
 
 ```ts
-import { client, server, system } from "@rovy/core";
+import { client, server, shared, system } from "@rovy/core";
 
 @server
 @system({ schedule: Update })
@@ -27,11 +27,28 @@ class UpdateHud {
 }
 ```
 
-The transformer keeps the class itself in the compiled module, but wraps the
-generated `rovy.__system(...)` registration and any query descriptors in a
-`RunService` check. A `@server` system does not register on the client, and a
-`@client` system does not register on the server. `@server` and `@client` cannot
-be used together on the same class.
+`rovy-build` emits each class only into its selected boundary. Helpers reached
+from both sides are emitted once into shared and imported by both generated side
+modules. Cross-side references fail transitively. Outside a partitioned plugin,
+`@server` and `@client` continue to guard generated registration calls with a
+`RunService` check.
+
+Query component access is checked twice. The plugin partitioner rejects a
+client/shared consumer that names a server component (and the inverse), while
+`App.start()` validates system, observer, and monitor query descriptors before
+building handles. Runtime validation includes optional terms, filters, monitor
+matches, and trait implementers.
+
+The transformer emits `rovy.__boundary(ctor, boundary)` metadata automatically.
+Handwritten Luau can opt into the same backstop:
+
+```luau
+rovy:__boundary(ClientSystem, "client")
+rovy:__boundary(ServerState, "server")
+```
+
+If `ClientSystem` injects a query containing `ServerState`, `App:start()` raises
+a boundary error even though no TypeScript transformer ran.
 
 ## Sets
 

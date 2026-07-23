@@ -65,6 +65,8 @@ export class TransformState {
 	private readonly queryCallsiteCounters = new Map<string, number>();
 	private uiWidgetExportNames?: Set<string>;
 	private readonly rojoResolver?: RojoResolver;
+	private readonly partitionStagingRoot?: string;
+	private readonly partitionSourceRoot?: string;
 
 	constructor(
 		readonly program: Partial<ts.Program>,
@@ -76,6 +78,14 @@ export class TransformState {
 		const options = program.getCompilerOptions?.() ?? {};
 		this.rootDir = this.absolute(options.rootDir ?? this.currentDirectory);
 		this.outDir = this.absolute(options.outDir ?? this.rootDir);
+		this.partitionStagingRoot =
+			typeof process !== "undefined" && process.env.ROVY_PARTITION_STAGING_ROOT
+				? normalizePath(process.env.ROVY_PARTITION_STAGING_ROOT)
+				: undefined;
+		this.partitionSourceRoot =
+			typeof process !== "undefined" && process.env.ROVY_PARTITION_SOURCE_ROOT
+				? normalizePath(process.env.ROVY_PARTITION_SOURCE_ROOT)
+				: undefined;
 		this.rovyConfig = loadRovyConfig(this.currentDirectory, config, {
 			absolute: (value) => this.absolute(value),
 			exists: (path) => fs.existsSync(path),
@@ -455,6 +465,8 @@ export class TransformState {
 	}
 
 	resolveBoundary(file: ts.SourceFile): "server" | "client" | "shared" | "unknown" {
+		const pluginBoundary = this.resolvePartitionBoundary(file.fileName);
+		if (pluginBoundary !== undefined) return pluginBoundary;
 		const configured = this.resolveBoundaryFromConfig(file.fileName);
 		if (configured !== "unknown") return configured;
 		const path = normalizePath(file.fileName);
@@ -462,6 +474,21 @@ export class TransformState {
 		if (isDescendant(path, this.absolute("src/client"))) return "client";
 		if (isDescendant(path, this.absolute("src/shared"))) return "shared";
 		return "unknown";
+	}
+
+	private resolvePartitionBoundary(fileName: string): "server" | "client" | "shared" | undefined {
+		if (!this.partitionStagingRoot) return undefined;
+		let current = dirname(normalizePath(fileName));
+		while (isDescendant(current, this.partitionStagingRoot)) {
+			if (fs.existsSync(join(current, ROVY_PLUGIN_MARKER))) {
+				const first = relative(current, normalizePath(fileName)).split("/")[0];
+				if (first === "server" || first === "client" || first === "shared") return first;
+				return undefined;
+			}
+			if (current === this.partitionStagingRoot) break;
+			current = dirname(current);
+		}
+		return undefined;
 	}
 
 	private resolveBoundaryFromConfig(fileName: string): "server" | "client" | "shared" | "unknown" {
@@ -524,15 +551,59 @@ export class TransformState {
 	}
 
 	stableIdForNode(node: ts.Node): string {
-		return modulePath(this.currentDirectory, node.getSourceFile().fileName);
+		return modulePath(this.currentDirectory, this.logicalFileName(node.getSourceFile().fileName));
 	}
 
 	stableIdForNodeWithin(node: ts.Node, rootDir: string): string {
-		return modulePath(rootDir, node.getSourceFile().fileName);
+		const logicalRoot = this.logicalFileName(rootDir);
+		return modulePath(logicalRoot, this.logicalFileName(node.getSourceFile().fileName));
+	}
+
+	private logicalFileName(fileName: string): string {
+		const normalized = normalizePath(fileName);
+		if (
+			this.partitionStagingRoot &&
+			this.partitionSourceRoot &&
+			isDescendant(normalized, this.partitionStagingRoot)
+		) {
+			const stagedRelative = relative(this.partitionStagingRoot, normalized);
+			const parts = stagedRelative.split("/");
+			const markerIndex = parts.findIndex(
+				(_part, index) =>
+					index < parts.length - 1 &&
+					fs.existsSync(
+						[...parts.slice(0, index + 1), ROVY_PLUGIN_MARKER].reduce(
+							(current, part) => join(current, part),
+							this.partitionStagingRoot!,
+						),
+					),
+			);
+			if (markerIndex >= 0 && (parts[markerIndex + 1] === "shared" || parts[markerIndex + 1] === "client" || parts[markerIndex + 1] === "server")) {
+				parts.splice(markerIndex + 1, 1);
+			}
+			return parts.reduce((current, part) => join(current, part), this.partitionSourceRoot);
+		}
+		return normalized;
 	}
 
 	resolvePluginOwner(node: ts.ClassDeclaration): PluginOwnerInfo | undefined {
 		const fileName = normalizePath(node.getSourceFile().fileName);
+		const partitionRoot = this.partitionPluginRoot(fileName);
+		if (partitionRoot !== undefined) {
+			const boundary = this.resolvePartitionBoundary(fileName);
+			const compatible = this.pluginOwners.filter((owner) => {
+				if (owner.node === node || !isDescendant(owner.node.getSourceFile().fileName, partitionRoot)) return false;
+				const ownerBoundary = this.resolvePartitionBoundary(owner.node.getSourceFile().fileName);
+				return ownerBoundary === "shared" || ownerBoundary === boundary;
+			});
+			let bestPartitionOwner: PluginOwnerInfo | undefined;
+			for (const owner of compatible) {
+				if (bestPartitionOwner === undefined || owner.rootDir.length > bestPartitionOwner.rootDir.length) {
+					bestPartitionOwner = owner;
+				}
+			}
+			if (bestPartitionOwner !== undefined) return bestPartitionOwner;
+		}
 		let best: PluginOwnerInfo | undefined;
 		for (const owner of this.pluginOwners) {
 			if (owner.node === node) continue;
@@ -541,6 +612,20 @@ export class TransformState {
 			if (best === undefined || owner.rootDir.length > best.rootDir.length) best = owner;
 		}
 		return best;
+	}
+
+	private partitionPluginRoot(fileName: string): string | undefined {
+		if (!this.partitionStagingRoot) return undefined;
+		let current = dirname(normalizePath(fileName));
+		while (isDescendant(current, this.partitionStagingRoot)) {
+			if (fs.existsSync(join(current, ROVY_PLUGIN_MARKER))) {
+				const first = relative(current, normalizePath(fileName)).split("/")[0];
+				return first === "server" || first === "client" || first === "shared" ? current : undefined;
+			}
+			if (current === this.partitionStagingRoot) break;
+			current = dirname(current);
+		}
+		return undefined;
 	}
 
 	pluginOwnerExpr(file: ts.SourceFile, owner: PluginOwnerInfo, node: ts.Node): ts.Expression | undefined {
@@ -655,6 +740,19 @@ export class TransformState {
 		return fs.existsSync(join(this.absolute(sourcePath), ROVY_PLUGIN_MARKER));
 	}
 
+	isInRovyPluginSourceRoot(file: ts.SourceFile): boolean {
+		let current = dirname(normalizePath(file.fileName));
+		const stop = normalizePath(this.rootDir);
+		while (isDescendant(current, stop)) {
+			if (fs.existsSync(join(current, ROVY_PLUGIN_MARKER))) return true;
+			if (current === stop) break;
+			const parent = dirname(current);
+			if (parent === current) break;
+			current = parent;
+		}
+		return false;
+	}
+
 	private symbolForTypeNode(node: ts.TypeNode): ts.Symbol | undefined {
 		if (!this.typeChecker) return undefined;
 		const type = this.typeChecker.getTypeFromTypeNode(node);
@@ -679,7 +777,7 @@ export class TransformState {
 					.filter((name): name is string => name !== undefined);
 				if (decorators.length > 0) {
 					this.classInfo.set(node, { node, decorators });
-					if (decorators.includes("plugin") && node.name) {
+					if (decorators.includes("plugin") && node.name && !this.isOriginalPartitionSource(file.fileName)) {
 						const rootDir = dirname(normalizePath(file.fileName));
 						const subtreeRoot = isPluginIndexFile(file.fileName);
 						if (
@@ -714,6 +812,20 @@ export class TransformState {
 			ts.forEachChild(node, visit);
 		};
 		visit(file);
+	}
+
+	private isOriginalPartitionSource(fileName: string): boolean {
+		if (!this.partitionStagingRoot) return false;
+		let current = dirname(normalizePath(fileName));
+		while (isDescendant(current, this.partitionStagingRoot)) {
+			if (fs.existsSync(join(current, ROVY_PLUGIN_MARKER))) {
+				const first = relative(current, normalizePath(fileName)).split("/")[0];
+				return first !== "server" && first !== "client" && first !== "shared";
+			}
+			if (current === this.partitionStagingRoot) break;
+			current = dirname(current);
+		}
+		return false;
 	}
 
 	private createRojoResolver(): RojoResolver | undefined {

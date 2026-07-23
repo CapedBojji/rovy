@@ -5,6 +5,21 @@
 
 local M = {}
 
+function M.load(TS, boundary)
+	local result = {}
+	local function merge(value)
+		if type(value) ~= "table" then return end
+		for key, item in value do
+			result[key] = item
+		end
+	end
+	merge(TS.loadPath("out/shared/init"))
+	if boundary ~= nil then
+		merge(TS.loadPath("out/" .. boundary .. "/init"))
+	end
+	return result
+end
+
 -- Define a class whose `.new(...)` assigns positional args to `fields`.
 function M.eventClass(fields: { string })
 	local C = {}

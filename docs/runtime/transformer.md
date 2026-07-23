@@ -8,7 +8,7 @@ Shipped as the `rovy-transformer` package — a dev-only roblox-ts plugin, separ
 
 All of the following happen at **build time**. Nothing below runs at Luau startup.
 
-1. Scan every decorated class: `@component`, `@collect`, `@resource`, `@event`, `@system`, `@observer`, `@monitor`, `@relation`, `@schedule`, `@set`, `@plugin`, plus compile-time boundary markers `@server` / `@client`.
+1. Scan every decorated class: `@component`, `@collect`, `@resource`, `@event`, `@system`, `@observer`, `@monitor`, `@relation`, `@schedule`, `@set`, `@plugin`, plus compile-time boundary markers `@shared` / `@server` / `@client`.
 2. Resolve trait macros (`trait<T>()`) and query macros (`query<...>()`), plus `Trait<T>` / `HasTrait<T>` / `AllTraits<T>` type references, via TypeScript `TypeChecker` (erased at runtime — must happen now).
 3. Generate stable trait IDs from canonical module paths.
 4. Scan `implements` clauses on `@component` classes to find trait implementers.
@@ -182,7 +182,8 @@ One injected call per decorator:
 
 Each `rovy.__*` call only **pushes into a global registry**. No jecs IDs, no hooks yet — registration is lazy. `app.start()` does the finalize pass.
 
-`@server` and `@client` do not inject their own registry calls. They wrap the
+`@server` and `@client` do not inject their own registry calls. Outside a
+partitioned plugin they wrap the
 generated `@system`, `@observer`, or `@monitor` side effects, including any
 hoisted query descriptors for that class:
 
@@ -192,8 +193,8 @@ if (game.GetService("RunService").IsServer()) {
 }
 ```
 
-This lets shared/plugin modules be required on both sides while registering only
-the systems that belong to the current runtime context.
+Within a `.rovy.plugin.json` root, `@shared`, `@client`, and `@server` instead
+drive build-time module partitioning.
 
 ## Vide view lowering
 
@@ -349,14 +350,17 @@ Roblox ModuleScripts do not run unless required. A self-registering module is si
 
 `rovy.loadPaths(...)` solves this — authored TS passes string paths like `"src/client/systems"`. The transformer resolves each string to the matching Roblox Instance root via the active `rovy-build` environment's Rojo config, then runtime recursively requires every `ModuleScript` under that instance so every injected `rovy.__*` side effect runs.
 
-If the source path contains `.rovy.plugin.json`, the transformer lowers it as a plugin root. Plugin roots load only `shared/**` plus the active runtime folder: `client/**` on clients or `server/**` on servers.
+If the source path contains `.rovy.plugin.json`, `rovy-build` partitions its
+monolithic source into generated `shared`, `client`, and `server` trees. The
+transformer lowers the path as a plugin root, and the generated root facade loads
+shared plus the active runtime side.
 
 ```ts
 rovy.loadPaths(
 	"src/client/components",
 	"src/client/systems",
 	"src/client/observers",
-	"src/plugins/combat", // .rovy.plugin.json: shared + runtime side
+	"src/plugins/combat", // .rovy.plugin.json: generated shared + runtime side
 );
 
 app.start();   // finalize: allocate jecs IDs, wire hooks, sort observers, fire runOnStart

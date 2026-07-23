@@ -14,6 +14,7 @@ export type Ctor<T extends object = object> = new (...args: never[]) => T;
 
 /** Stable, collision-free id = canonical module path (e.g. "src/components/Position"). */
 export type StableId = string;
+export type RovyBoundary = "shared" | "client" | "server";
 
 // ─── Parameter injection ────────────────────────────────────────────────────
 // The transformer reads run/onEnter/onExit/onChange param types and emits an
@@ -280,6 +281,8 @@ export interface RovyRegistry {
 	readonly traits: Map<StableId, Array<Ctor>>;
 	/** queryId → hoisted descriptor. */
 	readonly queries: Map<StableId, QueryDescriptor>;
+	/** Runtime declaration constructor → authored execution boundary. */
+	readonly boundaries: Map<Ctor, RovyBoundary>;
 }
 
 /**
@@ -290,4 +293,4 @@ export interface RovyRegistry {
  */
 
 /** Bumped on any breaking change to the shapes above. Transformer asserts a match. */
-export const CONTRACT_VERSION = 5;
+export const CONTRACT_VERSION = 6;

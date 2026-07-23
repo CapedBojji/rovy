@@ -6,6 +6,7 @@ export {
 	NET_FUNCTION_RESPONDER_PARAM,
 	NET_RUNTIME_PARAM,
 	NET_SERVER_PARAM,
+	NetParamIds,
 	netFunctionParam,
 	netFunctionReaderParam,
 } from "./types";
@@ -38,14 +39,9 @@ export type {
 export { netEvent, netFunction, rovyNet } from "./registry";
 export { NetCodec, type NetPayload } from "./codec";
 export { NetEventContext } from "./context";
-export {
-	NetClient,
-	NetFunctionReader,
-	NetFunctionResponder,
-	NetFunc,
-	NetRuntime,
-	NetServer,
-} from "./runtime";
+export { NetClient, NetFunc, NetClientRuntime } from "./client-runtime";
+export { NetFunctionReader, NetFunctionResponder, NetServer, NetServerRuntime } from "./server-runtime";
+export { NetRuntime } from "./runtime";
 export {
 	connectLoopback,
 	LoopbackTransport,
@@ -53,6 +49,21 @@ export {
 	type NetTransport,
 	type NetTransportContext,
 } from "./transport";
-export { RemoteEventTransport } from "./transport-remote";
-export { BlinkTransport, type BlinkEvent, type BlinkModule } from "./transport-blink";
-export { NetFlushSet, NetPlugin, NetReceiveSet, type NetPluginOptions } from "./plugin";
+export { ClientRemoteEventTransport, ServerRemoteEventTransport } from "./transport-remote";
+export {
+	ClientBlinkTransport,
+	ServerBlinkTransport,
+	type BlinkEvent,
+	type BlinkModule,
+} from "./transport-blink";
+export { BlinkTransport, RemoteEventTransport } from "./transport-compat";
+export {
+	NetClientPlugin,
+	NetFlushSet,
+	NetPlugin,
+	NetReceiveSet,
+	NetServerPlugin,
+	type NetClientPluginOptions,
+	type NetPluginOptions,
+	type NetServerPluginOptions,
+} from "./plugin";

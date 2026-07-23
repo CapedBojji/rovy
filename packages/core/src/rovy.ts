@@ -25,6 +25,7 @@ import type {
 	QueryDescriptor,
 	RelationReg,
 	ResourceReg,
+	RovyBoundary,
 	RovyRegistry,
 	ScheduleReg,
 	StableId,
@@ -44,8 +45,8 @@ export interface RovyPluginLoadRoot {
 /**
  * Forces module side effects to run so injected `rovy.__*` calls execute.
  * Authored TS passes string paths; the transformer lowers them to Roblox
- * Instance roots. Plugin roots are tagged so the default provider can load only
- * shared plus the active runtime side.
+ * Instance roots. Partitioned plugin roots are tagged so the default provider
+ * requires their generated runtime facade exactly once.
  */
 export type ModuleProvider = (roots: ReadonlyArray<unknown>) => void;
 
@@ -65,12 +66,11 @@ function createRegistry(): RovyRegistry {
 		prefabs: [],
 		traits: new Map<StableId, Array<Ctor>>(),
 		queries: new Map<StableId, QueryDescriptor>(),
+		boundaries: new Map<Ctor, RovyBoundary>(),
 	};
 }
 
 const registry: RovyRegistry = createRegistry();
-
-const PLUGIN_MARKER_NAME = ".rovy.plugin.json";
 
 function isInstanceLike(value: unknown): value is Instance {
 	const candidate = value as { GetDescendants?: unknown };
@@ -82,15 +82,13 @@ function isPluginLoadRoot(value: unknown): value is RovyPluginLoadRoot {
 	return candidate.__rovyPluginRoot === true && isInstanceLike(candidate.root);
 }
 
-function activeRuntimeFolderName(): "client" | "server" | undefined {
-	const runService = game.GetService("RunService");
-	if (runService.IsClient()) return "client";
-	if (runService.IsServer()) return "server";
-	return undefined;
-}
-
-function hasPluginMarker(root: Instance): boolean {
-	return root.FindFirstChild(PLUGIN_MARKER_NAME) !== undefined;
+function isGeneratedPluginFacade(root: Instance): boolean {
+	if (!root.IsA("ModuleScript")) return false;
+	return (
+		root.FindFirstChild("shared") !== undefined ||
+		root.FindFirstChild("client") !== undefined ||
+		root.FindFirstChild("server") !== undefined
+	);
 }
 
 function defaultModuleProvider(roots: ReadonlyArray<unknown>): void {
@@ -104,31 +102,26 @@ function defaultModuleProvider(roots: ReadonlyArray<unknown>): void {
 	const requireModule = (module: Instance): void => {
 		if (
 			module.IsA("ModuleScript") &&
-			module.Name !== PLUGIN_MARKER_NAME &&
 			!isAutoLoadedBlinkBoundaryModule(module)
 		) {
 			require(module);
 		}
 	};
 
-	const requireTree = (root: Instance, detectPluginRoots = true): void => {
+	const requireTree = (root: Instance): void => {
 		requireModule(root);
+		if (isGeneratedPluginFacade(root)) return;
 		for (const child of root.GetChildren()) {
-			if (detectPluginRoots && hasPluginMarker(child)) {
-				requirePluginTree(child);
-			} else {
-				requireTree(child, detectPluginRoots);
-			}
+			requireTree(child);
 		}
 	};
 
-	const requirePluginTree = (root: Instance): void => {
-		const shared = root.FindFirstChild("shared");
-		if (shared !== undefined) requireTree(shared, false);
-		const runtimeFolder = activeRuntimeFolderName();
-		if (runtimeFolder === undefined) return;
-		const side = root.FindFirstChild(runtimeFolder);
-		if (side !== undefined) requireTree(side, false);
+	const requirePluginFacade = (root: Instance): void => {
+		if (root.IsA("ModuleScript")) require(root);
+		else {
+			const init = root.FindFirstChild("init");
+			if (init !== undefined && init.IsA("ModuleScript")) require(init);
+		}
 	};
 
 	// Default: treat each root as a Roblox Instance and require every
@@ -137,10 +130,9 @@ function defaultModuleProvider(roots: ReadonlyArray<unknown>): void {
 	// only load when the networking plugin has already chosen a runtime side.
 	for (const root of roots) {
 		if (isPluginLoadRoot(root)) {
-			requirePluginTree(root.root);
+			requirePluginFacade(root.root);
 		} else if (isInstanceLike(root)) {
-			if (hasPluginMarker(root)) requirePluginTree(root);
-			else requireTree(root);
+			requireTree(root);
 		}
 	}
 }
@@ -216,6 +208,9 @@ export const rovy = {
 	__query(descriptor: QueryDescriptor): void {
 		registry.queries.set(descriptor.id, descriptor);
 	},
+	__boundary(ctor: Ctor, boundary: RovyBoundary): void {
+		registry.boundaries.set(ctor, boundary);
+	},
 
 	// ── public API ──────────────────────────────────────────────────────────
 
@@ -233,7 +228,7 @@ export const rovy = {
 		moduleProvider(paths);
 	},
 
-	/** Transformer helper: mark a lowered load path as a Rovy plugin root. */
+	/** Transformer helper: mark a lowered load path as a generated plugin facade. */
 	pluginRoot(root: Instance): RovyPluginLoadRoot {
 		return { __rovyPluginRoot: true, root };
 	},
@@ -262,6 +257,7 @@ export const rovy = {
 		empty(registry.prefabs);
 		registry.traits.clear();
 		registry.queries.clear();
+		registry.boundaries.clear();
 		moduleProvider = defaultModuleProvider;
 	},
 };

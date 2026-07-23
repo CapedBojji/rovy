@@ -53,7 +53,8 @@ Networking is separate from core. Import it only when a package needs net events
 or non-blocking net functions:
 
 - **Decorators** — `@netEvent(...)` and `@netFunction(...)`
-- **Runtime handles** — `NetClient`, `NetServer`, `NetEventContext`, `NetFunc`, `NetFunctionReader`, `NetFunctionResponder`, `NetRuntime`, `NetPlugin`
+- **Runtime handles** — client-only `NetClient`, `NetFunc`, `NetClientRuntime`, and `NetClientPlugin`; server-only `NetServer`, `NetEventContext`, `NetFunctionReader`, `NetFunctionResponder`, `NetServerRuntime`, and `NetServerPlugin`
+- **Compatibility facades** — deprecated `NetRuntime` and `NetPlugin` delegate to the active generated boundary and reject opposite-side access
 - **Registry** — `rovyNet.__netEvent(...)` and `rovyNet.__netFunction(...)` are transformer-injected; users should not hand-call them
 - **Types** — `NetId`, `ClientToServerNetEvent`, `ServerToClientNetEvent`, `ClientToServerNetFunction`
 
@@ -286,6 +287,14 @@ Then keep build, environment, Rojo, boundary, and Blink settings in `package.jso
 
 That is the only transformer touchpoint in `tsconfig.json`. `rovy-build` handles compile, generation, Rojo build, open, and watch. When networking is enabled, it generates Blink files into `out/shared/net/generated/*`, so users only author decorators and injected params.
 
+Publishable and game-local plugins use the same monolith partitioner. Put
+`.rovy.plugin.json` at the source root, keep normal feature-oriented source
+folders, and mark every runtime declaration with exactly one of `@shared`,
+`@client`, or `@server`. `@netEvent` and `@netFunction` are the exception: wire
+contracts default to shared. Do not author boundary folders. The published
+package keeps its root import while its `out` directory contains generated
+boundary trees and `.rovy-boundaries.json` metadata for downstream checks.
+
 ## What `rovy-build` does
 
 `rovy-build` is the project command orchestrator. It installs a `rovy` CLI and
@@ -311,10 +320,10 @@ Typical package scripts:
 
 | Command         | Orchestrated work                                                                                                       |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `rovy compile`  | Runs `rbxtsc` with `rbxtscArgs`; then runs generation unless disabled.                                                  |
+| `rovy compile`  | Partitions monolithic plugin roots, runs `rbxtsc`, installs stable facades, then runs generation unless disabled.        |
 | `rovy generate` | Runs Rovy generators only. Blink generation writes `out/shared/net/generated/*` when enabled.                           |
 | `rovy build`    | Runs `compile`, then `rojo` with `rojoBuildArgs` to create `placeFile`.                                                 |
-| `rovy watch`    | Starts `rojo serve`, optional sourcemap watch, and `rbxtsc -w`; regenerates Blink outputs when compiled output changes. |
+| `rovy watch`    | Starts Rojo and `rbxtsc -w`; refreshes plugin partitions/facades and Blink outputs as source changes.                   |
 | `rovy open`     | Opens `placeFile` in Studio; starts watch too unless `watchOnOpen` is `false`.                                          |
 | `rovy start`    | Runs `build`, then `open`.                                                                                              |
 | `rovy stop`     | Kills tracked watch/Studio processes from `.rovy-build/*.pid`.                                                          |

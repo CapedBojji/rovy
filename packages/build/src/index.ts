@@ -9,6 +9,10 @@ import {
   type ResolvedRovyBuildConfig,
   type RovyBuildConfigFile,
 } from "rovy-transformer/dist/rovy-config";
+import {
+  preparePartitionedProject,
+  type PreparedPartitionProject,
+} from "rovy-transformer";
 
 type CommandName =
   | "compile"
@@ -81,11 +85,68 @@ export async function runCli(
 
 export async function compile(context: CommandContext): Promise<void> {
   const config = readConfig(context.projectDir);
-  await context.run("rbxtsc", rbxtscArgs(config), {
+  const originalArgs = rbxtscArgs(config);
+  const prepared = prepareForCompile(context.projectDir, originalArgs);
+  const args = prepared
+    ? replaceProjectArg(originalArgs, prepared.projectFile)
+    : originalArgs;
+  await context.run("rbxtsc", args, {
     cwd: context.projectDir,
     stdio: "inherit",
+    env: prepared
+      ? {
+          ...process.env,
+          ROVY_PARTITION_STAGING_ROOT: prepared.stagingRoot,
+          ROVY_PARTITION_SOURCE_ROOT: prepared.sourceRoot,
+        }
+      : process.env,
   });
+  prepared?.finalize();
   if (config.build.generateBlink !== false) await generate(context);
+}
+
+function prepareForCompile(
+  projectDir: string,
+  args: readonly string[],
+): PreparedPartitionProject | undefined {
+  const configured = projectArg(args);
+  const candidate = path.resolve(projectDir, configured);
+  const projectFile =
+    fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()
+      ? path.join(candidate, "tsconfig.json")
+      : candidate;
+  if (!fs.existsSync(projectFile)) return undefined;
+  return preparePartitionedProject(projectDir, configured);
+}
+
+function projectArg(args: readonly string[]): string {
+  for (let index = 0; index < args.length; index += 1) {
+    const value = args[index];
+    if ((value === "-p" || value === "--project") && args[index + 1])
+      return args[index + 1];
+    if (value.startsWith("--project="))
+      return value.slice("--project=".length);
+  }
+  return "tsconfig.json";
+}
+
+function replaceProjectArg(
+  args: readonly string[],
+  projectFile: string,
+): string[] {
+  const output = [...args];
+  for (let index = 0; index < output.length; index += 1) {
+    const value = output[index];
+    if ((value === "-p" || value === "--project") && output[index + 1]) {
+      output[index + 1] = projectFile;
+      return output;
+    }
+    if (value.startsWith("--project=")) {
+      output[index] = `--project=${projectFile}`;
+      return output;
+    }
+  }
+  return ["-p", projectFile, ...output];
 }
 
 export async function generate(context: CommandContext): Promise<void> {
@@ -177,13 +238,18 @@ export async function watch(
       await killPid(pid, "previous watch process");
   }
   removePid(context.projectDir, "watch.pid");
-  const spawnChild = (command: string, args: readonly string[]) => {
+  const spawnChild = (
+    command: string,
+    args: readonly string[],
+    options: cp.SpawnOptions = {},
+  ) => {
     console.log(`[rovy-build] ${command} ${args.join(" ")}`);
     const child = cp.spawn(command, [...args], {
       cwd: context.projectDir,
       stdio: "inherit",
       shell: process.platform === "win32",
       detached: process.platform !== "win32",
+      ...options,
     });
     children.push(child);
     return child;
@@ -227,7 +293,15 @@ export async function watch(
   });
   process.once("exit", cleanupSync);
 
-  const rbxtscWatchArgs = ["-w", ...rbxtscArgs(config)];
+  const baseRbxtscArgs = rbxtscArgs(config);
+  let partitioned = prepareForCompile(context.projectDir, baseRbxtscArgs);
+  let partitionSourceStamp = partitioned
+    ? sourceTreeStamp(partitioned.sourceRoot, partitioned.stagingRoot)
+    : 0;
+  const compiledArgs = partitioned
+    ? replaceProjectArg(baseRbxtscArgs, partitioned.projectFile)
+    : baseRbxtscArgs;
+  const rbxtscWatchArgs = ["-w", ...compiledArgs];
   const rojoProject = config.environment.rojo ?? "default.project.json";
   spawnChild("rojo", ["serve", rojoProject]);
   if (config.environment.sourcemap) {
@@ -239,7 +313,15 @@ export async function watch(
       config.environment.sourcemap,
     ]);
   }
-  spawnChild("rbxtsc", rbxtscWatchArgs);
+  spawnChild("rbxtsc", rbxtscWatchArgs, {
+    env: partitioned
+      ? {
+          ...process.env,
+          ROVY_PARTITION_STAGING_ROOT: partitioned.stagingRoot,
+          ROVY_PARTITION_SOURCE_ROOT: partitioned.sourceRoot,
+        }
+      : process.env,
+  });
   writePid(
     context.projectDir,
     "watch.pid",
@@ -277,6 +359,25 @@ export async function watch(
   };
 
   const poll = setInterval(() => {
+    if (partitioned) {
+      const nextSourceStamp = sourceTreeStamp(
+        partitioned.sourceRoot,
+        partitioned.stagingRoot,
+      );
+      if (nextSourceStamp !== partitionSourceStamp) {
+        partitionSourceStamp = nextSourceStamp;
+        try {
+          partitioned =
+            prepareForCompile(context.projectDir, baseRbxtscArgs) ??
+            partitioned;
+        } catch (error) {
+          console.error(
+            `[rovy-build] plugin partition failed: ${String(error instanceof Error ? error.message : error)}`,
+          );
+        }
+      }
+      partitioned.finalize();
+    }
     const nextBuildInfo = fileMtime(tsBuildInfoPath(context.projectDir));
     if (nextBuildInfo !== 0 && nextBuildInfo !== lastBuildInfo) {
       lastBuildInfo = nextBuildInfo;
@@ -298,6 +399,26 @@ export async function watch(
       });
     }
   });
+}
+
+function sourceTreeStamp(sourceRoot: string, stagingRoot: string): number {
+  let stamp = 0;
+  const visit = (directory: string): void => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const target = path.join(directory, entry.name);
+      if (
+        target === stagingRoot ||
+        entry.name === "node_modules" ||
+        entry.name === ".git" ||
+        entry.name === "out"
+      )
+        continue;
+      if (entry.isDirectory()) visit(target);
+      else if (entry.isFile()) stamp = Math.max(stamp, fileMtime(target));
+    }
+  };
+  if (fs.existsSync(sourceRoot)) visit(sourceRoot);
+  return stamp;
 }
 
 function startInteractiveShell(

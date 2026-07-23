@@ -115,6 +115,9 @@ importers:
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0
+      rovy-build:
+        specifier: workspace:*
+        version: link:../build
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

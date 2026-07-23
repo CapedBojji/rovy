@@ -5,7 +5,14 @@
  */
 
 import { rovy } from "../rovy";
-import type { Ctor, ParamDescriptor } from "../contract";
+import type {
+	Ctor,
+	ParamDescriptor,
+	QueryDescriptor,
+	RovyBoundary,
+	RovyRegistry,
+	StableId,
+} from "../contract";
 import type { Entity } from "../types";
 import { resolveParams } from "./resolve-param";
 import type { ResolveCtx } from "./resolve-param";
@@ -254,6 +261,7 @@ export class App {
 		runAppExtensions(this, activeReg);
 		const finalReg = this.filterRegistry(reg);
 		if (this.logRegistryAtStart) logRegistry(finalReg, this.pluginNames, this.externalParams);
+		validateQueryBoundaries(finalReg);
 
 		// 1. components → jecs ids + change-detection hooks
 		for (const entry of finalReg.components) {
@@ -536,6 +544,103 @@ export class App {
 			prefabs: keep(reg.prefabs),
 			traits,
 			queries: reg.queries,
+			boundaries: reg.boundaries,
 		};
+	}
+}
+
+function validateQueryBoundaries(registry: RovyRegistry): void {
+	const componentIds = new Map<Ctor, StableId>();
+	for (const component of registry.components) componentIds.set(component.ctor, component.id);
+
+	const boundaryOf = (ctor: Ctor): RovyBoundary => registry.boundaries.get(ctor) ?? "shared";
+	const canUse = (consumer: RovyBoundary, dependency: RovyBoundary): boolean =>
+		dependency === "shared" || consumer === dependency;
+
+	const checkComponent = (
+		kind: string,
+		consumerId: string,
+		consumerBoundary: RovyBoundary,
+		queryId: StableId,
+		ctor: Ctor,
+	): void => {
+		const componentBoundary = boundaryOf(ctor);
+		assert(
+			canUse(consumerBoundary, componentBoundary),
+			`[rovy] ${kind} '${consumerId}' (${consumerBoundary}) query '${queryId}' cannot use @component '${componentIds.get(ctor) ?? tostring(ctor)}' (${componentBoundary})`,
+		);
+	};
+
+	const checkTrait = (
+		kind: string,
+		consumerId: string,
+		consumerBoundary: RovyBoundary,
+		queryId: StableId,
+		traitId: StableId,
+	): void => {
+		for (const impl of registry.traits.get(traitId) ?? []) {
+			checkComponent(kind, consumerId, consumerBoundary, queryId, impl);
+		}
+	};
+
+	const checkQuery = (
+		kind: string,
+		consumerId: string,
+		consumerBoundary: RovyBoundary,
+		descriptor: QueryDescriptor,
+	): void => {
+		for (const term of descriptor.terms) {
+			if (term.t === "component" || term.t === "optional") {
+				checkComponent(kind, consumerId, consumerBoundary, descriptor.id, term.ctor);
+			} else if (term.t === "trait" || term.t === "allTraits") {
+				checkTrait(kind, consumerId, consumerBoundary, descriptor.id, term.traitId);
+			}
+		}
+		for (const ctor of descriptor.filters.with ?? []) {
+			checkComponent(kind, consumerId, consumerBoundary, descriptor.id, ctor);
+		}
+		for (const ctor of descriptor.filters.without ?? []) {
+			checkComponent(kind, consumerId, consumerBoundary, descriptor.id, ctor);
+		}
+		for (const ctor of descriptor.filters.changed ?? []) {
+			checkComponent(kind, consumerId, consumerBoundary, descriptor.id, ctor);
+		}
+		for (const ctor of descriptor.filters.added ?? []) {
+			checkComponent(kind, consumerId, consumerBoundary, descriptor.id, ctor);
+		}
+		for (const ctor of descriptor.filters.removed ?? []) {
+			checkComponent(kind, consumerId, consumerBoundary, descriptor.id, ctor);
+		}
+		for (const traitId of descriptor.filters.hasTrait ?? []) {
+			checkTrait(kind, consumerId, consumerBoundary, descriptor.id, traitId);
+		}
+	};
+
+	const checkParams = (
+		kind: string,
+		consumerId: string,
+		consumer: Ctor,
+		params: ReadonlyArray<ParamDescriptor>,
+	): void => {
+		const consumerBoundary = boundaryOf(consumer);
+		for (const param of params) {
+			if (param.kind !== "query") continue;
+			const descriptor = registry.queries.get(param.handle);
+			assert(descriptor !== undefined, `[rovy] ${kind} '${consumerId}' query not hoisted: ${param.handle}`);
+			checkQuery(kind, consumerId, consumerBoundary, descriptor);
+		}
+	};
+
+	for (const system of registry.systems) checkParams("system", system.id, system.ctor, system.params);
+	for (const observer of registry.observers) {
+		checkParams("observer", tostring(observer.ctor), observer.ctor, observer.params);
+	}
+	for (const monitor of registry.monitors) {
+		const id = tostring(monitor.ctor);
+		const boundary = boundaryOf(monitor.ctor);
+		const match = registry.queries.get(monitor.match);
+		assert(match !== undefined, `[rovy] monitor '${id}' match query not hoisted: ${monitor.match}`);
+		checkQuery("monitor", id, boundary, match);
+		checkParams("monitor", id, monitor.ctor, monitor.params);
 	}
 }

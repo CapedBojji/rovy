@@ -12,7 +12,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "pnpm run build && node test/smoke.js && node test/blink.js"
+    "test": "pnpm run build && node test/smoke.js && node test/blink.js && node test/partition.js"
   },
   "dependencies": {
     "@roblox-ts/rojo-resolver": "^1.1.0",

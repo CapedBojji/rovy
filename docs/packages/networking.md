@@ -6,7 +6,13 @@ Goal: add typed cross-network events without designing full entity/component rep
 
 This document defines the first networking API for Rovy.
 
-Package boundary: networking lives in `@rovy/networking`, separate from `@rovy/core`. The core package provides the ECS event model and a package-extension injection hook; `@rovy/networking` owns `@netEvent`, `@netFunction`, `NetClient`, `NetServer`, `NetEventContext`, `NetFunc`, `NetFunctionReader`, `NetFunctionResponder`, `NetRuntime`, and `rovyNet`.
+Package boundary: networking lives in `@rovy/networking`, separate from `@rovy/core`. It is authored as one plugin and split by `rovy-build`: codecs, metadata, and wire contracts are shared; `NetClientRuntime` / `NetClientPlugin` are client-only; `NetServerRuntime` / `NetServerPlugin` are server-only. The generated package facade loads shared code plus only the active Roblox boundary.
+
+`@netEvent` and `@netFunction` declarations are shared by default. They do not
+need `@shared`; both generated sides consume the same contract metadata. Internal
+runtime and transport classes also carry no boundary decorators—the client and
+server plugin roots pull those implementation dependencies into their respective
+build outputs.
 
 It intentionally does **not** define automatic ECS entity/component replication yet. Component replication comes later once the ECS and network boundaries are clearer.
 
@@ -319,7 +325,7 @@ class PlayHitEffectObserver {
 
 `NetServer` and `NetClient` are injectable system params, like `Commands`, `Query`, `Res`, `EventReader`, and `EventWriter`.
 
-They are exported by `@rovy/networking` and supplied by backend wiring at `App.start()` through the package extension hook. `NetPlugin` / `NetRuntime` still exist for advanced or test-only setup, but they are not the normal user path.
+They are exported by `@rovy/networking` and supplied by boundary-specific backend wiring at `App.start()`. `NetClientPlugin` and `NetServerPlugin` are available for explicit/custom transport setup. The old `NetPlugin` and `NetRuntime` names are deprecated active-boundary facades and cannot expose the opposite runtime side.
 
 Users do not construct them manually:
 
@@ -514,40 +520,18 @@ NetFlushSet
 
 Reliable Blink traffic can be packed per replication step. Unreliable calls may fire immediately per call. MVP can accept that difference.
 
-## Runtime receive adapter
+## Runtime receive adapters
 
-Server receiving client-to-server:
+`NetClientPlugin` owns only server-to-client receive queues, client event/function request outboxes, and function-result state. `NetServerPlugin` owns only client-to-server receive queues, server event/function result outboxes, sender context, and function readers/responders.
 
-```ts
-@system({ schedule: Update, set: NetReceiveSet })
-class ReceiveClientNetEvents {
-	run(commands: Commands, netRuntime: Res<NetRuntime>) {
-		for (const [player, payload] of Blink.CastAbilityIntent.Iter()) {
-			const event = new CastAbilityIntent(
-				payload.caster,
-				payload.abilityId,
-				payload.target,
-			);
-			netRuntime.setCurrentSender(event, player);
-			commands.send(event);
-		}
-	}
-}
-```
-
-Client receiving server-to-client trigger:
+For explicit setup, construct the matching plugin:
 
 ```ts
-@system({ schedule: Update, set: NetReceiveSet })
-class ReceiveServerNetEvents {
-	run(commands: Commands) {
-		for (const [payload] of Blink.PlayHitEffect.Iter()) {
-			const event = new PlayHitEffect(payload.target, payload.effectId);
-			commands.trigger(event);
-		}
-	}
-}
+new NetClientPlugin({ schedule: Update, transport: new ClientRemoteEventTransport() }).build(app);
+new NetServerPlugin({ schedule: Update, transport: new ServerRemoteEventTransport() }).build(app);
 ```
+
+Normal applications do not construct either plugin: the active generated boundary registers its matching app extension automatically.
 
 ## Sender player context
 

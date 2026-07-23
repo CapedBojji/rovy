@@ -1,0 +1,14 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://rovy.dev/schema/rovy-plugin.schema.json",
+	"title": "Rovy monolithic plugin marker",
+	"description": "Marks a source folder for build-time client/server/shared partitioning.",
+	"type": "object",
+	"additionalProperties": false,
+	"properties": {
+		"$schema": {
+			"type": "string",
+			"description": "Path or URL to this schema."
+		}
+	}
+}

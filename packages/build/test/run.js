@@ -23,7 +23,10 @@ function tempProject(config = {}) {
   );
   fs.writeFileSync(
     path.join(dir, "tsconfig.json"),
-    JSON.stringify({ compilerOptions: { outDir: "out" }, include: ["src"] }),
+    JSON.stringify({
+      compilerOptions: { rootDir: "src", outDir: "out" },
+      include: ["src"],
+    }),
   );
   fs.mkdirSync(path.join(dir, "src"));
   return dir;
@@ -60,6 +63,43 @@ async function capture(argv, dir) {
     ["rojo", ["build", "default.project.json", "-o", "build/game.rbxl"]],
   ]);
   assert.equal(fs.existsSync(path.join(nestedBuildDir, "build")), true);
+
+  const partitionDir = tempProject({ generateBlink: false });
+  const pluginDir = path.join(partitionDir, "src", "plugins", "combat");
+  fs.mkdirSync(pluginDir, { recursive: true });
+  fs.writeFileSync(path.join(pluginDir, ".rovy.plugin.json"), "{}");
+  fs.writeFileSync(
+    path.join(pluginDir, "index.ts"),
+    [
+      "declare function shared(target: object): void;",
+      "declare function component(target: object): void;",
+      "@shared",
+      "@component",
+      "export class Clock {}",
+    ].join("\n"),
+  );
+  const partitionCalls = await capture(["compile"], partitionDir);
+  assert.equal(partitionCalls.length, 1);
+  assert.equal(partitionCalls[0][0], "rbxtsc");
+  assert.equal(partitionCalls[0][1][0], "-p");
+  assert.equal(
+    path.basename(partitionCalls[0][1][1]),
+    "partitioned.tsconfig.json",
+  );
+  assert.equal(
+    fs.existsSync(
+      path.join(
+        partitionDir,
+        ".rovy-build",
+        "partitioned-src",
+        "plugins",
+        "combat",
+        "shared",
+        "index.ts",
+      ),
+    ),
+    true,
+  );
 
   const envOverrideDir = tempProject({
     generateBlink: false,

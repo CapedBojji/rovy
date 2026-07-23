@@ -5,7 +5,7 @@
 local nethelp = require("../harness/net")
 
 return function(TS, t)
-	local net = TS.loadPath("out/init")
+	local net = nethelp.load(TS)
 	local C = net.NetCodec
 
 	local Snapshot = nethelp.eventClass({ "tick", "pos", "ids", "phase" })

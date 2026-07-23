@@ -20,6 +20,9 @@ import {
 } from "./ast";
 import { decoratorName, type PluginOwnerInfo, TransformState, TransformerConfig } from "./state";
 
+export { preparePartitionedProject } from "./partition";
+export type { PluginBoundary, PartitionedPlugin, PreparedPartitionProject } from "./partition";
+
 export interface TransformerExtras {
 	readonly ts: typeof ts;
 }
@@ -42,9 +45,30 @@ const DECORATORS = new Set([
 	"plugin",
 	"server",
 	"client",
+	"shared",
 	"view",
 	"ui",
 ]);
+
+const RUNTIME_DECORATORS = new Set([
+	"component",
+	"collect",
+	"resource",
+	"prefab",
+	"event",
+	"netEvent",
+	"netFunction",
+	"system",
+	"observer",
+	"monitor",
+	"relation",
+	"schedule",
+	"set",
+	"plugin",
+	"view",
+	"ui",
+]);
+const SHARED_BY_DEFAULT_DECORATORS = new Set(["netEvent", "netFunction"]);
 
 type MonitorMethod = "onEnter" | "onExit" | "onChange";
 
@@ -879,7 +903,19 @@ function transformClass(
 
 	const boundary = systemBoundary(decorators);
 	if (boundary) {
-		return [transformedClass, boundaryGuardStatement(boundary, [...queryStatements, ...afterStatements])];
+		if (boundary === "shared") {
+			return [
+				...queryStatements,
+				transformedClass,
+				regCall(rovy, "__boundary", [className, str(boundary)]),
+				...afterStatements,
+			];
+		}
+		return [
+			transformedClass,
+			regCall(rovy, "__boundary", [className, str(boundary)]),
+			boundaryGuardStatement(boundary, [...queryStatements, ...afterStatements]),
+		];
 	}
 	return [...queryStatements, transformedClass, ...afterStatements];
 }
@@ -996,13 +1032,15 @@ function removeRovyDecorators(state: TransformState, sourceFile: ts.SourceFile, 
 }
 
 function validateClass(state: TransformState, node: ts.ClassDeclaration, decorators: readonly DecoratorInfo[]): void {
-	const hasServer = decorators.some((d) => d.name === "server");
-	const hasClient = decorators.some((d) => d.name === "client");
-	if (hasServer && hasClient) {
-		state.diagnostic(node, "@server and @client cannot be used on the same class");
+	const boundaries = decorators.filter((d) => d.name === "server" || d.name === "client" || d.name === "shared");
+	if (boundaries.length > 1) {
+		state.diagnostic(node, "@server, @client, and @shared are mutually exclusive");
 	}
-	if ((hasServer || hasClient) && !decorators.some((d) => d.name === "system" || d.name === "observer" || d.name === "monitor")) {
-		state.diagnostic(node, "@server/@client can only be used on @system, @observer, or @monitor classes");
+	const requiresBoundary = decorators.some(
+		(d) => RUNTIME_DECORATORS.has(d.name) && !SHARED_BY_DEFAULT_DECORATORS.has(d.name),
+	);
+	if (requiresBoundary && state.isInRovyPluginSourceRoot(node.getSourceFile()) && boundaries.length !== 1) {
+		state.diagnostic(node, "runtime declarations inside a .rovy.plugin.json root require exactly one of @server, @client, or @shared");
 	}
 
 	if (node.typeParameters && decorators.some((d) => d.name === "system" || d.name === "observer" || d.name === "monitor")) {
@@ -1046,9 +1084,10 @@ function validateClass(state: TransformState, node: ts.ClassDeclaration, decorat
 	}
 }
 
-function systemBoundary(decorators: readonly DecoratorInfo[]): "server" | "client" | undefined {
+function systemBoundary(decorators: readonly DecoratorInfo[]): "server" | "client" | "shared" | undefined {
 	if (decorators.some((d) => d.name === "server")) return "server";
 	if (decorators.some((d) => d.name === "client")) return "client";
+	if (decorators.some((d) => d.name === "shared")) return "shared";
 	return undefined;
 }
 
@@ -2512,6 +2551,7 @@ function lowerParam(
 			return externalParam("@rovy/networking/NetServer");
 		}
 		if (isNetworkingType(state, sourceFile, type, "NetEventContext")) {
+			validateNetworkingBoundary(state, sourceFile, type, "server", "NetEventContext");
 			return externalParam("@rovy/networking/NetEventContext");
 		}
 		if (isNetworkingType(state, sourceFile, type, "NetFunctionResponder")) {

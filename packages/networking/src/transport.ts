@@ -1,4 +1,4 @@
-import type { NetCodec, NetPayload } from "./codec";
+import type { NetPayload } from "./codec";
 import type {
 	NetFunctionReg,
 	NetFunctionRequestEnvelope,
@@ -116,5 +116,3 @@ export function connectLoopback(
 ): void {
 	client.link(server);
 }
-
-export { type NetCodec };

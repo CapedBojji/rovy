@@ -5,7 +5,7 @@
 local nethelp = require("../harness/net")
 
 return function(TS, t)
-	local net = TS.loadPath("out/init")
+	local net = nethelp.load(TS)
 
 	local Move = nethelp.eventClass({ "x" })
 	local moveReg = nethelp.reg(Move, { name = "Move", direction = "clientToServer", fields = { "x" } })

@@ -10,11 +10,10 @@ roblox-ts compiles TS to Luau. Decorators and type annotations are erased. The t
 
 These calls run as **module side effects** when the module is required. `rovy.loadPaths(...)` forces the requires; `app.start()` finalizes. No central manifest module.
 
-`@server` and `@client` are compile-time guards for shared modules. When present
-on a system, observer, or monitor, the transformer keeps the class emission but
-wraps the generated registration side effects in `RunService:IsServer()` or
-`RunService:IsClient()`. The wrong side can require the module without registering
-that system.
+In ordinary source, `@server` and `@client` guard registration side effects with
+`RunService`. In a `.rovy.plugin.json` root, `@shared`, `@server`, and `@client`
+instead select generated output boundaries. The wrong-side class is absent from
+that runtime tree.
 
 `@rovy/vide` view lowering follows the same idea: source authoring stays in TypeScript, the transformer injects `rovyVide.__view(...)` metadata and any required core query descriptors, and runtime mounting stays explicit through `mountView(...)`. See [Rovy Vide](/packages/vide).
 
@@ -156,7 +155,7 @@ Unlike systems, prefab registration does not include schedule/set metadata. It o
 
 ---
 
-## Server/client guarded systems
+## Server/client systems
 
 ```ts
 @server
@@ -166,7 +165,7 @@ class DrainServerInbox {
 }
 ```
 
-Compiled shape:
+Outside a partitioned plugin, the guarded compiled shape is:
 
 ```luau
 local DrainServerInbox = {}
@@ -188,8 +187,9 @@ if game:GetService("RunService"):IsServer() then
 end
 ```
 
-`@client` emits the same shape with `IsClient()`. Query descriptors lowered from
-guarded system params are emitted inside the same guard.
+`@client` emits the same shape with `IsClient()`. Inside a partitioned plugin,
+the system and its query descriptors are emitted only into the matching
+generated side module.
 
 ---
 

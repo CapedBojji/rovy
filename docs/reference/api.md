@@ -12,8 +12,9 @@ Full public surface. Authoring is decorator-based; the transformer reads decorat
 @inspect(options?: { depth?: number; exclude?: string[] }) // debug-only resource inspection and recorder snapshots
 @event(options?: { capacity?: number; label?: string })
 @system(options: { schedule: ScheduleCtor; set?: typeof SystemSet; after?: SystemCtor[]; before?: SystemCtor[]; runIf?: () => boolean })
-@server                              // optional, on @system/@observer/@monitor classes
-@client                              // optional, on @system/@observer/@monitor classes
+@shared                              // shared boundary marker
+@server                              // server boundary marker
+@client                              // client boundary marker
 @observer(options: { event: EventCtor; priority?: number })
 @monitor(options: { match: QueryToken })
 @relation(options?: { exclusive?: boolean; onTargetDelete?: "cascade" | "remove" | "none"; onDelete?: "cascade" | "remove" | "none" })
@@ -23,10 +24,15 @@ Full public surface. Authoring is decorator-based; the transformer reads decorat
 @view() // from @rovy/vide
 ```
 
-`@server` and `@client` are compile-time boundary guards for modules that may be
-loaded from shared/plugin code. The transformer wraps the generated registration
-side effects in `RunService:IsServer()` or `RunService:IsClient()`, so the class
-only registers in the matching runtime context. They cannot be used together.
+Inside a `.rovy.plugin.json` root, every runtime declaration requires exactly one
+of `@shared`, `@server`, or `@client`, except `@netEvent` and `@netFunction`.
+Network contracts default to shared. `rovy-build` partitions the monolithic source
+tree into generated boundary modules. Shared code may reference only shared
+declarations; a side may reference shared declarations and its own side. Invalid
+direct or transitive crossings fail the build.
+
+Outside partitioned plugin roots, `@server` and `@client` retain their registration
+guard behavior. Boundary decorators are mutually exclusive.
 
 ## Injection params
 
@@ -69,7 +75,7 @@ Networking params:
 | `NetFunctionResponder` | server-only responder for function calls |
 
 These come from `@rovy/networking`, not `@rovy/core`. Core provides the package-extension injection hook; the networking package owns the net handles.
-`App.start()` auto-installs networking when `@netEvent` metadata or injected net params are present, so normal user code does not add `NetPlugin` manually.
+`App.start()` auto-installs the active `NetClientPlugin` or `NetServerPlugin` when `@netEvent` metadata or matching injected net params are present. Normal user code does not add a networking plugin manually.
 
 Planned prefab `build(...)` injection is narrower. See [Prefabs](/concepts/prefabs.md) for the proposed v1 allowed param list and exclusions.
 
@@ -87,10 +93,13 @@ rovy.pluginRoot(root);          // transformer helper for `.rovy.plugin.json` ro
 rovy.traitToken<T>();           // value-position trait handle (see Traits)
 // rovy.__component / __collect / __resource / __event / __system / __observer
 // / __monitor / __relation / __schedule / __inspect / __traitImpl / __query
+// / __boundary are transformer/runtime contract methods.
 //   are transformer-injected — never hand-written
 ```
 
-If a loaded source folder contains `.rovy.plugin.json`, `loadPaths` requires only `shared/**` plus the active `client/**` or `server/**` subtree.
+If a loaded source folder contains `.rovy.plugin.json`, `rovy-build` generates
+the `shared`, `client`, and `server` output trees. `loadPaths` requires the stable
+generated facade, which loads shared plus the active runtime side.
 
 UI discovery follows the same side-effect model: `rovy.loadPaths(...)` must require widget modules so injected widget registration/wrapping runs.
 

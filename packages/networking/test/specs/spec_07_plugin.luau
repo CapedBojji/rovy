@@ -6,39 +6,58 @@
 local nethelp = require("../harness/net")
 
 return function(TS, t)
-	local net = TS.loadPath("out/init")
+	local clientNet = nethelp.load(TS, "client")
+	local serverNet = nethelp.load(TS, "server")
+	local net = serverNet
 	local core = TS.import(nil, TS.getModule(nil, "@rovy", "rovy-core"))
 	local rovy = core.rovy
 	local App = core.App
 
-	t.describe("NetPlugin transport selection", function()
-		t.it("defaults to RemoteEventTransport", function()
-			local p = net.NetPlugin.new()
-			t.expect(getmetatable(p.transport)).toBe(net.RemoteEventTransport)
+	t.describe("split plugin transport selection", function()
+		t.it("client selects its RemoteEvent transport", function()
+			clientNet.rovyNet:__configureRuntime({ transport = "remote" })
+			local p = clientNet.NetClientPlugin.new()
+			t.expect(getmetatable(p.transport)).toBe(clientNet.ClientRemoteEventTransport)
 		end)
 
-		t.it("uses BlinkTransport when a blink module is given", function()
-			local p = net.NetPlugin.new({ blink = {} })
-			t.expect(getmetatable(p.transport)).toBe(net.BlinkTransport)
+		t.it("server selects its Blink transport", function()
+			local p = serverNet.NetServerPlugin.new({ blink = {} })
+			t.expect(getmetatable(p.transport)).toBe(serverNet.ServerBlinkTransport)
 		end)
 
 		t.it("honours an explicit transport override", function()
-			local lb = net.LoopbackTransport.new()
-			local p = net.NetPlugin.new({ transport = lb })
+			local lb = clientNet.LoopbackTransport.new()
+			local p = clientNet.NetClientPlugin.new({ transport = lb })
 			t.expect(p.transport).toBe(lb)
 		end)
 	end)
 
-	t.describe("NetPlugin manual step (no schedule)", function()
+	t.describe("deprecated active-boundary facade", function()
+		t.it("delegates to the loaded server implementation", function()
+			local lb = serverNet.LoopbackTransport.new()
+			local p = serverNet.NetPlugin.new({ boundary = "server", transport = lb })
+			t.expect(p.runtime:getBoundary()).toBe("server")
+			t.expect(p.runtime.server).toBeDefined()
+			t.expect(p.runtime.client).toBeUndefined()
+		end)
+
+		t.it("rejects an opposite-boundary override", function()
+			t.expect(function()
+				serverNet.NetPlugin.new({ boundary = "client" })
+			end).toThrow()
+		end)
+	end)
+
+	t.describe("NetClientPlugin manual step (no schedule)", function()
 		t.it("exposes manualStep that flushes the outbox", function()
-			net.rovyNet:__reset()
+			clientNet.rovyNet:__reset()
 			local Cmd = nethelp.eventClass({ "n" })
-			net.rovyNet:__netEvent(Cmd, {
+			clientNet.rovyNet:__netEvent(Cmd, {
 				id = "g/Cmd", name = "Cmd", direction = "clientToServer",
 				channel = "reliable", receive = "send", fields = { "n" },
 			})
-			local lb = net.LoopbackTransport.new()
-			local plugin = net.NetPlugin.new({ transport = lb, boundary = "client" })
+			local lb = clientNet.LoopbackTransport.new()
+			local plugin = clientNet.NetClientPlugin.new({ transport = lb })
 			-- build() needs an app for insertParam; a tiny stub suffices here.
 			local stub = { insertParam = function() end }
 			plugin:build(stub)
@@ -50,7 +69,7 @@ return function(TS, t)
 		end)
 	end)
 
-	t.describe("NetPlugin scheduled round-trip", function()
+	t.describe("NetServerPlugin scheduled round-trip", function()
 		t.it("auto-wires receive+flush; params injected; no hand setup", function()
 			rovy:__reset()
 			net.rovyNet:__reset()
@@ -106,10 +125,9 @@ return function(TS, t)
 			net.connectLoopback(pluginT, peer)
 			peer:start({ boundary = "client", deliver = function() end })
 
-			local plugin = net.NetPlugin.new({
+			local plugin = serverNet.NetServerPlugin.new({
 				schedule = Update,
 				transport = pluginT,
-				boundary = "server",
 			})
 			local app = App.new()
 			app:addPlugin(plugin)

@@ -138,3 +138,22 @@ export function netFunctionReaderParam(functionId: string): string {
 export function netFunctionParam(functionId: string): string {
 	return `${NET_FUNCTION_PARAM_PREFIX}${functionId}`;
 }
+
+/** Shared anchor keeping parameter identifiers available to both generated sides. */
+export class NetParamIds {
+	static readonly client = NET_CLIENT_PARAM;
+	static readonly server = NET_SERVER_PARAM;
+	static readonly eventContext = NET_EVENT_CONTEXT_PARAM;
+	static readonly runtime = NET_RUNTIME_PARAM;
+	static readonly functionResponder = NET_FUNCTION_RESPONDER_PARAM;
+	static readonly functionReaderPrefix = NET_FUNCTION_READER_PARAM_PREFIX;
+	static readonly functionPrefix = NET_FUNCTION_PARAM_PREFIX;
+
+	static functionReader(functionId: string): string {
+		return netFunctionReaderParam(functionId);
+	}
+
+	static func(functionId: string): string {
+		return netFunctionParam(functionId);
+	}
+}

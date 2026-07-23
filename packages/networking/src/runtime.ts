@@ -1,17 +1,18 @@
 import type { Commands } from "@rovy/core";
-import { NetEventContext } from "./context";
-import { NetCodec } from "./codec";
-import { rovyNet } from "./registry";
+import type { NetClientRuntime } from "./client-runtime";
+import type { NetClient, NetFunc } from "./client-runtime";
+import type { NetEventContext } from "./context";
+import { requireNetBoundaryProvider } from "./provider";
+import type { NetServerRuntime } from "./server-runtime";
+import type { NetFunctionReader, NetFunctionResponder, NetServer } from "./server-runtime";
 import type {
-	ClientToServerNetEvent,
 	ClientToServerNetFunction,
 	NetCallHandle,
-	NetEventDirection,
 	NetEventReceiveMode,
 	NetEventReg,
 	NetFunctionCall,
-	NetFunctionReg,
 	NetFunctionCallResult,
+	NetFunctionReg,
 	NetFunctionRequestEnvelope,
 	NetFunctionRequestOutboxItem,
 	NetFunctionResult,
@@ -20,455 +21,155 @@ import type {
 	NetOutboxItem,
 	NetTarget,
 	RuntimeBoundary,
-	ServerToClientNetEvent,
 } from "./types";
 
-type Ctor = NetEventReg["ctor"];
-const DEFAULT_RESULT_TTL_FRAMES = 300;
-const DEFAULT_PENDING_TTL_FRAMES = 600;
+type ActiveRuntime = NetClientRuntime | NetServerRuntime;
 
-interface PendingCall {
-	readonly handle: NetCallHandleInternal;
-	readonly slotKey: string;
-	readonly createdFrame: number;
-}
-
-interface StoredResult {
-	readonly result: NetFunctionResult;
-	readonly expiresFrame: number;
-}
-
-type NetCallHandleInternal = {
-	readonly functionId: string;
-	readonly callSiteId: string;
-	readonly sequence: number;
-	readonly request?: object;
-};
-
+/**
+ * @deprecated Use NetClientRuntime or NetServerRuntime. The compatibility
+ * facade contains no boundary implementation and delegates to the active one.
+ */
 export class NetRuntime {
-	readonly client = new NetClient(this);
-	readonly server = new NetServer(this);
-	readonly context = new NetEventContext();
-	readonly responder = new NetFunctionResponder(this);
-
-	private readonly metas = new Map<Ctor, NetEventReg>();
-	private readonly functions = new Map<Ctor, NetFunctionReg>();
-	private readonly clientOutbox = new Array<NetOutboxItem>();
-	private readonly serverOutbox = new Array<NetOutboxItem>();
-	private readonly functionRequestOutbox = new Array<NetFunctionRequestOutboxItem>();
-	private readonly functionResultOutbox = new Array<NetFunctionResultOutboxItem>();
-	private readonly inboundFunctionCalls = new Map<string, Array<NetFunctionCall>>();
-	private readonly pendingCalls = new Map<string, PendingCall>();
-	private readonly pendingCallSlots = new Map<string, string>();
-	private readonly resultInbox = new Map<string, StoredResult>();
-	private nextSequence = 0;
-	private frame = 0;
-	private boundary: RuntimeBoundary = "unknown";
+	readonly client: NetClient;
+	readonly server: NetServer;
+	readonly context: NetEventContext;
+	readonly responder: NetFunctionResponder;
+	private boundary: "client" | "server";
+	private readonly active: ActiveRuntime;
 
 	constructor(
-		events: ReadonlyArray<NetEventReg> = rovyNet.registry,
-		functions: ReadonlyArray<NetFunctionReg> = rovyNet.functions,
+		events?: ReadonlyArray<NetEventReg>,
+		functions?: ReadonlyArray<NetFunctionReg>,
+		delegate?: object,
+		boundary?: "client" | "server",
 	) {
-		for (const event of events) this.register(event);
-		for (const fn of functions) this.registerFunction(fn);
+		const provider = delegate === undefined ? requireNetBoundaryProvider() : undefined;
+		this.boundary = boundary ?? provider!.boundary;
+		this.active = (delegate ?? provider!.createRuntime(events, functions)) as ActiveRuntime;
+		const shape = this.active as ActiveRuntime & {
+			readonly client?: NetClient;
+			readonly server?: NetServer;
+			readonly context?: NetEventContext;
+			readonly responder?: NetFunctionResponder;
+		};
+		this.client = shape.client as NetClient;
+		this.server = shape.server as NetServer;
+		this.context = shape.context as NetEventContext;
+		this.responder = shape.responder as NetFunctionResponder;
 	}
 
 	register(meta: NetEventReg): void {
-		this.metas.set(meta.ctor, meta);
+		this.active.register(meta);
 	}
-
 	registerFunction(meta: NetFunctionReg): void {
-		this.functions.set(meta.ctor, meta);
+		this.active.registerFunction(meta);
 	}
-
 	setBoundary(boundary: RuntimeBoundary): void {
-		this.boundary = boundary;
+		if (boundary === "unknown") return;
+		assert(boundary === this.boundary, `[rovy-net] ${boundary} requested, but only ${this.boundary} runtime is loaded`);
 	}
-
 	getBoundary(): RuntimeBoundary {
 		return this.boundary;
 	}
-
 	metaForEvent(event: object): NetEventReg {
-		const ctor = getmetatable(event) as unknown as Ctor | undefined;
-		const meta = ctor !== undefined ? this.metas.get(ctor) : undefined;
-		assert(meta !== undefined, `[rovy-net] event is not registered with @netEvent: ${tostring(ctor)}`);
-		return meta;
+		return this.active.metaForEvent(event);
 	}
-
 	metaForFunction(request: object): NetFunctionReg {
-		const ctor = getmetatable(request) as unknown as Ctor | undefined;
-		const meta = ctor !== undefined ? this.functions.get(ctor) : undefined;
-		assert(meta !== undefined, `[rovy-net] request is not registered with @netFunction: ${tostring(ctor)}`);
-		return meta;
+		this.assertClient("metaForFunction");
+		return (this.active as NetClientRuntime).metaForFunction(request);
 	}
-
 	functionReader<F extends object>(functionId: string): NetFunctionReader<F> {
-		return new NetFunctionReader(this, functionId);
+		this.assertServer("functionReader");
+		return (this.active as NetServerRuntime).functionReader<F>(functionId);
 	}
-
 	functionParam<F extends ClientToServerNetFunction, R extends object>(functionId: string): NetFunc<F, R> {
-		return new NetFunc(this, functionId);
+		this.assertClient("functionParam");
+		return (this.active as NetClientRuntime).functionParam<F, R>(functionId);
 	}
-
 	enqueueClient(mode: NetEventReceiveMode, event: object): void {
-		this.assertBoundary("client", `NetClient.${mode}`);
-		const meta = this.metaForEvent(event);
-		this.assertDirection(meta, "clientToServer", "NetClient");
-		this.assertReceive(meta, mode);
-		this.clientOutbox.push({ mode, event, meta, target: { kind: "server" } });
+		this.assertClient(`NetClient.${mode}`);
+		(this.active as NetClientRuntime).enqueue(mode, event);
 	}
-
 	enqueueServer(mode: NetEventReceiveMode, target: NetTarget, event: object, method: string): void {
-		this.assertBoundary("server", `NetServer.${method}`);
-		const meta = this.metaForEvent(event);
-		this.assertDirection(meta, "serverToClient", "NetServer");
-		this.assertReceive(meta, mode);
-		this.serverOutbox.push({ mode, event, meta, target });
+		this.assertServer(`NetServer.${method}`);
+		(this.active as NetServerRuntime).enqueue(mode, target, event, method);
 	}
-
 	callFunction<F extends ClientToServerNetFunction, R extends object>(
 		request: F,
 		callSiteId: string,
 		functionId?: string,
 	): NetCallHandle<F> {
-		this.assertBoundary("client", "NetClient.call");
-		const meta = this.metaForFunction(request);
-		if (functionId !== undefined) {
-			assert(meta.id === functionId, `[rovy-net] NetFunc for ${functionId} cannot call ${meta.id}.`);
-		}
-		assert(meta.direction === "clientToServer", `[rovy-net] ${meta.id} cannot be called by NetClient.`);
-		const slotKey = functionSlotKey(meta.id, callSiteId);
-		const activeKey = this.pendingCallSlots.get(slotKey);
-		if (activeKey !== undefined) {
-			const pending = this.pendingCalls.get(activeKey);
-			if (pending !== undefined) return pending.handle as NetCallHandle<F>;
-			this.pendingCallSlots.delete(slotKey);
-		}
-		const sequence = this.nextSequence;
-		this.nextSequence += 1;
-		const handle: NetCallHandleInternal = {
-			functionId: meta.id,
-			callSiteId,
-			sequence,
-			request,
-		};
-		const key = resultKey(handle);
-		this.pendingCalls.set(key, { handle, slotKey, createdFrame: this.frame });
-		this.pendingCallSlots.set(slotKey, key);
-		this.functionRequestOutbox.push({ request, meta, handle, target: { kind: "server" } });
-		return handle as NetCallHandle<F>;
+		this.assertClient("NetClient.call");
+		return (this.active as NetClientRuntime).callFunction<F, R>(request, callSiteId, functionId);
 	}
-
 	enqueueFunctionResult<R extends object>(call: NetFunctionCall, result: NetFunctionResult<R>): void {
-		this.assertBoundary("server", result.ok ? "NetFunctionResponder.resolve" : "NetFunctionResponder.reject");
-		const player = call.sender;
-		assert(player !== undefined, `[rovy-net] cannot respond to ${call.meta.id}; missing sender.`);
-		this.functionResultOutbox.push({
-			call,
-			result: result as NetFunctionResult,
-			target: { kind: "player", player },
-		});
+		this.assertServer("NetFunctionResponder");
+		(this.active as NetServerRuntime).enqueueFunctionResult(call, result);
 	}
-
 	drainClientOutbox(): Array<NetOutboxItem> {
-		const out = [...this.clientOutbox];
-		this.clientOutbox.clear();
-		return out;
+		this.assertClient("drainClientOutbox");
+		return (this.active as NetClientRuntime).drainOutbox();
 	}
-
 	drainFunctionRequestOutbox(): Array<NetFunctionRequestOutboxItem> {
-		const out = [...this.functionRequestOutbox];
-		this.functionRequestOutbox.clear();
-		return out;
+		this.assertClient("drainFunctionRequestOutbox");
+		return (this.active as NetClientRuntime).drainFunctionRequestOutbox();
 	}
-
 	drainServerOutbox(): Array<NetOutboxItem> {
-		const out = [...this.serverOutbox];
-		this.serverOutbox.clear();
-		return out;
+		this.assertServer("drainServerOutbox");
+		return (this.active as NetServerRuntime).drainOutbox();
 	}
-
 	drainFunctionResultOutbox(): Array<NetFunctionResultOutboxItem> {
-		const out = [...this.functionResultOutbox];
-		this.functionResultOutbox.clear();
-		return out;
+		this.assertServer("drainFunctionResultOutbox");
+		return (this.active as NetServerRuntime).drainFunctionResultOutbox();
 	}
-
 	receive(
 		event: object,
 		commands: Pick<Commands, "send" | "trigger">,
 		sender?: Player,
 		mode?: NetEventReceiveMode,
 	): void {
-		const meta = this.metaForEvent(event);
-		const receiveMode = mode ?? meta.receive;
-		this.assertReceive(meta, receiveMode);
-		if (sender !== undefined) this.context.setCurrentSender(event, sender);
-		if (receiveMode === "send") commands.send(event);
-		else commands.trigger(event);
+		if (this.boundary === "client") {
+			(this.active as NetClientRuntime).receive(event, commands, mode);
+		} else {
+			(this.active as NetServerRuntime).receive(event, commands, sender, mode);
+		}
 	}
-
 	receiveFunctionRequest(meta: NetFunctionReg, envelope: NetFunctionRequestEnvelope, sender?: Player): void {
-		const request = NetCodec.decodeFields(meta.ctor, meta.fields, envelope.payload) as ClientToServerNetFunction;
-		const call: NetFunctionCall = {
-			request,
-			meta,
-			handle: {
-				functionId: meta.id,
-				callSiteId: envelope.callSiteId,
-				sequence: envelope.sequence,
-				request,
-			},
-			sender,
-		};
-		let calls = this.inboundFunctionCalls.get(meta.id);
-		if (calls === undefined) {
-			calls = [];
-			this.inboundFunctionCalls.set(meta.id, calls);
-		}
-		calls.push(call);
+		this.assertServer("receiveFunctionRequest");
+		(this.active as NetServerRuntime).receiveFunctionRequest(meta, envelope, sender);
 	}
-
 	receiveFunctionResult(meta: NetFunctionReg, envelope: NetFunctionResultEnvelope): void {
-		const handle: NetCallHandleInternal = {
-			functionId: meta.id,
-			callSiteId: envelope.callSiteId,
-			sequence: envelope.sequence,
-		};
-		const key = resultKey(handle);
-		const pending = this.pendingCalls.get(key);
-		if (pending === undefined || pending.handle.functionId !== meta.id) return;
-		const result: NetFunctionResult =
-			envelope.ok === true
-				? {
-						ok: true,
-						value: NetCodec.decodeFields(meta.result, meta.resultFields, envelope.payload ?? {}) as object,
-					}
-				: { ok: false, error: envelope.error ?? "remote function rejected" };
-		this.resultInbox.set(key, { result, expiresFrame: this.frame + DEFAULT_RESULT_TTL_FRAMES });
+		this.assertClient("receiveFunctionResult");
+		(this.active as NetClientRuntime).receiveFunctionResult(meta, envelope);
 	}
-
 	readFunctionCalls(functionId: string, cb: (call: NetFunctionCall) => void): void {
-		for (const call of this.inboundFunctionCalls.get(functionId) ?? []) cb(call);
+		this.assertServer("readFunctionCalls");
+		(this.active as NetServerRuntime).readFunctionCalls(functionId, cb);
 	}
-
-	takeResult(handle: NetCallHandleInternal): NetFunctionResult | undefined {
-		const key = resultKey(handle);
-		const stored = this.resultInbox.get(key);
-		if (stored === undefined) return undefined;
-		if (stored.expiresFrame < this.frame) {
-			this.resultInbox.delete(key);
-			const pending = this.pendingCalls.get(key);
-			if (pending !== undefined) this.pendingCallSlots.delete(pending.slotKey);
-			this.pendingCalls.delete(key);
-			return undefined;
-		}
-		this.resultInbox.delete(key);
-		const pending = this.pendingCalls.get(key);
-		if (pending !== undefined) this.pendingCallSlots.delete(pending.slotKey);
-		this.pendingCalls.delete(key);
-		return stored.result;
-	}
-
-	takeCallResult<R extends object>(handle: NetCallHandleInternal): NetFunctionCallResult<R> {
-		const result = this.takeResult(handle) as NetFunctionResult<R> | undefined;
-		if (result === undefined) return undefined;
-		return result.ok ? result.value : result;
-	}
-
 	getFunctionResult<F extends object, R extends object>(handle: NetCallHandle<F>): NetFunctionCallResult<R> {
-		return this.takeCallResult<R>(handle as NetCallHandleInternal);
+		this.assertClient("getFunctionResult");
+		return (this.active as NetClientRuntime).getFunctionResult<F, R>(handle);
 	}
-
 	hasFunctionResult<F extends object>(handle: NetCallHandle<F>): boolean {
-		const key = resultKey(handle as NetCallHandleInternal);
-		const stored = this.resultInbox.get(key);
-		if (stored === undefined) return false;
-		if (stored.expiresFrame < this.frame) {
-			this.resultInbox.delete(key);
-			const pending = this.pendingCalls.get(key);
-			if (pending !== undefined) this.pendingCallSlots.delete(pending.slotKey);
-			this.pendingCalls.delete(key);
-			return false;
-		}
-		return true;
+		this.assertClient("hasFunctionResult");
+		return (this.active as NetClientRuntime).hasFunctionResult(handle);
 	}
-
 	endFrame(): void {
-		this.frame += 1;
-		this.inboundFunctionCalls.clear();
-		for (const [key, stored] of this.resultInbox) {
-			if (stored.expiresFrame < this.frame) {
-				this.resultInbox.delete(key);
-				const pending = this.pendingCalls.get(key);
-				if (pending !== undefined) this.pendingCallSlots.delete(pending.slotKey);
-				this.pendingCalls.delete(key);
-			}
-		}
-		for (const [key, pending] of this.pendingCalls) {
-			if (pending.createdFrame + DEFAULT_PENDING_TTL_FRAMES < this.frame) {
-				this.pendingCallSlots.delete(pending.slotKey);
-				this.pendingCalls.delete(key);
-			}
-		}
+		this.active.endFrame();
 	}
-
 	encodeFunctionRequest(item: NetFunctionRequestOutboxItem): NetFunctionRequestEnvelope {
-		return {
-			callSiteId: item.handle.callSiteId,
-			sequence: item.handle.sequence,
-			payload: NetCodec.encodeFields(item.meta.fields, item.request),
-		};
+		this.assertClient("encodeFunctionRequest");
+		return (this.active as NetClientRuntime).encodeFunctionRequest(item);
 	}
-
 	encodeFunctionResult(item: NetFunctionResultOutboxItem): NetFunctionResultEnvelope {
-		const result = item.result;
-		return result.ok
-			? {
-					callSiteId: item.call.handle.callSiteId,
-					sequence: item.call.handle.sequence,
-					ok: true,
-					payload: NetCodec.encodeFields(item.call.meta.resultFields, result.value),
-				}
-			: {
-					callSiteId: item.call.handle.callSiteId,
-					sequence: item.call.handle.sequence,
-					ok: false,
-					error: result.error,
-				};
+		this.assertServer("encodeFunctionResult");
+		return (this.active as NetServerRuntime).encodeFunctionResult(item);
 	}
 
-	private assertBoundary(expected: "client" | "server", method: string): void {
-		if (this.boundary === "unknown") return;
-		assert(this.boundary === expected, `[rovy-net] ${method} can only be called from the ${expected}.`);
+	private assertClient(method: string): void {
+		assert(this.boundary === "client", `[rovy-net] ${method} can only be called from the client`);
 	}
-
-	private assertDirection(meta: NetEventReg, expected: NetEventDirection, source: string): void {
-		assert(meta.direction === expected, `[rovy-net] ${meta.id} cannot be sent by ${source}; expected ${expected}.`);
+	private assertServer(method: string): void {
+		assert(this.boundary === "server", `[rovy-net] ${method} can only be called from the server`);
 	}
-
-	private assertReceive(meta: NetEventReg, mode: NetEventReceiveMode): void {
-		assert(
-			meta.receive === mode,
-			`[rovy-net] ${meta.id} has receive: "${meta.receive}", but net.${mode}(...) was used.`,
-		);
-	}
-}
-
-export class NetClient {
-	constructor(private readonly runtime: NetRuntime) {}
-
-	send<E extends ClientToServerNetEvent>(event: E): void {
-		this.runtime.enqueueClient("send", event);
-	}
-
-	trigger<E extends ClientToServerNetEvent>(event: E): void {
-		this.runtime.enqueueClient("trigger", event);
-	}
-
-	call<F extends ClientToServerNetFunction>(
-		request: F,
-		callSiteId = "runtime",
-	): NetCallHandle<F> {
-		return this.runtime.callFunction<F, object>(request, callSiteId);
-	}
-
-	getResult<F extends ClientToServerNetFunction, R extends object = object>(
-		handle: NetCallHandle<F>,
-	): NetFunctionCallResult<R> {
-		return this.runtime.getFunctionResult<F, R>(handle);
-	}
-
-	hasResult<F extends ClientToServerNetFunction>(handle: NetCallHandle<F>): boolean {
-		return this.runtime.hasFunctionResult(handle);
-	}
-}
-
-export class NetFunc<F extends ClientToServerNetFunction = ClientToServerNetFunction, R extends object = object> {
-	constructor(
-		private readonly runtime: NetRuntime,
-		private readonly functionId: string,
-	) {}
-
-	call(request: F, callSiteId = "runtime"): NetCallHandle<F> {
-		return this.runtime.callFunction<F, R>(request, callSiteId, this.functionId);
-	}
-
-	getResult(handle: NetCallHandle<F>): NetFunctionCallResult<R> {
-		if (handle.functionId !== this.functionId) return undefined;
-		return this.runtime.getFunctionResult<F, R>(handle);
-	}
-
-	hasResult(handle: NetCallHandle<F>): boolean {
-		if (handle.functionId !== this.functionId) return false;
-		return this.runtime.hasFunctionResult(handle);
-	}
-}
-
-export class NetServer {
-	constructor(private readonly runtime: NetRuntime) {}
-
-	send<E extends ServerToClientNetEvent>(player: Player, event: E): void {
-		this.runtime.enqueueServer("send", { kind: "player", player }, event, "send");
-	}
-
-	trigger<E extends ServerToClientNetEvent>(player: Player, event: E): void {
-		this.runtime.enqueueServer("trigger", { kind: "player", player }, event, "trigger");
-	}
-
-	broadcast<E extends ServerToClientNetEvent>(event: E): void {
-		this.runtime.enqueueServer("send", { kind: "broadcast" }, event, "broadcast");
-	}
-
-	broadcastTrigger<E extends ServerToClientNetEvent>(event: E): void {
-		this.runtime.enqueueServer("trigger", { kind: "broadcast" }, event, "broadcastTrigger");
-	}
-
-	sendList<E extends ServerToClientNetEvent>(players: ReadonlyArray<Player>, event: E): void {
-		this.runtime.enqueueServer("send", { kind: "players", players }, event, "sendList");
-	}
-
-	triggerList<E extends ServerToClientNetEvent>(players: ReadonlyArray<Player>, event: E): void {
-		this.runtime.enqueueServer("trigger", { kind: "players", players }, event, "triggerList");
-	}
-
-	broadcastExcept<E extends ServerToClientNetEvent>(except: Player, event: E): void {
-		this.runtime.enqueueServer("send", { kind: "broadcastExcept", except }, event, "broadcastExcept");
-	}
-
-	broadcastTriggerExcept<E extends ServerToClientNetEvent>(except: Player, event: E): void {
-		this.runtime.enqueueServer("trigger", { kind: "broadcastExcept", except }, event, "broadcastTriggerExcept");
-	}
-}
-
-export class NetFunctionReader<F extends object = object> {
-	constructor(
-		private readonly runtime: NetRuntime,
-		private readonly functionId: string,
-	) {}
-
-	forEach(cb: (call: NetFunctionCall<F>) => void): void {
-		this.runtime.readFunctionCalls(this.functionId, cb as (call: NetFunctionCall) => void);
-	}
-}
-
-export class NetFunctionResponder {
-	constructor(private readonly runtime: NetRuntime) {}
-
-	resolve<F extends object, R extends object>(call: NetFunctionCall<F>, result: R): void {
-		this.runtime.enqueueFunctionResult(call, { ok: true, value: result });
-	}
-
-	reject(call: NetFunctionCall, message: string): void {
-		this.runtime.enqueueFunctionResult(call, { ok: false, error: message });
-	}
-}
-
-function resultKey(handle: NetCallHandleInternal): string {
-	return `${handle.callSiteId}:${handle.sequence}`;
-}
-
-function functionSlotKey(functionId: string, callSiteId: string): string {
-	return `${functionId}:${callSiteId}`;
 }

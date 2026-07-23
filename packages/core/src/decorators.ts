@@ -29,6 +29,7 @@ export function prefab(_ctor: Ctor): void {}
 export function plugin(_ctor: Ctor): void {}
 export function server(_ctor: Ctor): void {}
 export function client(_ctor: Ctor): void {}
+export function shared(_ctor: Ctor): void {}
 
 // ─── Option-taking decorator factories ──────────────────────────────────────
 

@@ -7,7 +7,7 @@ local runner = require("../../../test/luau/harness/spec_runner")
 
 runner.run({
 	runtimeModule = "../../../packages/networking/test/harness/runtime",
-	loadPath = "out/init",
+	loadPath = "out/shared/init",
 	specsRequirePrefix = "../../../packages/networking/test/specs/",
-	successMessage = "ok  harness loaded out/init",
+	successMessage = "ok  harness loaded split networking output",
 })

@@ -6,8 +6,8 @@
   "types": "out/index.d.ts",
   "license": "MIT",
   "scripts": {
-    "build": "pnpm --filter @rovy/core build && rbxtsc",
-    "dev": "rbxtsc -w",
+    "build": "pnpm --filter @rovy/core build && pnpm --filter rovy-build build && rovy compile",
+    "dev": "rovy compile",
     "test": "npm run build && zune test test/run"
   },
   "files": [
@@ -17,6 +17,13 @@
   "publishConfig": {
     "access": "public"
   },
+  "rovy-build": {
+    "rbxtscArgs": [
+      "--type",
+      "package"
+    ],
+    "generateBlink": false
+  },
   "peerDependencies": {
     "@rovy/core": "0.0.0"
   },
@@ -24,6 +31,7 @@
     "@rbxts/compiler-types": "3.0.0-types.0",
     "@rbxts/types": "^1.0.920",
     "@rovy/core": "workspace:*",
+    "rovy-build": "workspace:*",
     "typescript": "^5.9.3",
     "roblox-ts": "^3.0.0"
   }

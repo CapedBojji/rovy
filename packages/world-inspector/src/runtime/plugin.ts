@@ -3,9 +3,11 @@ import {
 	NET_CLIENT_PARAM,
 	NET_EVENT_CONTEXT_PARAM,
 	NET_SERVER_PARAM,
+	ClientRemoteEventTransport,
 	NetFlushSet,
-	NetPlugin,
-	RemoteEventTransport,
+	NetClientPlugin,
+	NetServerPlugin,
+	ServerRemoteEventTransport,
 	type NetClient,
 	type NetEventContext,
 	type NetServer,
@@ -63,6 +65,7 @@ export interface WorldInspectorPluginOptions {
 	readonly renderSchedule?: Ctor;
 	readonly networkSchedule?: Ctor;
 	readonly networkTransport?: NetTransport;
+	/** @deprecated WorldInspectorPlugin always uses the client network boundary. */
 	readonly networkBoundary?: RuntimeBoundary;
 }
 
@@ -77,6 +80,7 @@ export interface WorldInspectorServerPluginOptions {
 	readonly schedule: Ctor;
 	readonly access?: (ctx: WorldInspectorAccessContext) => boolean;
 	readonly networkTransport?: NetTransport;
+	/** @deprecated WorldInspectorServerPlugin always uses the server network boundary. */
 	readonly networkBoundary?: RuntimeBoundary;
 }
 
@@ -497,10 +501,9 @@ export class WorldInspectorPlugin implements Plugin {
 	build(app: App): void {
 		registerRuntime(this.options.renderSchedule, this.options.networkSchedule);
 		if (this.options.networkSchedule !== undefined) {
-			new NetPlugin({
+			new NetClientPlugin({
 				schedule: this.options.networkSchedule,
-				transport: this.options.networkTransport ?? new RemoteEventTransport(),
-				boundary: this.options.networkBoundary,
+				transport: this.options.networkTransport ?? new ClientRemoteEventTransport(),
 			}).build(app);
 		}
 		app.insertResource(this.state);
@@ -539,10 +542,9 @@ export class WorldInspectorServerPlugin implements Plugin {
 				{ kind: "res", ctor: ScheduleContext },
 			],
 		});
-		new NetPlugin({
+		new NetServerPlugin({
 			schedule: this.options.schedule,
-			transport: this.options.networkTransport ?? new RemoteEventTransport(),
-			boundary: this.options.networkBoundary,
+			transport: this.options.networkTransport ?? new ServerRemoteEventTransport(),
 		}).build(app);
 		app.insertResource(this.state);
 		registerRecorderListeners(app, this.state);

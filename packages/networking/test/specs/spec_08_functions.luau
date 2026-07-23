@@ -5,7 +5,9 @@
 local nethelp = require("../harness/net")
 
 return function(TS, t)
-	local net = TS.loadPath("out/init")
+	local clientNet = nethelp.load(TS, "client")
+	local serverNet = nethelp.load(TS, "server")
+	local net = clientNet
 
 	local Fetch = nethelp.eventClass({ "key" })
 	local FetchResult = nethelp.eventClass({ "value" })
@@ -17,14 +19,16 @@ return function(TS, t)
 		resultFields = { "value" },
 	})
 
-	local function runtime()
-		return net.NetRuntime.new({}, { fetchReg })
+	local function clientRuntime()
+		return clientNet.NetClientRuntime.new({}, { fetchReg })
+	end
+	local function serverRuntime()
+		return serverNet.NetServerRuntime.new({}, { fetchReg })
 	end
 
-	t.describe("NetRuntime functions", function()
+	t.describe("split runtime functions", function()
 		t.it("client call sends once per callsite while pending", function()
-			local rt = runtime()
-			rt:setBoundary("client")
+			local rt = clientRuntime()
 			local handle = rt.client:call(Fetch.new("coins"), "site/a")
 			t.expect(handle.functionId).toBe("g/Fetch")
 			local out = rt:drainFunctionRequestOutbox()
@@ -39,8 +43,7 @@ return function(TS, t)
 		end)
 
 		t.it("injected NetFunc calls only its registered request type", function()
-			local rt = runtime()
-			rt:setBoundary("client")
+			local rt = clientRuntime()
 			local fetch = rt:functionParam("g/Fetch")
 			local handle = fetch:call(Fetch.new("coins"), "site/a")
 			t.expect(handle.functionId).toBe("g/Fetch")
@@ -53,8 +56,7 @@ return function(TS, t)
 		end)
 
 		t.it("server reads request and resolves result", function()
-			local rt = runtime()
-			rt:setBoundary("server")
+			local rt = serverRuntime()
 			local player = { Name = "P" }
 			rt:receiveFunctionRequest(fetchReg, {
 				callSiteId = "site/a",
@@ -80,8 +82,7 @@ return function(TS, t)
 		end)
 
 		t.it("client call returns exact result once on later frame", function()
-			local rt = runtime()
-			rt:setBoundary("client")
+			local rt = clientRuntime()
 			local handle = rt.client:call(Fetch.new("coins"), "site/a")
 			rt:drainFunctionRequestOutbox()
 			t.expect(rt.client:hasResult(handle)).toBe(false)
@@ -103,8 +104,7 @@ return function(TS, t)
 		end)
 
 		t.it("reject result routes as error", function()
-			local rt = runtime()
-			rt:setBoundary("client")
+			local rt = clientRuntime()
 			local handle = rt.client:call(Fetch.new("coins"), "site/a")
 			rt:drainFunctionRequestOutbox()
 
@@ -121,8 +121,7 @@ return function(TS, t)
 		end)
 
 		t.it("result expires after ttl frames", function()
-			local rt = runtime()
-			rt:setBoundary("client")
+			local rt = clientRuntime()
 			local handle = rt.client:call(Fetch.new("coins"), "site/a")
 			rt:drainFunctionRequestOutbox()
 			rt:receiveFunctionResult(fetchReg, {
@@ -143,10 +142,8 @@ return function(TS, t)
 	t.describe("function loopback", function()
 		t.it("round-trips request and result through transport pumps", function()
 			local player = { Name = "P" }
-			local clientRt = runtime()
-			local serverRt = runtime()
-			clientRt:setBoundary("client")
-			serverRt:setBoundary("server")
+			local clientRt = clientRuntime()
+			local serverRt = serverRuntime()
 
 			local clientTransport = net.LoopbackTransport.new(player)
 			local serverTransport = net.LoopbackTransport.new()
@@ -156,14 +153,14 @@ return function(TS, t)
 				boundary = "client",
 				deliver = function() end,
 				deliverFunctionResult = function(name, envelope)
-					clientRt:receiveFunctionResult(net.rovyNet:functionByName(name) or fetchReg, envelope)
+					clientRt:receiveFunctionResult(clientNet.rovyNet:functionByName(name) or fetchReg, envelope)
 				end,
 			})
 			serverTransport:start({
 				boundary = "server",
 				deliver = function() end,
 				deliverFunctionRequest = function(name, envelope, sender)
-					serverRt:receiveFunctionRequest(net.rovyNet:functionByName(name) or fetchReg, envelope, sender)
+					serverRt:receiveFunctionRequest(serverNet.rovyNet:functionByName(name) or fetchReg, envelope, sender)
 				end,
 			})
 
