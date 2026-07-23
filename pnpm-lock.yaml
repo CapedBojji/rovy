@@ -122,6 +122,30 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  packages/scribe:
+    devDependencies:
+      '@rbxts/compiler-types':
+        specifier: 3.0.0-types.0
+        version: 3.0.0-types.0
+      '@rbxts/t':
+        specifier: ^3.2.1
+        version: 3.2.1
+      '@rbxts/types':
+        specifier: ^1.0.920
+        version: 1.0.924
+      '@rovy/core':
+        specifier: workspace:*
+        version: link:../core
+      roblox-ts:
+        specifier: ^3.0.0
+        version: 3.0.0
+      rovy-build:
+        specifier: workspace:*
+        version: link:../build
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   packages/transformer:
     dependencies:
       '@roblox-ts/rojo-resolver':

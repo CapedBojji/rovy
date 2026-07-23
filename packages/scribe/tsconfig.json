@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "downlevelIteration": true,
+    "experimentalDecorators": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "commonjs",
+    "moduleDetection": "force",
+    "moduleResolution": "Node",
+    "noLib": true,
+    "outDir": "../../out/scribe",
+    "resolveJsonModule": true,
+    "rootDir": ".",
+    "strict": true,
+    "target": "ESNext",
+    "typeRoots": ["node_modules/@rbxts", "node_modules/@rovy"]
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "out"]
+}

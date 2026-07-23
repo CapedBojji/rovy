@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@rovy/scribe": ["src/index.ts"]
+    }
+  },
+  "include": ["src", "__typecheck.ts"]
+}

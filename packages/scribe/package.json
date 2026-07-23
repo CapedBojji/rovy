@@ -1,0 +1,25 @@
+{
+  "name": "@rovy/scribe",
+  "version": "0.0.0",
+  "description": "Compile-time API RFC for integrating Scribe player data with Rovy",
+  "types": "src/index.ts",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "build": "pnpm run typecheck",
+    "test": "pnpm run typecheck",
+    "typecheck": "tsc --noEmit --skipLibCheck -p tsconfig.typecheck.json && rbxtsc -p tsconfig.typecheck.json --type package"
+  },
+  "peerDependencies": {
+    "@rovy/core": "0.0.0"
+  },
+  "devDependencies": {
+    "@rbxts/compiler-types": "3.0.0-types.0",
+    "@rbxts/t": "^3.2.1",
+    "@rbxts/types": "^1.0.920",
+    "@rovy/core": "workspace:*",
+    "roblox-ts": "^3.0.0",
+    "rovy-build": "workspace:*",
+    "typescript": "^5.9.3"
+  }
+}
