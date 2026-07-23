@@ -9,16 +9,14 @@ import type {
 } from "./schema";
 import type { ScribeLogLevel, ScribeStatusThresholds } from "./types";
 
-declare const dataBrand: unique symbol;
-
 export interface AnyScribeData {
 	readonly id: string;
 	readonly name: string;
-	readonly [dataBrand]: unknown;
+	readonly __scribeDataBrand?: unknown;
 }
 
 export interface ScribeDataDefinition<TSchema extends object> extends AnyScribeData {
-	readonly [dataBrand]: TSchema;
+	readonly __scribeDataBrand?: TSchema;
 	readonly __schema?: TSchema;
 }
 
@@ -237,10 +235,16 @@ export interface ScribeDataDeclaration<Schema extends object> {
 	readonly options?: ScribeDataOptions<Schema>;
 }
 
+const SCRIBE_DATA_GUARD =
+	"[rovy/scribe] scribeData declaration reached runtime untransformed - is rovy-transformer configured?";
+
 /**
- * Compile-only declaration in Phase 0. Runtime lowering is intentionally
- * deferred until this API checkpoint is approved.
+ * The transformer replaces this declaration call with `rovyScribe.__data`.
+ * Reaching the authored function at runtime is always a build configuration
+ * error, never a fallback persistence path.
  */
-export declare function scribeData<const Schema extends object>(
-	declaration: ScribeDataDeclaration<Schema>,
-): ScribeDataDefinition<Schema>;
+export function scribeData<const Schema extends object>(
+	_declaration: ScribeDataDeclaration<Schema>,
+): ScribeDataDefinition<Schema> {
+	throw SCRIBE_DATA_GUARD;
+}

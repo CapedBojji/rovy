@@ -1,14 +1,29 @@
 {
   "name": "@rovy/scribe",
   "version": "0.0.0",
-  "description": "Compile-time API RFC for integrating Scribe player data with Rovy",
-  "types": "src/index.ts",
+  "description": "Rovy integration for Scribe player data",
+  "main": "out/init.luau",
+  "types": "out/index.d.ts",
   "license": "MIT",
-  "private": true,
   "scripts": {
-    "build": "pnpm run typecheck",
-    "test": "pnpm run typecheck",
-    "typecheck": "tsc --noEmit --skipLibCheck -p tsconfig.typecheck.json && rbxtsc -p tsconfig.typecheck.json --type package"
+    "build": "pnpm --filter @rovy/core build && pnpm --filter rovy-build build && pnpm run typecheck && rovy compile",
+    "dev": "rovy compile",
+    "test": "pnpm run build && zune test test/run",
+    "typecheck": "tsc --noEmit --skipLibCheck -p tsconfig.typecheck.json"
+  },
+  "files": [
+    "out",
+    "!**/*.tsbuildinfo"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "rovy-build": {
+    "rbxtscArgs": [
+      "--type",
+      "package"
+    ],
+    "generateBlink": false
   },
   "peerDependencies": {
     "@rovy/core": "0.0.0"

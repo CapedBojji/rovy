@@ -17,9 +17,13 @@ export interface ScribeCommandOptions<Data extends AnyScribeData, Result extends
 	readonly result: Ctor<Result>;
 }
 
-export declare function scribeCommand<Data extends AnyScribeData, Result extends object>(
-	options: ScribeCommandOptions<Data, Result>,
-): (ctor: Ctor) => void;
+const noopCommandDecorator = (_ctor: Ctor): void => {};
+
+export function scribeCommand<Data extends AnyScribeData, Result extends object>(
+	_options: ScribeCommandOptions<Data, Result>,
+): (ctor: Ctor) => void {
+	return noopCommandDecorator;
+}
 
 export interface ScribeCommandHandle<Command extends object, Result = ScribeCommandResultType<Command>> {
 	readonly id: number;

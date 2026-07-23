@@ -14,6 +14,7 @@ export type {
 	ScribeSchemaHelpers,
 	ScribeSchemaKind,
 	ScribeSchemaValue,
+	ScribeRuntimeSchemaDescriptor,
 	ScribeStringOptions,
 	ScribeStringSchema,
 	ScribeTimedSchema,
@@ -56,6 +57,13 @@ export type {
 	ScribeSharedShape,
 	ScribeValueAtPath,
 } from "./definitions";
+
+export { rovyScribe } from "./registry";
+export type {
+	RuntimeScribeCommandDefinition,
+	RuntimeScribeDataDefinition,
+	RuntimeScribeEventDefinition,
+} from "./registry";
 
 export { scribeCommand } from "./commands";
 export type {
@@ -149,6 +157,7 @@ export type {
 } from "./services";
 
 export {
+	ACTIVE_SCRIBE_BOUNDARY,
 	ScribeClientPlugin,
 	ScribePlugin,
 	ScribeServerPlugin,
@@ -167,6 +176,47 @@ export type {
 	ScribeServerPluginOptions,
 	ScribeServerSetup,
 } from "./plugin";
+
+export {
+	SCRIBE_CLIENT_READER_PREFIX,
+	SCRIBE_CLIENT_STATE_PREFIX,
+	SCRIBE_COMMAND_CLIENT_PREFIX,
+	SCRIBE_COMMAND_READER_PREFIX,
+	SCRIBE_COMMAND_RESPONDER_PARAM,
+	SCRIBE_COOLDOWNS_PREFIX,
+	SCRIBE_DIAGNOSTICS_PARAM,
+	SCRIBE_LEADERBOARDS_PREFIX,
+	SCRIBE_LOCAL_WRITER_PREFIX,
+	SCRIBE_MESSAGING_PREFIX,
+	SCRIBE_MONETIZATION_PREFIX,
+	SCRIBE_OWNERSHIP_PREFIX,
+	SCRIBE_PERSISTENCE_PREFIX,
+	SCRIBE_RECEIPTS_PREFIX,
+	SCRIBE_SERVER_READER_PREFIX,
+	SCRIBE_SERVER_WRITER_PREFIX,
+	SCRIBE_SHARED_READER_PREFIX,
+	SCRIBE_TESTING_PREFIX,
+	SCRIBE_UNSAFE_PREFIX,
+	clientReaderParamId,
+	clientStateParamId,
+	commandClientParamId,
+	commandReaderParamId,
+	cooldownsParamId,
+	leaderboardsParamId,
+	localWriterParamId,
+	messagingParamId,
+	monetizationParamId,
+	ownershipParamId,
+	persistenceParamId,
+	receiptsParamId,
+	scribeDataParamId,
+	serverReaderParamId,
+	serverWriterParamId,
+	sharedReaderParamId,
+	testingParamId,
+	unsafeParamId,
+} from "./param-ids";
+export type { ScribeDataParamKind } from "./param-ids";
 
 export type {
 	DeepPartial,

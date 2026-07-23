@@ -22,17 +22,20 @@ Every row has exactly one primary classification:
 Classification is not an implementation claim. In Phase 0, only type declarations,
 compile fixtures, and negative type checks exist.
 
-Phase 1 added the package-neutral core flush-participant prerequisite. It changes
-no Scribe parity classification: no Scribe binding, writer, transformer, or other
-runtime mapping has been implemented yet.
+Phase 1 added the package-neutral core flush-participant prerequisite. Phase 2
+added the partitioned package, native module resolver, binding seam, per-app
+runtime isolation, native bundle construction, stable parameter IDs, custom
+transport pass-through, and diagnostics proxy. It changes no primary parity
+classification. Schema lowering, native accessors, writers, events, commands,
+jobs, and native integration coverage remain incomplete.
 
 ## Top-level Scribe module
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| `Version` | first-class | `scribeVersion()` and binding version | Type declared; runtime Phase 2 |
-| `new` | first-class | `scribeData` declaration plus plugin-owned bundle construction | Declaration fixture |
-| callable `Scribe(options)` | first-class | Same mapping as `new`; game code never constructs a second wrapper state | Declaration fixture |
+| `Version` | first-class | `scribeVersion()` and binding version | Binding/runtime unit coverage Phase 2; native integration pending |
+| `new` | first-class | `scribeData` declaration plus plugin-owned bundle construction | Fake-binding runtime coverage Phase 2; native integration pending |
+| callable `Scribe(options)` | first-class | Same mapping as `new`; game code never constructs a second wrapper state | Fake-binding runtime coverage Phase 2; native integration pending |
 | `ServerOnly` | first-class | `s.serverOnly` | Shape projection fixture |
 | `Shared` | first-class | `s.shared` | Shape projection fixture |
 | `Session` | first-class | `s.session` | Shape projection fixture |
@@ -68,12 +71,12 @@ runtime mapping has been implemented yet.
 | `Datatypes.NONFINITE` | intentionally unsupported | Internal validation prefix, not a documented game API; exposing it would couple Rovy to an implementation detail | Negative public-surface type test required in Phase 10 |
 | `Reason` | intentionally unsupported | No such member exists in Scribe 1.0.10 | Negative native-binding type test in `__typecheck.ts`; target-version review required |
 | `Configure` | intentionally unsupported | No top-level configure function exists in Scribe 1.0.10 | Negative native-binding type test in `__typecheck.ts`; wrapper conflict checks remain separate |
-| `GetStatus` | first-class | `ScribeDiagnostics.status` | Type declared; runtime Phase 10 |
+| `GetStatus` | first-class | `ScribeDiagnostics.status` | Binding proxy/unit coverage Phase 2; signal/native coverage pending |
 | `OnStatusChanged` | Rovy event | `ScribeStatusChanged` | Event type declared; runtime Phase 10 |
 | `OnIssue` | Rovy event | `ScribeIssue` | Event type declared; runtime Phase 10 |
-| `AddLogSink` | first-class | `ScribeDiagnostics.addSink`, installed during setup | Type declared; runtime Phase 10 |
-| `GetRecentLogs` | first-class | `ScribeDiagnostics.recentLogs` | Type declared; runtime Phase 10 |
-| `GetMetrics` | first-class | `ScribeDiagnostics.metrics` | Type declared; runtime Phase 10 |
+| `AddLogSink` | first-class | `ScribeDiagnostics.addSink`, installed during setup | Binding proxy/unit coverage Phase 2; native coverage pending |
+| `GetRecentLogs` | first-class | `ScribeDiagnostics.recentLogs` | Binding proxy/unit coverage Phase 2; native coverage pending |
+| `GetMetrics` | first-class | `ScribeDiagnostics.metrics` | Binding proxy/unit coverage Phase 2; native coverage pending |
 
 ## Exported Scribe contract types
 

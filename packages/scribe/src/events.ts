@@ -84,157 +84,162 @@ export interface ScribeCommandCompletedEventOptions<Command extends object> {
 	readonly kind: "commandCompleted";
 }
 
-export declare function scribeEvent<D extends AnyScribeData>(
+const noopEventDecorator = (_ctor: Ctor): void => {};
+
+export function scribeEvent<D extends AnyScribeData>(
 	options: ScribePathlessEventOptions<D>,
 ): (ctor: Ctor) => void;
-export declare function scribeEvent<D extends AnyScribeData, Path extends string>(
+export function scribeEvent<D extends AnyScribeData, Path extends string>(
 	options: ScribeChangedEventOptions<D, Path>,
 ): (ctor: Ctor) => void;
-export declare function scribeEvent<D extends AnyScribeData, Path extends string>(
+export function scribeEvent<D extends AnyScribeData, Path extends string>(
 	options: ScribeArrayEventOptions<D, Path>,
 ): (ctor: Ctor) => void;
-export declare function scribeEvent<D extends AnyScribeData, Path extends string>(
+export function scribeEvent<D extends AnyScribeData, Path extends string>(
 	options: ScribeDictionaryEventOptions<D, Path>,
 ): (ctor: Ctor) => void;
-export declare function scribeEvent<Command extends object>(
+export function scribeEvent<Command extends object>(
 	options: ScribeCommandCompletedEventOptions<Command>,
 ): (ctor: Ctor) => void;
+export function scribeEvent(_options: object): (ctor: Ctor) => void {
+	return noopEventDecorator;
+}
 
-export declare class ScribeReady<D extends AnyScribeData> {
-	readonly definition: D;
+export class ScribeReady<D extends AnyScribeData> {
+	readonly definition = undefined! as D;
 	readonly player?: Player;
 }
 
-export declare class ScribeUnavailable<D extends AnyScribeData> {
-	readonly definition: D;
+export class ScribeUnavailable<D extends AnyScribeData> {
+	readonly definition = undefined! as D;
 	readonly player?: Player;
-	readonly reason: string;
+	readonly reason = "";
 }
 
-export declare class ScribeValueChanged<
+export class ScribeValueChanged<
 	D extends AnyScribeData,
 	Path extends string,
 > {
-	readonly definition: D;
+	readonly definition = undefined! as D;
 	readonly player?: Player;
-	readonly path: ReadonlyArray<string | number>;
-	readonly before: ReadonlyDeep<ScribeValueAtPath<D, Path>>;
-	readonly after: ReadonlyDeep<ScribeValueAtPath<D, Path>>;
-	readonly source: ScribeChangeSource;
-	readonly revision: number;
+	readonly path = new Array<string | number>();
+	readonly before = undefined! as ReadonlyDeep<ScribeValueAtPath<D, Path>>;
+	readonly after = undefined! as ReadonlyDeep<ScribeValueAtPath<D, Path>>;
+	readonly source = "serverWrite" as ScribeChangeSource;
+	readonly revision = 0;
 }
 
-export declare class ScribeArrayInserted<
+export class ScribeArrayInserted<
 	D extends AnyScribeData,
 	Path extends string,
 > {
-	readonly definition: D;
+	readonly definition = undefined! as D;
 	readonly player?: Player;
-	readonly path: ReadonlyArray<string | number>;
-	readonly index: number;
-	readonly value: ReadonlyDeep<ScribeArrayValueAtPath<D, Path>>;
-	readonly source: ScribeChangeSource;
+	readonly path = new Array<string | number>();
+	readonly index = 0;
+	readonly value = undefined! as ReadonlyDeep<ScribeArrayValueAtPath<D, Path>>;
+	readonly source = "serverWrite" as ScribeChangeSource;
 }
 
-export declare class ScribeArrayRemoved<
+export class ScribeArrayRemoved<
 	D extends AnyScribeData,
 	Path extends string,
 > extends ScribeArrayInserted<D, Path> {}
 
-export declare class ScribeKeyAdded<
+export class ScribeKeyAdded<
 	D extends AnyScribeData,
 	Path extends string,
 > {
-	readonly definition: D;
+	readonly definition = undefined! as D;
 	readonly player?: Player;
-	readonly path: ReadonlyArray<string | number>;
-	readonly key: string;
-	readonly value: ReadonlyDeep<ScribeDictionaryValueAtPath<D, Path>>;
-	readonly source: ScribeChangeSource;
+	readonly path = new Array<string | number>();
+	readonly key = "";
+	readonly value = undefined! as ReadonlyDeep<ScribeDictionaryValueAtPath<D, Path>>;
+	readonly source = "serverWrite" as ScribeChangeSource;
 }
 
-export declare class ScribeKeyRemoved<
+export class ScribeKeyRemoved<
 	D extends AnyScribeData,
 	Path extends string,
 > extends ScribeKeyAdded<D, Path> {}
 
-export declare class ScribeCommandCompleted<Command extends object, Result> {
-	readonly handle: ScribeCommandHandle<Command, Result>;
-	readonly request: Command;
-	readonly result: ScribeCommandResult<Result>;
+export class ScribeCommandCompleted<Command extends object, Result> {
+	readonly handle = undefined! as ScribeCommandHandle<Command, Result>;
+	readonly request = undefined! as Command;
+	readonly result = undefined! as ScribeCommandResult<Result>;
 }
 
-export declare class ScribeJobCompleted<T> {
-	readonly handle: ScribeJobHandle<T>;
-	readonly result: ScribeJobResult<T>;
+export class ScribeJobCompleted<T> {
+	readonly handle = undefined! as ScribeJobHandle<T>;
+	readonly result = undefined! as ScribeJobResult<T>;
 }
 
-export declare class ScribeSaveCompleted<D extends AnyScribeData> {
-	readonly definition: D;
-	readonly player: Player;
-	readonly ok: boolean;
-	readonly duration: number;
-	readonly at: number;
-	readonly saveInfo: ScribeSaveInfo;
+export class ScribeSaveCompleted<D extends AnyScribeData> {
+	readonly definition = undefined! as D;
+	readonly player = undefined! as Player;
+	readonly ok = false;
+	readonly duration = 0;
+	readonly at = 0;
+	readonly saveInfo = undefined! as ScribeSaveInfo;
 }
 
-export declare class ScribeSessionEnded<D extends AnyScribeData> {
-	readonly definition: D;
-	readonly player: Player;
-	readonly reason: string;
+export class ScribeSessionEnded<D extends AnyScribeData> {
+	readonly definition = undefined! as D;
+	readonly player = undefined! as Player;
+	readonly reason = "";
 }
 
-export declare class ScribeAnomaly<D extends AnyScribeData> {
-	readonly definition: D;
-	readonly player: Player;
-	readonly path: ReadonlyArray<string | number>;
+export class ScribeAnomaly<D extends AnyScribeData> {
+	readonly definition = undefined! as D;
+	readonly player = undefined! as Player;
+	readonly path = new Array<string | number>();
 	readonly value?: ReadonlyDeep<unknown>;
-	readonly reason: string;
+	readonly reason = "";
 }
 
-export declare class ScribeOwnershipChanged<D extends AnyScribeData> {
-	readonly definition: D;
+export class ScribeOwnershipChanged<D extends AnyScribeData> {
+	readonly definition = undefined! as D;
 	readonly player?: Player;
-	readonly key: string;
-	readonly owned: boolean;
+	readonly key = "";
+	readonly owned = false;
 }
 
-export declare class ScribeGiftReceived<D extends AnyScribeData> {
-	readonly definition: D;
-	readonly player: Player;
-	readonly fromUserId: number;
-	readonly product: string;
-	readonly giftId: string;
+export class ScribeGiftReceived<D extends AnyScribeData> {
+	readonly definition = undefined! as D;
+	readonly player = undefined! as Player;
+	readonly fromUserId = 0;
+	readonly product = "";
+	readonly giftId = "";
 }
 
-export declare class ScribeGiftCredit<D extends AnyScribeData> {
-	readonly definition: D;
-	readonly player: Player;
-	readonly product: string;
+export class ScribeGiftCredit<D extends AnyScribeData> {
+	readonly definition = undefined! as D;
+	readonly player = undefined! as Player;
+	readonly product = "";
 }
 
-export declare class ScribeMessageReceived<D extends AnyScribeData, Payload> {
-	readonly definition: D;
-	readonly player: Player;
-	readonly value: ReadonlyDeep<Payload>;
+export class ScribeMessageReceived<D extends AnyScribeData, Payload> {
+	readonly definition = undefined! as D;
+	readonly player = undefined! as Player;
+	readonly value = undefined! as ReadonlyDeep<Payload>;
 }
 
-export declare class ScribeLeaderboardChanged<D extends AnyScribeData> {
-	readonly definition: D;
-	readonly name: string;
-	readonly entries: ReadonlyArray<ScribeLeaderboardEntry>;
+export class ScribeLeaderboardChanged<D extends AnyScribeData> {
+	readonly definition = undefined! as D;
+	readonly name = "";
+	readonly entries = new Array<ScribeLeaderboardEntry>();
 }
 
-export declare class ScribeSharedChanged<D extends AnyScribeData> {
-	readonly definition: D;
-	readonly userId: number;
-	readonly value: ReadonlyDeep<ScribeSharedShape<D>>;
+export class ScribeSharedChanged<D extends AnyScribeData> {
+	readonly definition = undefined! as D;
+	readonly userId = 0;
+	readonly value = undefined! as ReadonlyDeep<ScribeSharedShape<D>>;
 }
 
-export declare class ScribeStatusChanged {
-	readonly status: ScribeStatus;
+export class ScribeStatusChanged {
+	readonly status = "Healthy" as ScribeStatus;
 }
 
-export declare class ScribeIssue {
-	readonly entry: ScribeLogEntry;
+export class ScribeIssue {
+	readonly entry = undefined! as ScribeLogEntry;
 }

@@ -1,6 +1,6 @@
 # RFC: `@rovy/scribe`
 
-Status: **Phase 1 core flush prerequisite complete — Scribe runtime not started**
+Status: **Phase 2 package skeleton complete — schema lowering next**
 
 This RFC proposes a partitioned Rovy package that projects Scribe's field-oriented
 player-data API into stable readers, buffered writers, Rovy events, and non-yielding
@@ -325,3 +325,33 @@ explicit request/result generic pair described above.
 - `app.flush()`, `world.flush()`, and scheduler boundaries share one path.
 - A non-converging participant fails with a named 1,000-cycle diagnostic.
 - Existing core tests continue to pass.
+
+## Phase 2 package boundary
+
+`@rovy/scribe` now builds as a partitioned Rovy package. Shared declarations,
+registry metadata, schema descriptors, parameter IDs, and the active-boundary
+facade are emitted to both sides; `ScribeClientPlugin` and
+`ScribeServerPlugin` are emitted only to their matching runtime boundary.
+
+The runtime peer is resolved in this order:
+
+1. `ScribePluginOptions.module`;
+2. `ScribePluginOptions.resolveModule` or the package registry's configured
+   resolver;
+3. `ReplicatedStorage.Packages.Scribe`;
+4. a named startup error.
+
+Each app receives its own `ScribeRuntime`, native bundles, handle cache, and core
+flush-participant registration. A process-level version guard rejects two
+different Scribe versions. The native binding seam has a deterministic fake for
+unit tests. Custom transport objects are passed into native bundle options by
+identity.
+
+Auto-install only activates when the registry contains a Scribe declaration or a
+system, observer, monitor, or prefab requests a stable `@rovy/scribe/*` external
+parameter. Explicit plugins always install. Two apps and multiple declarations
+remain isolated.
+
+Phase 2 deliberately does not project native accessors yet. Injected
+definition-scoped values are identity-bearing skeleton handles until the reader
+and writer phases replace them with their typed implementations.

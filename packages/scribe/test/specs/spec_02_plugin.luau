@@ -1,0 +1,172 @@
+--!nocheck
+
+local help = require("../harness/scribe")
+
+return function(TS, t)
+	local clientScribe = help.load(TS, "client")
+	local serverScribe = help.load(TS, "server")
+	local core = TS.import(nil, TS.getModule(nil, "@rovy", "rovy-core"))
+	local rovy = core.rovy
+	local App = core.App
+
+	local function reset()
+		rovy:__reset()
+		serverScribe.rovyScribe:__reset()
+	end
+
+	local function scheduleOnly()
+		local Update = {}
+		rovy:__schedule(Update, { runOnStart = false })
+		return Update
+	end
+
+	t.describe("@rovy/scribe boundary plugins", function()
+		t.it("builds explicit client and server runtimes with fixed boundaries", function()
+			reset()
+			local module = help.nativeModule()
+			local clientPlugin = clientScribe.ScribeClientPlugin.new({ module = module })
+			local serverPlugin = serverScribe.ScribeServerPlugin.new({ module = module })
+			local clientApp, serverApp = App.new(), App.new()
+			clientPlugin:build(clientApp)
+			serverPlugin:build(serverApp)
+
+			t.expect(clientPlugin.runtime.boundary).toBe("client")
+			t.expect(serverPlugin.runtime.boundary).toBe("server")
+			t.expect(clientPlugin.runtime).never.toBe(serverPlugin.runtime)
+			t.expect(serverScribe.scribeVersion()).toBe("1.0.10")
+		end)
+
+		t.it("active facade delegates to the loaded server provider", function()
+			reset()
+			local module = help.nativeModule()
+			local plugin = serverScribe.ScribePlugin.new({ module = module })
+			local app = App.new()
+			plugin:build(app)
+			t.expect(plugin.runtime.boundary).toBe("server")
+		end)
+
+		t.it("does not resolve Scribe for an app with no declarations or params", function()
+			reset()
+			scheduleOnly()
+			local app = App.new()
+			t.expect(function()
+				app:start()
+			end).never.toThrow()
+		end)
+
+		t.it("fails startup precisely when an auto-installed runtime cannot find Scribe", function()
+			reset()
+			scheduleOnly()
+			help.registerData(serverScribe, "game/Missing", "Missing")
+			local app = App.new()
+			local ok, err = pcall(function()
+				app:start()
+			end)
+			t.expect(ok).toBe(false)
+			t.expect(
+				tostring(err):find("Scribe module not found", 1, true) ~= nil
+			).toBe(true)
+		end)
+
+		t.it("auto-installs from configured resolver and injects definition handles", function()
+			reset()
+			local Update = scheduleOnly()
+			local data = help.registerData(serverScribe, "game/Profile", "Profile")
+			local module, created = help.nativeModule()
+			serverScribe.rovyScribe:__setModuleResolver(function()
+				return module
+			end)
+
+			local seen
+			local Read = help.sysClass(function(_, reader)
+				seen = reader
+			end)
+			rovy:__system(Read, {
+				id = "test/ScribeRead",
+				schedule = Update,
+				params = {
+					{
+						kind = "external",
+						id = serverScribe.serverReaderParamId(data.id),
+					},
+				},
+			})
+
+			local app = App.new()
+			app:start()
+			app:runSchedule(Update)
+
+			t.expect(#created).toBe(1)
+			t.expect(seen.kind).toBe("server-reader")
+			t.expect(seen.dataId).toBe(data.id)
+			t.expect(seen.definition).toBe(data)
+			t.expect(created[1].options.TransportChannel)
+				.toBe("@rovy/scribe:game/Profile")
+		end)
+
+		t.it("passes a custom native transport through without wrapping it", function()
+			reset()
+			scheduleOnly()
+			help.registerData(serverScribe, "game/Transport", "Transport")
+			local module, created = help.nativeModule()
+			local transport = { Name = "TestTransport" }
+			local plugin = serverScribe.ScribeServerPlugin.new({
+				module = module,
+				transport = transport,
+			})
+			local app = App.new()
+			app:addPlugin(plugin)
+			app:start()
+
+			t.expect(created[1].options.Transport).toBe(transport)
+		end)
+
+		t.it("installs when only a Scribe external param is requested", function()
+			reset()
+			local Update = scheduleOnly()
+			local module = help.nativeModule()
+			serverScribe.rovyScribe:__setModuleResolver(function()
+				return module
+			end)
+			local status
+			local Diagnostics = help.sysClass(function(_, diagnostics)
+				status = diagnostics:status()
+			end)
+			rovy:__system(Diagnostics, {
+				id = "test/ScribeDiagnostics",
+				schedule = Update,
+				params = {
+					{ kind = "external", id = serverScribe.SCRIBE_DIAGNOSTICS_PARAM },
+				},
+			})
+
+			local app = App.new()
+			app:start()
+			app:runSchedule(Update)
+			t.expect(status).toBe("Healthy")
+		end)
+
+		t.it("keeps two apps and two bundles isolated", function()
+			reset()
+			scheduleOnly()
+			help.registerData(serverScribe, "game/Profile", "Profile")
+			help.registerData(serverScribe, "game/Season", "Season")
+			local module, created = help.nativeModule()
+			local firstPlugin = serverScribe.ScribeServerPlugin.new({ module = module })
+			local secondPlugin = serverScribe.ScribeServerPlugin.new({ module = module })
+			local firstApp = App.new()
+			local secondApp = App.new()
+			firstApp:addPlugin(firstPlugin)
+			secondApp:addPlugin(secondPlugin)
+			firstApp:start()
+			secondApp:start()
+
+			t.expect(firstPlugin.runtime).never.toBe(secondPlugin.runtime)
+			t.expect(#firstPlugin.runtime:bundles()).toBe(2)
+			t.expect(#secondPlugin.runtime:bundles()).toBe(2)
+			t.expect(#created).toBe(4)
+			t.expect(firstPlugin.runtime:bundle("game/Profile").native)
+				.never.toBe(secondPlugin.runtime:bundle("game/Profile").native)
+		end)
+	end)
+end

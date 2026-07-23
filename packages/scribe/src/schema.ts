@@ -1,8 +1,5 @@
 type WidenLiteral<T> = T extends string ? string : T extends number ? number : T extends boolean ? boolean : T;
 
-declare const schemaBrand: unique symbol;
-declare const visibilityBrand: unique symbol;
-
 export type ScribeSchemaKind =
 	| "number"
 	| "string"
@@ -16,7 +13,7 @@ export type ScribeSchemaKind =
 	| "visibility";
 
 export interface ScribeSchema<T, Kind extends ScribeSchemaKind> {
-	readonly [schemaBrand]: {
+	readonly __scribeSchema: {
 		readonly value: T;
 		readonly kind: Kind;
 	};
@@ -61,7 +58,7 @@ export type ScribeVisibility = "serverOnly" | "shared" | "session";
 
 export interface ScribeVisibilitySchema<Visibility extends ScribeVisibility, Inner>
 	extends ScribeSchema<ScribeSchemaValue<Inner>, "visibility"> {
-	readonly [visibilityBrand]: Visibility;
+	readonly __scribeVisibility: Visibility;
 	readonly inner: Inner;
 }
 
@@ -134,8 +131,167 @@ export interface ScribeSchemaHelpers {
 	physicalProperties(defaultValue: PhysicalProperties): ScribeDatatypeSchema<PhysicalProperties>;
 }
 
-/**
- * Compile-only declaration in Phase 0. The transformer/runtime implementation
- * deliberately does not exist until the RFC is approved.
- */
-export declare const s: ScribeSchemaHelpers;
+export interface ScribeRuntimeSchemaDescriptor {
+	readonly kind: ScribeSchemaKind;
+	readonly __scribeSchema?: {
+		readonly value: unknown;
+		readonly kind: ScribeSchemaKind;
+	};
+	readonly __scribeVisibility?: ScribeVisibility;
+	readonly defaultValue?: unknown;
+	readonly options?: object;
+	readonly members?: ReadonlyArray<string>;
+	readonly inner?: unknown;
+	readonly factory?: () => unknown;
+	readonly element?: unknown;
+	readonly visibility?: ScribeVisibility;
+	readonly datatype?: string;
+}
+
+function descriptor<T>(value: ScribeRuntimeSchemaDescriptor): T {
+	(value as { __scribeSchema?: unknown }).__scribeSchema = {
+		value: undefined,
+		kind: value.kind,
+	};
+	return value as T;
+}
+
+function datatype<T>(name: string, defaultValue: T): ScribeDatatypeSchema<T> {
+	return descriptor({
+		kind: "datatype",
+		datatype: name,
+		defaultValue,
+	});
+}
+
+export const s: ScribeSchemaHelpers = {
+	int(defaultValue, options) {
+		return descriptor({
+			kind: "number",
+			defaultValue,
+			options,
+			integer: true,
+		} as ScribeRuntimeSchemaDescriptor & { readonly integer: true });
+	},
+	number(defaultValue, options) {
+		return descriptor({
+			kind: "number",
+			defaultValue,
+			options,
+			integer: false,
+		} as ScribeRuntimeSchemaDescriptor & { readonly integer: false });
+	},
+	string(defaultValue, options) {
+		return descriptor({ kind: "string", defaultValue, options });
+	},
+	enum(defaultValue, members) {
+		return descriptor({ kind: "enum", defaultValue, members });
+	},
+	timed(defaultValue) {
+		return descriptor({ kind: "timed", defaultValue, inner: defaultValue });
+	},
+	dynamic(factory) {
+		return descriptor({ kind: "dynamic", factory, inner: factory });
+	},
+	optional(inner) {
+		return descriptor({ kind: "optional", inner });
+	},
+	arrayOf(element, options) {
+		return descriptor({ kind: "array", element, options });
+	},
+	dictOf(element, options) {
+		return descriptor({ kind: "dictionary", element, options });
+	},
+	serverOnly(inner) {
+		return descriptor({
+			kind: "visibility",
+			visibility: "serverOnly",
+			__scribeVisibility: "serverOnly",
+			inner,
+		});
+	},
+	shared(inner) {
+		return descriptor({
+			kind: "visibility",
+			visibility: "shared",
+			__scribeVisibility: "shared",
+			inner,
+		});
+	},
+	session(inner) {
+		return descriptor({
+			kind: "visibility",
+			visibility: "session",
+			__scribeVisibility: "session",
+			inner,
+		});
+	},
+	vector3(defaultValue) {
+		return datatype("Vector3", defaultValue);
+	},
+	vector2(defaultValue) {
+		return datatype("Vector2", defaultValue);
+	},
+	vector3int16(defaultValue) {
+		return datatype("Vector3int16", defaultValue);
+	},
+	vector2int16(defaultValue) {
+		return datatype("Vector2int16", defaultValue);
+	},
+	cframe(defaultValue) {
+		return datatype("CFrame", defaultValue);
+	},
+	color3(defaultValue) {
+		return datatype("Color3", defaultValue);
+	},
+	brickColor(defaultValue) {
+		return datatype("BrickColor", defaultValue);
+	},
+	udim(defaultValue) {
+		return datatype("UDim", defaultValue);
+	},
+	udim2(defaultValue) {
+		return datatype("UDim2", defaultValue);
+	},
+	rect(defaultValue) {
+		return datatype("Rect", defaultValue);
+	},
+	numberRange(defaultValue) {
+		return datatype("NumberRange", defaultValue);
+	},
+	numberSequence(defaultValue) {
+		return datatype("NumberSequence", defaultValue);
+	},
+	colorSequence(defaultValue) {
+		return datatype("ColorSequence", defaultValue);
+	},
+	dateTime(defaultValue) {
+		return datatype("DateTime", defaultValue);
+	},
+	enumItem(defaultValue) {
+		return datatype("EnumItem", defaultValue);
+	},
+	font(defaultValue) {
+		return datatype("Font", defaultValue);
+	},
+	physicalProperties(defaultValue) {
+		return datatype("PhysicalProperties", defaultValue);
+	},
+};
+
+export function isScribeSchemaDescriptor(value: unknown): value is ScribeRuntimeSchemaDescriptor {
+	if (!typeIs(value, "table")) return false;
+	const kind = (value as { readonly kind?: unknown }).kind;
+	return typeIs(kind, "string") && (
+		kind === "number" ||
+		kind === "string" ||
+		kind === "enum" ||
+		kind === "timed" ||
+		kind === "dynamic" ||
+		kind === "optional" ||
+		kind === "array" ||
+		kind === "dictionary" ||
+		kind === "datatype" ||
+		kind === "visibility"
+	);
+}

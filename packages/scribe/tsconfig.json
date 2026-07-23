@@ -4,16 +4,19 @@
     "downlevelIteration": true,
     "experimentalDecorators": true,
     "forceConsistentCasingInFileNames": true,
+    "incremental": true,
     "module": "commonjs",
     "moduleDetection": "force",
     "moduleResolution": "Node",
     "noLib": true,
-    "outDir": "../../out/scribe",
+    "outDir": "out",
     "resolveJsonModule": true,
-    "rootDir": ".",
+    "rootDir": "src",
     "strict": true,
     "target": "ESNext",
-    "typeRoots": ["node_modules/@rbxts", "node_modules/@rovy"]
+    "typeRoots": ["node_modules/@rbxts", "node_modules/@rovy"],
+    "tsBuildInfoFile": "out/tsconfig.tsbuildinfo",
+    "declaration": true
   },
   "include": ["src"],
   "exclude": ["node_modules", "out"]
