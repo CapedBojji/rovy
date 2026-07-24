@@ -46,7 +46,8 @@ The package should:
 5. Translate native signals into immutable Rovy event records.
 6. Convert yielding operations into handles plus polling/completion events.
 7. Keep raw Scribe and ProfileStore access behind `ScribeUnsafe`.
-8. Support multiple isolated Scribe bundles without vendoring Scribe.
+8. Support multiple isolated Scribe bundles while keeping the vendored
+   compatibility snapshot unmodified and outside the production package.
 
 ## Proposed declaration
 
@@ -246,8 +247,11 @@ Monitors and legacy post-flush listeners run only after that loop settles.
 
 ## Binding and package boundary
 
-Scribe is a Wally runtime peer, not an npm dependency and not vendored code.
-Resolution order remains:
+Scribe is a Wally runtime peer, not an npm dependency. The repository also
+checks in the exact supported source under `vendor/scribe` for reproducible
+native tests and compatibility audits. That vendor snapshot is not part of the
+`@rovy/scribe` npm tarball and is not a production resolver fallback. Resolution
+order remains:
 
 1. explicit module/module value;
 2. configured resolver;
@@ -474,18 +478,19 @@ writer operations carry the command handle, and the response resumes only after
 the boundary's native `Batch`/`Transaction` work and failure accounting finish.
 A write failure replaces a queued success with `write-failed`.
 
-The compatibility gate executes the unmodified Scribe 1.0.11
+The compatibility gates execute the unmodified Scribe 1.0.11
 `src/Server/Commands.luau` from commit
-`4253d303f3ea9e70b362d9e1e498b805ac3a8d01`. It proves the handler can yield
-through Scribe's actual `xpcall`, and a second integration test runs the Rovy
-queue/write/responder bridge through that pinned dispatcher. The fixture is
-test-only and is excluded from the npm package.
+`4253d303f3ea9e70b362d9e1e498b805ac3a8d01`. The focused dispatcher gate proves
+the handler can yield through Scribe's actual `xpcall`. The full Roblox Studio
+gate then runs both wrapper boundaries over Scribe's default RemoteEvent
+transport and proves the client applies the authoritative replication diff
+before command completion is published. The fixture is test-only and is
+excluded from the npm package.
 
-Command completion does not yet promise that the client mirror has applied a
-replication diff first. Server-side tests prove native writes finish before the
-reply is released, but an end-to-end Roblox transport test is still required to
-establish cross-frame client ordering for the supported Scribe version and
-custom transports.
+That ordering result applies to the supported peer's default transport. A
+custom transport inherits it only when the adapter preserves Scribe frame
+order; the wrapper deliberately does not reorder or add a revision barrier
+around arbitrary transport adapters.
 
 ## Phase 8 lifecycle and persistence checkpoint
 
@@ -590,8 +595,9 @@ Strict compatibility defaults to the one tested peer,
 `4253d303f3ea9e70b362d9e1e498b805ac3a8d01`. Other versions fail before bundle
 construction unless the user explicitly sets `strict: false`.
 
-The native Studio gate builds a scratch place without vendoring Scribe. In a
-real client playtest it constructs the bundle through `NativeScribeBinding`,
+The native Studio gate builds a scratch place from the hash-verified,
+unmodified `vendor/scribe` snapshot. In a real client playtest it constructs
+the bundle through `NativeScribeBinding`,
 preserves Scribe's frozen `__ScribeTemplate`, exercises native diagnostics, and
 observes `_ScribeClientDebugHook` with its `Request` and `Stream` endpoints.
 

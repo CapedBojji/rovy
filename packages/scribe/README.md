@@ -3,9 +3,12 @@
 Rovy scheduling, injection, events, commands, and non-yielding jobs for
 Scribe-managed Roblox player profiles.
 
-The package wraps the game's Wally-installed Scribe module. It does not vendor
-Scribe, replace ProfileStore, duplicate profile state, or depend on
-`@rovy/datastore` or `@rovy/networking`.
+The package wraps the game's Wally-installed Scribe module. It does not fork or
+replace either Scribe or ProfileStore, duplicate profile state, or depend on
+`@rovy/datastore` or `@rovy/networking`. This repository vendors the exact
+supported Scribe source under `vendor/scribe` for reproducible compatibility
+tests and audits; that snapshot is not published in the npm package and is not
+a production runtime fallback.
 
 Verified runtime peer:
 

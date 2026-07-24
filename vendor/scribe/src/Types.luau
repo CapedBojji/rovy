@@ -1,0 +1,283 @@
+--!strict
+-- Shared type definitions for Scribe.
+
+export type PathSegment = string | number
+export type Path = { PathSegment }
+
+export type OpKind = "Init" | "Set" | "Insert" | "Remove" | "Clear"
+
+export type Op = {
+	Kind: OpKind,
+	Path: Path,
+	Value: unknown?,
+	Index: number?,
+}
+
+export type ScribeTransport = {
+	Name: string,
+	-- Server
+	SendToClient: (self: any, player: Player, bytes: buffer) -> (),
+	SendToAllClients: ((self: any, bytes: buffer) -> ())?,
+	ListenServer: (self: any, callback: (player: Player, bytes: buffer) -> ()) -> (),
+	-- Client
+	SendToServer: (self: any, bytes: buffer) -> (),
+	ListenClient: (self: any, callback: (bytes: buffer) -> ()) -> (),
+}
+
+export type LogLevel = "Debug" | "Info" | "Warn" | "Error" | "Fatal"
+export type LogCategory =
+	"Persistence"
+	| "Replication"
+	| "Transport"
+	| "Commands"
+	| "Leaderboards"
+	| "Monetization"
+	| "Gifting"
+	| "Integrity"
+	| "Lifecycle"
+
+export type LogCode =
+	-- Persistence
+	"DATASTORE_CRITICAL"
+	| "DATASTORE_RECOVERED"
+	| "EXPORT_ENCODE_FAIL"
+	| "MIGRATED"
+	| "MIGRATION_FAIL"
+	| "MODE_OVERRIDES_LEGACY"
+	| "OFFLINE_READ_FAIL"
+	| "PROFILE_ERASED"
+	| "PROFILE_LOADED"
+	| "PROFILE_LOAD_FAIL"
+	| "PROFILE_RESET"
+	| "PROFILE_RESTORED"
+	| "PROFILE_SIZE"
+	| "PROFILE_STORE_ERROR"
+	| "PROFILE_STORE_SIGNAL_MISSING"
+	| "PROFILE_TOO_LARGE"
+	| "PROFILE_UNPERSISTABLE"
+	| "PROFILE_VERSION_AHEAD"
+	| "SAVE_INTERVAL_CLAMPED"
+	| "SAVE_INTERVAL_CONFLICT"
+	| "SAVE_INTERVAL_FAIL"
+	| "SAVE_INTERVAL_SET"
+	| "SHUTDOWN_DONE"
+	| "SHUTDOWN_FLUSH"
+	| "SIM_LOAD_FAILURE"
+	| "SIM_SESSION_STEAL"
+	| "STATUS_CHANGED"
+	| "UNKNOWN_ROOT_KEYS"
+	| "VERSION_QUERY_FAIL"
+	| "VERSION_READ_FAIL"
+	-- Integrity
+	| "ANALYTICS_FAIL"
+	| "ANOMALY"
+	| "ECONOMY_FIELDS_OVERFLOW"
+	| "ECONOMY_FIELD_UNDECLARED"
+	| "TIMED_SWEEP_FAIL"
+	| "WIPE_GUARD_BLOCKED"
+	| "WIPE_GUARD_CLEARED"
+	| "WIPE_GUARD_FORCED"
+	| "WIPE_GUARD_TRIPPED"
+	-- Replication
+	| "CLIENT_HANDSHAKE_TIMEOUT"
+	| "INIT_APPLIED"
+	| "INIT_SENT"
+	| "OP_BEFORE_INIT"
+	| "PROTOCOL_MISMATCH"
+	| "SCHEMA_MISMATCH"
+	| "SERIALIZE_FAIL"
+	| "SNAPSHOT_ROOT_DROPPED"
+	-- Transport
+	| "INBOUND_OVERSIZE"
+	| "MALFORMED_FRAME"
+	| "MALFORMED_FRAME_LIMIT"
+	| "SEND_FAIL"
+	-- Commands
+	| "COMMAND_BAD_ARGS"
+	| "COMMAND_ERROR"
+	| "COMMAND_RATE_LIMITED"
+	| "COMMAND_REPLY_ENCODE_FAIL"
+	| "COMMAND_REPLY_TRUNCATED"
+	| "COMMAND_UNKNOWN"
+	| "SIM_COMMAND"
+	-- Monetization
+	| "GRANT_FAIL"
+	| "OWNERSHIP_CHECK_FAIL"
+	| "PERK_GRANTED"
+	| "PERK_REVOKED"
+	| "RECEIPT_DUPLICATE"
+	| "RECEIPT_GRANTED"
+	| "RECEIPT_HANDLER_BOUND"
+	| "RECEIPT_OFFLINE_RETRY"
+	| "RECEIPT_RETRY"
+	| "RECEIPT_UNKNOWN_PRODUCT"
+	| "SIM_RECEIPT"
+	| "UNDECLARED_CATEGORY"
+	| "UNDECLARED_PERK"
+	| "UNKNOWN_OWNS_KEY"
+	-- Gifting
+	| "GIFT_CREDIT_ISSUED"
+	| "GIFT_CREDIT_UNKNOWN_PRODUCT"
+	| "GIFT_CREDIT_USED"
+	| "GIFT_DELIVERY_RETRY"
+	| "GIFT_INTENT_EXPIRED"
+	| "GIFT_INTENT_WRITE_FAIL"
+	| "GIFT_NO_INTENT"
+	| "GIFT_RECEIPT_GRANTED"
+	| "GIFT_RECIPIENT_ALREADY_OWNS"
+	| "GIFT_UNKNOWN_PRODUCT"
+	| "RECEIPT_DECLINED_PENDING_CREDIT"
+	| "RECEIPT_HELD"
+	-- Leaderboards
+	| "LB_ERASE_FAIL"
+	| "LB_QUEUE_OVERFLOW"
+	| "LB_READ_FAIL"
+	| "LB_SCORE_OUT_OF_RANGE"
+	| "LB_SHUTDOWN_FLUSH"
+	| "LB_STAT_RESOLVE_FAIL"
+	| "LB_WRITE_DROPPED"
+	| "LB_WRITE_FAIL"
+	| "SIM_LB_FLUSH"
+	-- Lifecycle
+	| "API_NAME_COLLISION"
+	| "DEBUG_HOOK_ATTACHED"
+	| "DEBUG_HOOK_ATTRIBUTION"
+	| "DEBUG_HOOK_DUPLICATE"
+	| "DEBUG_HOOK_ERROR"
+	| "DEBUG_HOOK_FAIL"
+	| "DEBUG_HOOK_WRITES"
+	| "DEV_WARNING"
+	| "DYNAMIC_DEFAULT_FAILED"
+	| "LISTENER_ERROR"
+	| "ON_PLAYER_INIT_ERROR"
+	| "SANDBOXED"
+	| "SERVER_STARTED"
+	| "SIM_STATUS"
+	| "SUBSYSTEM_HOOK_ERROR"
+	| "UNKNOWN_OPTION"
+
+export type LogEntry = {
+	At: number,
+	Level: LogLevel,
+	Category: LogCategory,
+	Code: LogCode,
+	Message: string,
+	Context: { [string]: any }?,
+}
+
+export type Status = "Healthy" | "Degraded" | "Outage"
+
+export type SessionState = "Loading" | "Ready" | "SessionEnded"
+
+-- Why a data session ended, or why waiting for data did not produce a tree. One
+-- value per state, so a caller can branch exhaustively: `WaitForData`'s second
+-- return, the `SessionEnded` signal, and `GetState`'s stored reason all use this
+-- exact set.
+export type LifecycleReason =
+	"load-failed" -- the profile could not be loaded (DataStore failure, or the session could not be acquired)
+	| "migration-failed" -- a migration step errored, so the profile was released unmigrated (fail-closed)
+	| "session-ended" -- the session ended while the player was still in the game (usually stolen by another server)
+	| "player-left" -- the player left; the most common reason by far
+	| "shutdown" -- the server is closing
+	| "timeout" -- the wait elapsed before the profile reached Ready
+
+export type SaveInfo = {
+	LastSaveAt: number?,
+	LastResult: ("Ok" | "Fail")?,
+	Dirty: boolean,
+	Size: number?, -- approx bytes of the last successful save (nil before the first)
+}
+
+export type Visibility = "Replicated" | "ServerOnly" | "Shared" | "Session"
+
+export type LeaderboardEntry = {
+	Rank: number,
+	UserId: number,
+	Name: string,
+	Score: number,
+}
+
+export type LeaderboardConfig = {
+	Stat: string,
+	Limit: number?,
+	Scale: number?,
+	Replicate: boolean?, -- default false: server-only (Data.GetLeaderboard on the server); true streams the board to clients
+}
+
+export type ProductConfig = {
+	Id: number,
+	Category: string?,
+	Grant: ((data: any) -> ())?,
+	Grants: string?,
+}
+
+export type PassConfig = {
+	Id: number,
+	Category: string?,
+}
+
+export type PurchaseSpec = {
+	Cost: { Path: string, Amount: number },
+	Category: string?,
+	ItemId: string,
+	Grant: ((data: any) -> ())?,
+	Meta: { [string]: any }?,
+}
+
+export type PurchaseFilter = {
+	Kind: ("Robux" | "InGame")?,
+	Category: string?,
+	ItemId: string?,
+	Since: number?,
+	Limit: number?,
+}
+
+-- Economy analytics -----------------------------------------------------------
+
+-- The tag passed to Increment/Decrement to auto-emit LogEconomyEvent. All
+-- fields are optional: an untagged Increment writes the value without emitting.
+export type EconomyMeta = {
+	Flow: ("Source" | "Sink")?, -- default: Increment -> Source, Decrement -> Sink
+	TransactionType: (Enum.AnalyticsEconomyTransactionType | string)?, -- default "Gameplay"; an EnumItem's .Name is used
+	ItemSku: string?,
+	Currency: string?, -- override the logged currency label (default: the field's name)
+	Fields: { [string]: any }?, -- per-event custom-field values, keyed by declared field name
+	-- Accepted aliases for the pre-1.1 tag shape.
+	Source: string?, -- alias of TransactionType
+	Item: string?, -- alias of ItemSku
+}
+
+-- One declared custom-field slot: a plain name (uses the currency/global Prefix
+-- default) or a name with its own Prefix override.
+export type EconomyFieldSpec = string | { Name: string, Prefix: boolean? }
+
+export type EconomyCurrencyConfig = {
+	Label: string?, -- logged currency name (default: the field's name)
+	Fields: { EconomyFieldSpec }?, -- up to 3 dimensions -> CustomField01/02/03, in order
+	Resolve: ((player: Player) -> { [string]: any })?, -- ambient values for THIS currency, merged over the global Resolve
+}
+
+-- The seam Analytics.Economy calls; defaults to AnalyticsService:LogEconomyEvent.
+-- Override it (e.g. in tests) to capture emitted events.
+export type EconomyLogFn = (
+	player: Player,
+	flowType: Enum.AnalyticsEconomyFlowType,
+	currencyType: string,
+	amount: number,
+	endingBalance: number,
+	transactionType: string,
+	itemSku: string?,
+	customFields: { [string]: any }?
+) -> ()
+
+export type EconomyConfig = {
+	Resolve: ((player: Player) -> { [string]: any })?, -- ambient values shared across every currency
+	Prefix: boolean?, -- format custom-field values as "Team - Red" (default true)
+	Currencies: { [string]: EconomyCurrencyConfig }?,
+	LogEconomyEvent: EconomyLogFn?, -- advanced/test seam; defaults to AnalyticsService:LogEconomyEvent
+}
+
+export type Disconnect = () -> ()
+
+-- ModuleScripts must return a value; this module only carries types.
+return {}

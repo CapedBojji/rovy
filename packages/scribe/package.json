@@ -8,7 +8,8 @@
   "scripts": {
     "build": "pnpm --filter @rovy/core build && pnpm --filter rovy-build build && pnpm run typecheck && rovy compile",
     "dev": "rovy compile",
-    "test": "pnpm run build && zune test test/run",
+    "verify:vendor": "bash test/studio/verify-vendor.sh",
+    "test": "pnpm run verify:vendor && pnpm run build && zune test test/run",
     "typecheck": "tsc --noEmit --skipLibCheck -p tsconfig.typecheck.json"
   },
   "files": [

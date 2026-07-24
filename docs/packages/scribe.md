@@ -29,6 +29,11 @@ Install the verified native peer with Wally:
 Scribe = "ericplane/scribe@1.0.11"
 ```
 
+Rovy also checks that exact upstream source into `vendor/scribe` for
+reproducible native integration tests and compatibility audits. Games still use
+the Wally installation above: the vendor snapshot is not included in the npm
+package and is not a runtime fallback.
+
 Keep `@rovy/core`, `rovy-transformer`, and `rovy-build` configured normally.
 The transformer lowers `scribeData`, `@scribeCommand`, `@scribeEvent`, and
 injected Scribe parameters. Direct `rbxtsc` builds that bypass the transformer
@@ -240,9 +245,11 @@ rejection.
 
 `respond.resolve` and `respond.reject` are buffered. A success reply is not
 released until queued writes from that request have committed. A write failure
-changes the response to failure. The wrapper does not currently promise that
-the client replication diff is observed before the completion event; that
-cross-frame order depends on the verified native/custom transport.
+changes the response to failure. The pinned Scribe 1.0.11 default RemoteEvent
+transport is verified in Roblox Studio to apply the authoritative replication
+diff before the wrapper publishes command completion. A custom transport has
+that guarantee only when it preserves Scribe frame order; the wrapper does not
+reorder or add a barrier around arbitrary adapters.
 
 ## Use non-yielding jobs
 
