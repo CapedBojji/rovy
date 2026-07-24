@@ -11,20 +11,11 @@ The package exports `SCRIBE_SUPPORTED_VERSION` as the literal `"1.0.11"`.
 `ScribePlugin`, `ScribeClientPlugin`, and `ScribeServerPlugin` compare the native
 module's `Version` before constructing any bundle. The default is fail-closed:
 
-```ts
-new ScribePlugin({
-	module: scribeModule,
-});
-```
+<<< ../../packages/scribe/docs-examples/compatibility.ts#strict-peer
 
 An experiment against a different peer must be explicit:
 
-```ts
-new ScribePlugin({
-	module: unverifiedScribeModule,
-	strict: false,
-});
-```
+<<< ../../packages/scribe/docs-examples/compatibility.ts#unverified-peer
 
 This opt-out disables only the exact-version startup check. It does not disable
 schema, boundary, command-wire, or runtime validation, and it does not turn an

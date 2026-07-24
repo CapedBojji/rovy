@@ -28,7 +28,7 @@ features:
   - title: Commands & schedules
     details: Deferred mutations through Commands, custom schedules and system sets, and explicit flush points — ordered, predictable frame logic.
   - title: Optional packages
-    details: Optional @rovy/networking adds @netEvent over generated Blink transport; @rovy/datastore adds typed persistent documents; @rovy/vide adds reactive Vide views; @rovy/ui adds retained class-based UI components; @rovy/imgui adds a function-first immediate-mode widget runtime; @rovy/world-inspector adds a live ECS inspection tool.
+    details: Optional @rovy/networking adds @netEvent over generated Blink transport; @rovy/scribe adds scheduled typed access to native Scribe player profiles; @rovy/datastore adds Rovy-owned persistent documents; @rovy/vide adds reactive Vide views; @rovy/ui adds retained class-based UI components; @rovy/imgui adds a function-first immediate-mode widget runtime; @rovy/world-inspector adds a live ECS inspection tool.
 ---
 
 ## What is Rovy?
@@ -77,3 +77,4 @@ new App().start();
 - Learning the model? Browse the [Concepts](/concepts/components) section.
 - Building reactive UI? Read [Rovy Vide](/packages/vide).
 - Need persistence? Read [Datastore](/packages/datastore).
+- Already use native Scribe player profiles? Read [Scribe](/packages/scribe).

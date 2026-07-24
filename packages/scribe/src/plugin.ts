@@ -107,7 +107,13 @@ export interface ScribeServerSetup<D extends AnyScribeData> {
 	readonly profileStore?: unknown;
 }
 
-export interface ConfiguredScribeServer<D extends AnyScribeData> {
+export interface AnyConfiguredScribeServer {
+	readonly definition: AnyScribeData;
+	readonly setup: object;
+}
+
+export interface ConfiguredScribeServer<D extends AnyScribeData>
+	extends AnyConfiguredScribeServer {
 	readonly definition: D;
 	readonly setup: ScribeServerSetup<D>;
 }
@@ -120,7 +126,7 @@ export function configureScribeServer<D extends AnyScribeData>(
 }
 
 export interface ScribeServerPluginOptions extends ScribePluginOptions {
-	readonly bundles?: ReadonlyArray<ConfiguredScribeServer<AnyScribeData>>;
+	readonly bundles?: ReadonlyArray<AnyConfiguredScribeServer>;
 }
 
 export interface ScribeClientPluginOptions extends ScribePluginOptions {}

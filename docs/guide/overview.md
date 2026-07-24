@@ -37,7 +37,9 @@ Rovy ships as a runtime/build split:
 
 - `@rovy/core` — decorators, types, and the packaged ECS runtime
 - `rovy-transformer` — the build-time roblox-ts plugin
-- optional runtime packages such as `@rovy/networking`, `@rovy/vide`, `@rovy/ui`, `@rovy/imgui`, and `@rovy/world-inspector`
+- optional runtime packages such as `@rovy/networking`, `@rovy/datastore`,
+  `@rovy/scribe`, `@rovy/vide`, `@rovy/ui`, `@rovy/imgui`, and
+  `@rovy/world-inspector`
 
 Most ECS code still authors against `@rovy/core`, including string-path
 `rovy.loadPaths("src/client/systems")`. See [Packages](/packages/packages.md).

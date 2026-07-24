@@ -49,6 +49,19 @@ Install datastore only when you need persistent documents:
 npm i @rovy/datastore
 ```
 
+Install the Scribe wrapper when the game uses Scribe-managed player profiles:
+
+```sh
+npm i @rovy/scribe
+```
+
+The runtime peer remains a Wally dependency:
+
+```toml
+[dependencies]
+Scribe = "ericplane/scribe@1.0.11"
+```
+
 Install Vide only when you author reactive game UI with Vide:
 
 ```sh
@@ -73,6 +86,7 @@ npm i @rovy/world-inspector
 | `@rovy/core`            | Decorators, macros, types, **and the packaged runtime**        | `import` it and write code                  |
 | `@rovy/networking`      | `@netEvent` authoring surface + runtime handles                | `import` when using net events              |
 | `@rovy/datastore`       | Persistent document declarations + reader/writer/opener handles | `import` when using datastore documents     |
+| `@rovy/scribe`          | Scheduled typed wrapper over native Scribe player profiles     | `import` when using Scribe-managed profiles |
 | `@rovy/vide`            | Reactive Vide view integration for gameplay UI                 | `import` `@view` and `mountView`            |
 | `@rovy/ui`              | Retained class-based Roblox UI runtime                         | `import` `@ui`, then call `app.mount`       |
 | `@rovy/imgui`           | Function-first widget/render runtime                           | `import` widget helpers                     |
@@ -195,6 +209,7 @@ ran (no untransformed-macro error at startup). Continue to
 - [Packages Overview](/packages/packages) — full package breakdown.
 - [Rovy Vide](/packages/vide) — reactive Vide views over Rovy ECS state.
 - [Datastore](/packages/datastore) — typed persistent documents.
+- [Scribe](/packages/scribe) — buffered access, events, commands, and jobs over native Scribe.
 - [World Inspector](/packages/world-inspector) — in-game ECS inspection and editing.
 - [Transformer](/runtime/transformer) — build-time duty list.
 - [Runtime Lifecycle](/runtime/lifecycle) — how the runtime consumes registrations.

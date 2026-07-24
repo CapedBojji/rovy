@@ -76,6 +76,13 @@ Roblox Studio client-bundle test. The Studio test uses the unmodified pinned
 Scribe peer, preserves its frozen `__ScribeTemplate`, and observes the native
 `_ScribeClientDebugHook` with both endpoints attached.
 
+Phase 11 added the public package and migration guides, compile-checked
+documentation fixtures, the frozen `ScribeReason` constants, and release/package
+navigation. The documentation fixture also caught and closed a strict-variance
+hole in `ScribeServerPlugin.bundles`; typed `configureScribeServer(...)` results
+now pass through a non-generic erased container contract without introducing
+public `any`.
+
 ## Top-level Scribe module
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
@@ -116,7 +123,7 @@ Scribe peer, preserves its frozen `__ScribeTemplate`, and observes the native
 | `Datatypes.Pack` | unsafe escape hatch | `ScribeUnsafe.datatypes.pack` | Type and direct runtime coverage Phase 8/10 |
 | `Datatypes.Unpack` | unsafe escape hatch | `ScribeUnsafe.datatypes.unpack` | Type and direct runtime coverage Phase 8/10 |
 | `Datatypes.NONFINITE` | intentionally unsupported | Internal validation prefix, not a documented game API; exposing it would couple Rovy to an implementation detail | Negative public-surface type coverage Phase 10 |
-| `Reason` | first-class | Typed `ScribeReasonConstants` from the native module | Binding type coverage Phase 3; runtime export Phase 8 |
+| `Reason` | first-class | Frozen `ScribeReason` constants and `ScribeLifecycleReason` union | Type and direct runtime coverage Phase 11 |
 | `Configure` | configuration pass-through | `ScribePlugin.configure`, exactly once before bundle construction | Binding and conflict unit coverage Phase 3 |
 | `GetStatus` | first-class | `ScribeDiagnostics.status` | Normalized unit and pinned native Studio coverage Phase 10 |
 | `OnStatusChanged` | Rovy event | `ScribeStatusChanged` | Deferred signal/runtime coverage Phase 6; native integration pending |
@@ -133,13 +140,13 @@ Scribe peer, preserves its frozen `__ScribeTemplate`, and observes the native
 | `Op` / wire operations | intentionally unsupported | Scribe owns its wire protocol; Rovy must not decode/re-encode native operations | Same-object transport and unchanged-buffer runtime coverage Phase 10 |
 | `LogEntry`, `LogLevel`, `LogCategory`, `Status` | first-class | Lower-camel immutable diagnostic records and literal unions | Type plus malformed/frozen normalization coverage Phase 10 |
 | `LogCode` | first-class | Preserved as a stable string because native codes can expand inside a compatible peer release | Type and native diagnostic coverage Phase 10 |
-| `SaveInfo` | first-class | `ScribeSaveInfo` | Type declared |
-| `LeaderboardEntry` | first-class | `ScribeLeaderboardEntry` | Type declared |
-| `LeaderboardConfig` | configuration pass-through | `ScribeLeaderboardConfig` with numeric-path validation | Type declared |
-| `ProductConfig`, `PassConfig` | configuration pass-through | Shared declarations plus server-only grant setup | Type declared |
-| `PurchaseSpec`, `PurchaseFilter` | first-class | `ScribePurchaseSpec`, `ScribePurchaseFilter` | Type declared |
-| `EconomyMeta` | first-class | `ScribeEconomyMeta` on numeric writes | Type declared |
-| `EconomyConfig`, `EconomyCurrencyConfig`, `EconomyFieldSpec`, `EconomyLogFn` | configuration pass-through | Shared declarations plus server setup callbacks | Type declared |
+| `SaveInfo` | first-class | `ScribeSaveInfo` | Client-state and persistence normalization runtime coverage Phase 8 |
+| `LeaderboardEntry` | first-class | `ScribeLeaderboardEntry` | Boundary-native normalization and frozen result coverage Phase 9 |
+| `LeaderboardConfig` | configuration pass-through | `ScribeLeaderboardConfig` with numeric-path validation | Type, transformer path, and native-key coverage Phase 3/9 |
+| `ProductConfig`, `PassConfig` | configuration pass-through | Shared declarations plus server-only grant setup | Type, transformer, and grant-adapter coverage Phase 3/9 |
+| `PurchaseSpec`, `PurchaseFilter` | first-class | `ScribePurchaseSpec`, `ScribePurchaseFilter` | Type, snapshot, filter-translation, and runtime coverage Phase 9 |
+| `EconomyMeta` | first-class | `ScribeEconomyMeta` on numeric writes | Type, serializability, declaration, and native-key runtime coverage Phase 5/9 |
+| `EconomyConfig`, `EconomyCurrencyConfig`, `EconomyFieldSpec`, `EconomyLogFn` | configuration pass-through | Shared declarations plus server setup callbacks | Transformer validation and setup callback coverage Phase 3/9 |
 
 ## Value/accessor API
 
@@ -283,10 +290,10 @@ Scribe peer, preserves its frozen `__ScribeTemplate`, and observes the native
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| `Timed` | first-class | `s.timed` | Fixture |
+| `Timed` | first-class | `s.timed` | Type, transformer, and native declarator coverage Phase 3 |
 | `SetTimed` | first-class | Buffered `ScribeTimedWriter.setTimed` | Runtime coverage Phase 5; native integration pending |
 | `ExtendTimed` | first-class | Buffered `ScribeTimedWriter.extendTimed` | Runtime coverage Phase 5; native integration pending |
-| `Active` | first-class | `ScribeTimedReader.active` | Fixture |
+| `Active` | first-class | `ScribeTimedReader.active` | Tuple-to-record and flush-stable runtime coverage Phase 4 |
 | `OnCooldown` | Rovy job | Buffered check-and-arm; result exists only after the native batch commits | Result, polling, cancellation, and batch-order runtime coverage Phase 9 |
 | `PeekCooldown` | first-class | Committed `ScribeCooldowns.peek` | Native tuple normalization runtime coverage Phase 9 |
 | `ClearCooldown` | first-class | Buffered `ScribeCooldowns.clear` | Native per-player batch runtime coverage Phase 9 |
@@ -319,13 +326,13 @@ Scribe peer, preserves its frozen `__ScribeTemplate`, and observes the native
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| `UseMock` | configuration pass-through | `useMock` | Type declared |
+| `UseMock` | configuration pass-through | `useMock` | Type and full native-key transformer coverage Phase 3/11 |
 | `Mode` | configuration pass-through | `mode: "Live" | "Mock" | "NoSave"` | Type and transformer coverage Phase 3 |
 | `TargetUserId` | configuration pass-through | `targetUserId` | Type and transformer coverage Phase 3 |
-| `ViewedUserId` | configuration pass-through | `viewedUserId` | Type declared |
-| `OverriddenUserId` | configuration pass-through | `overriddenUserId` | Type declared |
-| `DontSave` | configuration pass-through | `dontSave` | Type declared |
-| `ResetData` | configuration pass-through | `resetData` | Type declared |
+| `ViewedUserId` | configuration pass-through | `viewedUserId` | Type and full native-key transformer coverage Phase 3/11 |
+| `OverriddenUserId` | configuration pass-through | `overriddenUserId` | Type and full native-key transformer coverage Phase 3/11 |
+| `DontSave` | configuration pass-through | `dontSave` | Type and full native-key transformer coverage Phase 3/11 |
+| `ResetData` | configuration pass-through | `resetData` | Type and full native-key transformer coverage Phase 3/11 |
 | client `Mock` | first-class | `ScribeTestRuntime.seed` | Buffered committed-read stability, state translation, visibility validation, and edit-mode guard coverage Phase 10 |
 | client `MockCommand` | first-class | `ScribeTestRuntime.mockCommand` | Request/result class validation and native mock round-trip coverage Phase 10 |
 
@@ -333,34 +340,34 @@ Scribe peer, preserves its frozen `__ScribeTemplate`, and observes the native
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| `Template` | first-class | `scribeData.template` | Fixture |
-| `ProfileStoreIndex` | configuration pass-through | `profileStoreIndex` (required) | Fixture |
-| `ProfileKeyPrefix` | configuration pass-through | `profileKeyPrefix` (required) | Fixture |
+| `Template` | first-class | `scribeData.template` | Compile fixture, schema lowering, and native bundle coverage Phase 3/10/11 |
+| `ProfileStoreIndex` | configuration pass-through | `profileStoreIndex` (required) | Required-literal transformer and native option coverage Phase 3 |
+| `ProfileKeyPrefix` | configuration pass-through | `profileKeyPrefix` (required) | Required-literal transformer and native option coverage Phase 3 |
 | `Transport` | configuration pass-through | Plugin `transport`; opaque buffer contract preserved | Same-object and unchanged-buffer runtime coverage Phase 10 |
 | `TransportChannel` | configuration pass-through | `transportChannel`; derive from data ID when absent | Derived/explicit runtime coverage Phase 2/10 |
 | `Migrations` | configuration pass-through | `configureScribeServer(...).migrations` | Typed replacement-to-native-mutation adapter coverage Phase 3 |
 | `OnPlayerInit` | configuration pass-through | Dedicated synchronous `ScribeInitializationTree`; native callback still runs before Ready | Type and raw-table adapter coverage Phase 3 |
-| `SaveInterval` | configuration pass-through | `saveInterval`; process-global conflict detection required | Fixture |
-| `ProfileStore` option | unsafe escape hatch | Setup-only explicit ProfileStore binding; raw access remains unsafe | Type declared |
-| `UseMock` | configuration pass-through | `useMock` | Type declared |
-| `ViewedUserId` | configuration pass-through | `viewedUserId` | Type declared |
-| `OverriddenUserId` | configuration pass-through | `overriddenUserId` | Type declared |
-| `DontSave` | configuration pass-through | `dontSave` | Type declared |
-| `ResetData` | configuration pass-through | `resetData` | Type declared |
-| `LoadFailurePolicy` | configuration pass-through | `loadFailurePolicy` | Type declared |
-| `VersionAheadPolicy` | configuration pass-through | `versionAheadPolicy` | Type declared |
-| `KickOnSessionEnd` | configuration pass-through | `kickOnSessionEnd` | Type declared |
-| `LoadFailureMessage` | configuration pass-through | `loadFailureMessage` | Type declared |
-| `SessionEndMessage` | configuration pass-through | `sessionEndMessage` | Type declared |
-| `CommandRateLimit` | configuration pass-through | `commandRateLimit` | Type declared |
-| `RequestTimeout` | configuration pass-through | `requestTimeout` | Type declared |
-| `MaxInboundBytes` | configuration pass-through | `maxInboundBytes` | Type declared |
-| `BoundsPolicy` | configuration pass-through | `boundsPolicy` | Fixture |
-| `WipeGuardPolicy` | configuration pass-through | `wipeGuardPolicy` | Fixture |
-| `WipeGuardShrinkRatio` | configuration pass-through | `wipeGuardShrinkRatio` | Type declared |
-| `LogLevel` | configuration pass-through | `logLevel` | Type declared |
-| `StatusThresholds` | configuration pass-through | `statusThresholds`; process-global conflict detection required | Type declared |
-| `Banner` | configuration pass-through | `banner` | Type declared |
+| `SaveInterval` | configuration pass-through | `saveInterval`; per-bundle native option | Compile fixture and native-key transformer coverage Phase 3/11 |
+| `ProfileStore` option | unsafe escape hatch | Setup-only explicit ProfileStore binding; raw access remains unsafe | Typed setup and identity pass-through runtime coverage Phase 3 |
+| `UseMock` | configuration pass-through | `useMock` | Type and full native-key transformer coverage Phase 3/11 |
+| `ViewedUserId` | configuration pass-through | `viewedUserId` | Type and full native-key transformer coverage Phase 3/11 |
+| `OverriddenUserId` | configuration pass-through | `overriddenUserId` | Type and full native-key transformer coverage Phase 3/11 |
+| `DontSave` | configuration pass-through | `dontSave` | Type and full native-key transformer coverage Phase 3/11 |
+| `ResetData` | configuration pass-through | `resetData` | Type and full native-key transformer coverage Phase 3/11 |
+| `LoadFailurePolicy` | configuration pass-through | `loadFailurePolicy` | Enum validation/translation and native-key transformer coverage Phase 3/11 |
+| `VersionAheadPolicy` | configuration pass-through | `versionAheadPolicy` | Enum validation/translation and native-key transformer coverage Phase 3/11 |
+| `KickOnSessionEnd` | configuration pass-through | `kickOnSessionEnd` | Type and full native-key transformer coverage Phase 3/11 |
+| `LoadFailureMessage` | configuration pass-through | `loadFailureMessage` | Type and full native-key transformer coverage Phase 3/11 |
+| `SessionEndMessage` | configuration pass-through | `sessionEndMessage` | Type and full native-key transformer coverage Phase 3/11 |
+| `CommandRateLimit` | configuration pass-through | `commandRateLimit` | Native-key transformer and native dispatcher coverage Phase 3/7/11 |
+| `RequestTimeout` | configuration pass-through | `requestTimeout` | Native-key transformer and command timeout coverage Phase 3/7/11 |
+| `MaxInboundBytes` | configuration pass-through | `maxInboundBytes` | Type and full native-key transformer coverage Phase 3/11 |
+| `BoundsPolicy` | configuration pass-through | `boundsPolicy` | Enum validation/translation and native-key transformer coverage Phase 3/11 |
+| `WipeGuardPolicy` | configuration pass-through | `wipeGuardPolicy` | Enum validation/translation and native-key transformer coverage Phase 3/11 |
+| `WipeGuardShrinkRatio` | configuration pass-through | `wipeGuardShrinkRatio` | Type and full native-key transformer coverage Phase 3/11 |
+| `LogLevel` | configuration pass-through | `logLevel` | Enum validation and native-key transformer coverage Phase 3/11 |
+| `StatusThresholds` | configuration pass-through | `statusThresholds` | Nested-key transformer and diagnostic runtime coverage Phase 3/10/11 |
+| `Banner` | configuration pass-through | `banner` | Type and full native-key transformer coverage Phase 3/11 |
 
 ## Studio and transport compatibility
 
@@ -372,12 +379,14 @@ Scribe peer, preserves its frozen `__ScribeTemplate`, and observes the native
 
 ## Remaining parity gaps
 
-The table has no unclassified member. Rows whose coverage checkpoint still says
-“type declared,” “fixture,” or “native integration pending” remain audit or
-integration gaps. Phase 10 closes edit-mode tooling, diagnostics, custom
-transport, datatype-escape-hatch, strict-version, and client Studio-hook
-coverage. Full live server/ProfileStore and cross-frame command-order integration
-remain pending where the table says so.
+The table has no unclassified member and no type-only placeholder checkpoint.
+Rows whose coverage checkpoint says “native integration pending” remain
+integration gaps. The verified gates cover every wrapper runtime branch through
+deterministic native-shaped bindings, the unmodified native command dispatcher,
+and one full native client bundle in Studio. Live DataStore/ProfileStore service
+calls and cross-frame command/diff arrival order still require a published-place
+integration environment and remain pending where the table says so. The wrapper
+therefore does not promise client diff-before-completion ordering.
 
 If the project chooses a Scribe commit other than the baseline, this inventory
 must be regenerated from that exact source before runtime support is claimed.

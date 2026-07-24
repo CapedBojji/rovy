@@ -42,6 +42,7 @@ export default defineConfig({
         ],
       },
       { text: "Rovy Vide", link: "/packages/vide" },
+      { text: "Scribe", link: "/packages/scribe" },
       { text: "Reference", link: "/reference/api" },
     ],
 
@@ -93,6 +94,16 @@ export default defineConfig({
           { text: "Packages Overview", link: "/packages/packages" },
           { text: "Networking", link: "/packages/networking" },
           { text: "Datastore", link: "/packages/datastore" },
+          {
+            text: "Scribe",
+            collapsed: true,
+            items: [
+              { text: "Guide", link: "/packages/scribe" },
+              { text: "Migration", link: "/packages/scribe-migration" },
+              { text: "Compatibility", link: "/packages/scribe-compatibility" },
+              { text: "Parity", link: "/packages/scribe-parity" },
+            ],
+          },
           { text: "Rovy Vide", link: "/packages/vide" },
           {
             text: "Rovy UI",

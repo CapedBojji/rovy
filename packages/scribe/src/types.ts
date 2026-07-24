@@ -61,6 +61,14 @@ export interface ScribeReasonConstants {
 	readonly Shutdown: "shutdown";
 	readonly Timeout: "timeout";
 }
+export const ScribeReason: ScribeReasonConstants = table.freeze({
+	LoadFailed: "load-failed",
+	MigrationFailed: "migration-failed",
+	SessionEnded: "session-ended",
+	PlayerLeft: "player-left",
+	Shutdown: "shutdown",
+	Timeout: "timeout",
+});
 export type ScribeLogLevel = "Debug" | "Info" | "Warn" | "Error" | "Fatal";
 export type ScribeLogCategory =
 	| "Persistence"

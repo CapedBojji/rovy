@@ -172,6 +172,7 @@ export {
 	scribeVersion,
 } from "./plugin";
 export type {
+	AnyConfiguredScribeServer,
 	ConfiguredScribeServer,
 	ScribeClientPluginOptions,
 	ScribeImmediateTree,
@@ -226,6 +227,7 @@ export {
 } from "./param-ids";
 export type { ScribeDataParamKind } from "./param-ids";
 
+export { ScribeReason } from "./types";
 export type {
 	DeepPartial,
 	ReadonlyDeep,

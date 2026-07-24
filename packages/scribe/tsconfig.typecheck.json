@@ -12,5 +12,5 @@
       "@rovy/scribe": ["src/index.ts"]
     }
   },
-  "include": ["src", "__typecheck.ts"]
+  "include": ["src", "__typecheck.ts", "docs-examples"]
 }

@@ -31,6 +31,7 @@ import {
 	ScribePersistedShape,
 	ScribePurchaseRecord,
 	ScribeReady,
+	ScribeReason,
 	ScribeReceipts,
 	ScribeServerReader,
 	ScribeServerWriter,
@@ -49,7 +50,9 @@ import {
 } from "@rovy/scribe";
 
 const supportedScribeVersion: "1.0.11" = SCRIBE_SUPPORTED_VERSION;
+const playerLeftReason: "player-left" = ScribeReason.PlayerLeft;
 print(supportedScribeVersion);
+print(playerLeftReason);
 
 // Rovy core does not currently export a built-in Update schedule.
 class Update {}

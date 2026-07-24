@@ -52,6 +52,8 @@ new App().start();
 - **Commands & schedules** — deferred mutations, custom schedules, system sets, and
   explicit flush points.
 - **Optional packages** — `@rovy/networking` (`@netEvent` over Blink),
+  `@rovy/scribe` (scheduled typed access to native Scribe player profiles),
+  `@rovy/datastore` (Rovy-owned persistent documents),
   `@rovy/vide` (reactive Vide views for gameplay UI),
   `@rovy/ui` (retained class-based UI components),
   `@rovy/imgui` (function-first immediate-mode widgets), and
@@ -63,6 +65,8 @@ new App().start();
 |---------|------|
 | `@rovy/core` | Decorators, macros, types, and the packaged runtime — what you import |
 | `@rovy/networking` | `@netEvent` authoring surface and runtime handles |
+| `@rovy/scribe` | Buffered, event-driven integration for native Scribe player data |
+| `@rovy/datastore` | Rovy-owned persistent document declarations and handles |
 | `@rovy/vide` | Reactive Vide view integration for gameplay UI |
 | `@rovy/ui` | Retained class-based Roblox UI runtime |
 | `@rovy/imgui` | Function-first widget/render runtime |
@@ -94,7 +98,7 @@ the project contains `.rovy.plugin.json` monolith plugin roots.
 ## Repository layout
 
 ```
-packages/      core, networking, datastore, vide, ui, world-inspector, transformer, build
+packages/      core, networking, datastore, scribe, vide, ui, world-inspector, transformer, build
 docs/          VitePress documentation site
 ```
 

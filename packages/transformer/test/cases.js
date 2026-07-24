@@ -1021,11 +1021,34 @@ export const PlayerData = scribeData({
 	},
 	options: {
 		saveInterval: 60,
+		mode: "Mock",
+		targetUserId: 100,
+		useMock: true,
+		viewedUserId: 101,
+		overriddenUserId: 102,
+		dontSave: true,
+		resetData: false,
+		loadFailurePolicy: "wait",
+		versionAheadPolicy: "allow",
+		kickOnSessionEnd: true,
+		loadFailureMessage: "load",
+		sessionEndMessage: "ended",
+		commandRateLimit: 12,
+		requestTimeout: 8,
+		maxInboundBytes: 4096,
 		boundsPolicy: "clamp",
 		wipeGuardPolicy: "block",
+		wipeGuardShrinkRatio: 0.5,
+		logLevel: "Warn",
+		banner: false,
+		transportChannel: "PlayerData",
 		purchaseLog: { robuxCap: 50, replicateRobux: true },
 		gifting: { cooldown: 10, noIntentPolicy: "grantOrCredit" },
-		statusThresholds: { failWindow: 30, failCount: 3 },
+		statusThresholds: {
+			failWindow: 30,
+			failCount: 3,
+			recoverStreak: 2,
+		},
 		leaderboards: {
 			Coins: { stat: "Coins", limit: 25, replicate: true },
 		},
@@ -1035,6 +1058,8 @@ export const PlayerData = scribeData({
 		passes: {
 			VIP: { id: 456, category: "Access" },
 		},
+		perks: ["VIP"],
+		ownReceipts: true,
 		economy: {
 			prefix: true,
 			currencies: {
@@ -1050,14 +1075,38 @@ export const PlayerData = scribeData({
 	assertNoDiagnostics(result, "scribeData lowering");
 	assert.match(result.printed, /rovyScribe\.__data\(\{ id: "src\/main\/PlayerData"/);
 	assert.match(result.printed, /SaveInterval: 60/);
+	assert.match(result.printed, /Mode: "Mock"/);
+	assert.match(result.printed, /TargetUserId: 100/);
+	assert.match(result.printed, /UseMock: true/);
+	assert.match(result.printed, /ViewedUserId: 101/);
+	assert.match(result.printed, /OverriddenUserId: 102/);
+	assert.match(result.printed, /DontSave: true/);
+	assert.match(result.printed, /ResetData: false/);
+	assert.match(result.printed, /LoadFailurePolicy: "Wait"/);
+	assert.match(result.printed, /VersionAheadPolicy: "Allow"/);
+	assert.match(result.printed, /KickOnSessionEnd: true/);
+	assert.match(result.printed, /LoadFailureMessage: "load"/);
+	assert.match(result.printed, /SessionEndMessage: "ended"/);
+	assert.match(result.printed, /CommandRateLimit: 12/);
+	assert.match(result.printed, /RequestTimeout: 8/);
+	assert.match(result.printed, /MaxInboundBytes: 4096/);
 	assert.match(result.printed, /BoundsPolicy: "Clamp"/);
 	assert.match(result.printed, /WipeGuardPolicy: "Block"/);
+	assert.match(result.printed, /WipeGuardShrinkRatio: 0\.5/);
+	assert.match(result.printed, /LogLevel: "Warn"/);
+	assert.match(result.printed, /Banner: false/);
+	assert.match(result.printed, /TransportChannel: "PlayerData"/);
 	assert.match(result.printed, /PurchaseLog: \{ RobuxCap: 50, ReplicateRobux: true \}/);
 	assert.match(result.printed, /GiftCooldown: 10/);
 	assert.match(result.printed, /NoGiftIntentPolicy: "GrantOrCredit"/);
-	assert.match(result.printed, /StatusThresholds: \{ FailWindow: 30, FailCount: 3 \}/);
+	assert.match(
+		result.printed,
+		/StatusThresholds: \{ FailWindow: 30, FailCount: 3, RecoverStreak: 2 \}/,
+	);
 	assert.match(result.printed, /Leaderboards: \{ Coins: \{ Stat: "Coins", Limit: 25, Replicate: true \} \}/);
 	assert.match(result.printed, /Products: \{ CoinPack: \{ Id: 123, Category: "Currency", Grants: "VIP" \} \}/);
+	assert.match(result.printed, /Perks: \["VIP"\]/);
+	assert.match(result.printed, /OwnReceipts: true/);
 	assert.match(result.printed, /Economy: \{ Prefix: true, Currencies:/);
 });
 

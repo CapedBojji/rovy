@@ -594,3 +594,23 @@ The native Studio gate builds a scratch place without vendoring Scribe. In a
 real client playtest it constructs the bundle through `NativeScribeBinding`,
 preserves Scribe's frozen `__ScribeTemplate`, exercises native diagnostics, and
 observes `_ScribeClientDebugHook` with its `Request` and `Stream` endpoints.
+
+## Phase 11 documentation and release checkpoint
+
+The package now has a public guide, direct-Scribe migration guide, exact peer
+compatibility matrix, and exhaustive parity inventory in the documentation
+navigation. Schema, read/write, event, command, persistence, leaderboard,
+monetization, setup, and edit-mode examples are imported from
+`packages/scribe/docs-examples`; those files run in the package type-check
+command so documentation contracts cannot drift silently.
+
+`ScribeReason` exposes the six supported lifecycle constants as a frozen
+first-class value. A final documentation compile also exposed a contravariant
+generic in `ScribeServerPluginOptions.bundles`: the options now accept
+`AnyConfiguredScribeServer`, an erased object-only container interface, while
+`configureScribeServer<D>` retains the full typed setup callbacks. This closes
+the public setup example without adding `any`.
+
+Root build, test, and local-pack scripts include `@rovy/scribe`; package lists,
+installation instructions, site navigation, and the changelog now advertise
+the same verified Scribe 1.0.11 boundary.

@@ -1,4 +1,4 @@
-# Packages — core, networking, datastore, vide, ui, world inspector, and transformer
+# Packages — core, networking, persistence, UI, and tooling
 
 Rovy ships as distinct packages, mirroring the split between runtime packages and build-time transformer tooling:
 
@@ -7,6 +7,7 @@ Rovy ships as distinct packages, mirroring the split between runtime packages an
 | `@rovy/core`            | Decorators, macros, types, **and the packaged runtime**        | `import` it and write code                                |
 | `@rovy/networking`      | Net-event authoring surface and runtime handles                | `import` it when using `@netEvent`                        |
 | `@rovy/datastore`       | Persistent document declarations and runtime handles           | `import` it when using persistent documents               |
+| `@rovy/scribe`          | Scheduled typed wrapper over native Scribe player profiles     | `import` it when using a Scribe-managed profile           |
 | `@rovy/vide`            | Reactive Vide view integration for gameplay UI                 | `import` `@view`, `mountView`, and `ViewMonitor`          |
 | `@rovy/ui`              | Retained class-based Roblox UI runtime                         | `import` `@ui`, factories, `$` triggers, then `app.mount` |
 | `@rovy/imgui`              | Widget/render integration package                              | `import` widget helpers and JSDoc-tagged widget functions |
@@ -15,8 +16,9 @@ Rovy ships as distinct packages, mirroring the split between runtime packages an
 | `rovy-build`            | build/open/watch/start orchestration and Rovy config discovery | Use it in package scripts                                 |
 
 Most ECS code authors against `@rovy/core`. Networked event code additionally
-imports `@rovy/networking`. Persistent game data code imports
-`@rovy/datastore`. Reactive gameplay UI can author against `@rovy/vide`.
+imports `@rovy/networking`. Rovy-owned persistent data imports
+`@rovy/datastore`, while games whose player-profile authority lives in Scribe
+import `@rovy/scribe`. Reactive gameplay UI can author against `@rovy/vide`.
 Retained class-based Roblox UI can author against `@rovy/ui`.
 Immediate-mode tool UI can author against `@rovy/imgui`. Debug tooling can
 additionally import `@rovy/world-inspector`. `rovy-transformer` runs
@@ -25,7 +27,8 @@ calls the packages consume. `rovy-build` owns the project command flow around
 `rbxtsc`, generators, Rojo, and Studio.
 
 Inside this repo, the shipped packages live in a pnpm workspace at
-`packages/core`, `packages/networking`, `packages/datastore`, `packages/ui`, `packages/imgui`,
+`packages/core`, `packages/networking`, `packages/datastore`, `packages/scribe`,
+`packages/ui`, `packages/imgui`,
 `packages/vide`, `packages/world-inspector`, `packages/transformer`, and
 `packages/build`.
 
@@ -84,6 +87,32 @@ import { playerDocument, type DocumentWriter } from "@rovy/datastore";
 Document declarations are transformer-backed. The transformer generates runtime
 validators from datastore-safe TypeScript data types and lowers injected
 document handle params to external package param ids.
+
+## What lives in `@rovy/scribe`
+
+Scribe is separate from both core and datastore. It wraps the game's
+Wally-installed Scribe module without becoming a second profile store:
+
+- `scribeData` and `s.*` describe native Scribe bundles and declarators.
+- Client/server readers expose committed, signal-free accessor trees.
+- `ScribeLocalWriter` and `ScribeServerWriter` buffer local or authoritative
+  mutations to Rovy flush boundaries.
+- `@scribeEvent` turns native changes and signals into normal Rovy events.
+- `@scribeCommand` retains native sender identity, validation, rate limits, and
+  wire framing while game systems remain non-yielding.
+- Persistence, leaderboards, monetization, ownership, receipts, cooldowns,
+  messaging, diagnostics, testing, and unsafe access use separate services.
+
+```ts
+import {
+  s,
+  scribeData,
+  type ScribeServerWriter,
+} from "@rovy/scribe";
+```
+
+The exact supported peer is `ericplane/scribe@1.0.11`. Read the
+[Scribe guide](/packages/scribe) for setup and semantics.
 
 ## What lives in `@rovy/vide`
 
@@ -164,8 +193,9 @@ A roblox-ts custom transformer. Pure build-time. It never ships to the game. Dut
 5. Rewrite `trait<T>()` → `rovy.traitToken("stable/path")`.
 6. Validate decorator usage (observer field exclusivity, monitor param order, `@resource` defaulted ctor, planned `@prefab` zero-arg ctor + `build(...)` shape).
 7. Datastore support: lower document declarations, generate validators, generate lifecycle event constructors, and lower `DocumentReader` / `DocumentWriter` / `DocumentOpener` params to external package ids.
-8. Vide support: detect `@view` from `@rovy/vide`, reject `match`/event maps, validate `render(...)`, lower render params, hoist view query descriptors, and inject `rovyVide.__view(...)`.
-9. UI support: detect JSDoc `@widget` functions, inject widget registration, wrap them through `RovyUi.__widget(...)`, lower plain/custom and built-in widget calls through `RovyUi.__scope(...)`, lower storage helpers to keyed internals, and lower style sugar.
+8. Scribe support: lower data, command, and event declarations; validate schema paths and boundaries; and lower injected services to stable external ids.
+9. Vide support: detect `@view` from `@rovy/vide`, reject `match`/event maps, validate `render(...)`, lower render params, hoist view query descriptors, and inject `rovyVide.__view(...)`.
+10. UI support: detect JSDoc `@widget` functions, inject widget registration, wrap them through `RovyUi.__widget(...)`, lower plain/custom and built-in widget calls through `RovyUi.__scope(...)`, lower storage helpers to keyed internals, and lower style sugar.
 
 ## How they connect
 
@@ -211,6 +241,14 @@ Install datastore only when using persistent documents:
 ```sh
 npm i @rovy/datastore
 ```
+
+Install Scribe integration only when native Scribe owns player profiles:
+
+```sh
+npm i @rovy/scribe
+```
+
+Keep `Scribe = "ericplane/scribe@1.0.11"` in `wally.toml`.
 
 Install Vide only when using reactive Vide views:
 
@@ -386,6 +424,7 @@ So a missing/misconfigured transformer surfaces as an immediate, explicit error 
 - [Runtime lifecycle](/runtime/lifecycle.md) — how the runtime consumes it
 - [API reference](/reference/api.md)
 - [Datastore](/packages/datastore.md)
+- [Scribe](/packages/scribe)
 - [Prefabs](/concepts/prefabs.md)
 - [Rovy ImGui](/packages/imgui)
 - [World Inspector](/packages/world-inspector.md)
