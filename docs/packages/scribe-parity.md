@@ -54,15 +54,13 @@ Phase 7 added stable non-yielding client command handles, native request tasks,
 one-consumer server queues, flush-gated responders, request/result wire-shape
 validation, cancellation/timeout handling, and command-completion events. The
 unmodified pinned Scribe 1.0.11 dispatcher proves its `xpcall` path is yieldable
-and runs the wrapper bridge end to end. General jobs and feature services remain
-incomplete; client diff-before-completion ordering remains deliberately
-unpromised pending an end-to-end Roblox transport test.
+and runs the wrapper bridge end to end. General jobs and feature services were
+completed in later phases.
 
 Phase 8 added one post-write non-yielding job bridge, immutable polling and
 completion results, player-session cancellation, persistence/offline/version/GDPR
 services, native datatype projection for persisted snapshots, durable messaging,
-readiness-gated client save state, and raw/ProfileStore unsafe handles. Native
-full-bundle integration remains pending.
+readiness-gated client save state, and raw/ProfileStore unsafe handles.
 
 Phase 9 added boundary-aware leaderboard, monetization, ownership, receipt, and
 cooldown services; native atomic purchase delegation; typed immediate grant
@@ -83,13 +81,26 @@ hole in `ScribeServerPlugin.bundles`; typed `configureScribeServer(...)` results
 now pass through a non-generic erased container contract without introducing
 public `any`.
 
+The final native acceptance gate constructs two wrapper-owned bundles on both
+Roblox boundaries against the unmodified pinned peer. It runs Scribe's default
+RemoteEvent transport, a deterministic injected ProfileStore implementation,
+real client replication, buffered batches and rollback transactions, deferred
+Rovy events, flush-gated commands, persistence/version/GDPR jobs, durable
+messaging, leaderboards, economy analytics, ownership, purchases, receipts,
+gift credits and delivery, shared init/diff/removal, cooldowns, diagnostics,
+save/session lifecycle, and Studio hooks. The gate passes twice consecutively
+and proves that, for the supported default transport, the authoritative command
+diff is applied before command completion is published. Cloud DataStore
+availability and Marketplace prompt UI remain external-service evidence limits;
+the wrapper never substitutes their behavior.
+
 ## Top-level Scribe module
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
 | `Version` | first-class | `scribeVersion()` and binding version | Unit coverage Phase 2; pinned native Studio coverage Phase 10 |
-| `new` | first-class | `scribeData` declaration plus plugin-owned bundle construction | Fake-binding Phase 2; pinned native client bundle Phase 10 |
-| callable `Scribe(options)` | first-class | Same mapping as `new`; game code never constructs a second wrapper state | Fake-binding Phase 2; pinned native client bundle Phase 10 |
+| `new` | first-class | `scribeData` declaration plus plugin-owned bundle construction | Fake binding Phase 2; pinned two-boundary/two-bundle Studio gate |
+| callable `Scribe(options)` | first-class | Same mapping as `new`; game code never constructs a second wrapper state | Fake binding Phase 2; pinned two-boundary/two-bundle Studio gate |
 | `ServerOnly` | first-class | `s.serverOnly` | Type projection and native declarator coverage Phase 3 |
 | `Shared` | first-class | `s.shared` | Type projection and native declarator coverage Phase 3 |
 | `Session` | first-class | `s.session` | Type projection and native declarator coverage Phase 3 |
@@ -126,8 +137,8 @@ public `any`.
 | `Reason` | first-class | Frozen `ScribeReason` constants and `ScribeLifecycleReason` union | Type and direct runtime coverage Phase 11 |
 | `Configure` | configuration pass-through | `ScribePlugin.configure`, exactly once before bundle construction | Binding and conflict unit coverage Phase 3 |
 | `GetStatus` | first-class | `ScribeDiagnostics.status` | Normalized unit and pinned native Studio coverage Phase 10 |
-| `OnStatusChanged` | Rovy event | `ScribeStatusChanged` | Deferred signal/runtime coverage Phase 6; native integration pending |
-| `OnIssue` | Rovy event | `ScribeIssue` | Deferred normalized-signal/runtime coverage Phase 6; native integration pending |
+| `OnStatusChanged` | Rovy event | `ScribeStatusChanged` | Deferred signal/runtime Phase 6; pinned native degrade/recover Studio gate |
+| `OnIssue` | Rovy event | `ScribeIssue` | Deferred normalization Phase 6; pinned native error-log Studio gate |
 | `AddLogSink` | first-class | `ScribeDiagnostics.addSink`, installed during setup | Frozen-normalization unit and pinned native Studio coverage Phase 10 |
 | `GetRecentLogs` | first-class | `ScribeDiagnostics.recentLogs` | Filter translation, normalization, and pinned native Studio coverage Phase 10 |
 | `GetMetrics` | first-class | `ScribeDiagnostics.metrics` | Summary normalization and pinned native Studio coverage Phase 10 |
@@ -152,52 +163,52 @@ public `any`.
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| `Get` | first-class | Reader `get()` returns committed deep-read-only snapshot | Frozen revision-cache runtime coverage Phase 4; native integration pending |
-| `Clone` | first-class | Reader `clone()` returns fresh mutable clone | Independence runtime coverage Phase 4; native integration pending |
-| `Default` | first-class | Reader `default()` | Runtime coverage Phase 4; native integration pending |
-| `Set` | first-class | Buffered writer `set`; client only through `ScribeLocalWriter` | Queue/snapshot/runtime coverage Phase 5; native integration pending |
-| `Update` | first-class | Buffered writer `update`, callback evaluated at flush | Ordered frozen-input runtime coverage Phase 5; native integration pending |
-| `Observe` | Rovy event | `@scribeEvent` plus observer/EventReader | Registry-driven subscription/runtime coverage Phase 6; native integration pending |
-| `Changed` | Rovy event | `ScribeValueChanged` | Coalescing/source/dual-publication runtime coverage Phase 6; native integration pending |
-| `Increment` | first-class | Buffered numeric `increment` with economy metadata | Ordered batch/runtime coverage Phase 5; native integration pending |
-| `Decrement` | first-class | Buffered numeric `decrement` with economy metadata | Transaction/runtime coverage Phase 5; native integration pending |
-| `Min` | first-class | Number reader `min()` | Runtime coverage Phase 4; native integration pending |
-| `Max` | first-class | Number reader `max()` | Runtime coverage Phase 4; native integration pending |
-| `Toggle` | first-class | Buffered boolean `toggle()` | Runtime coverage Phase 5; native integration pending |
-| `Insert` | first-class | Buffered array `insert()` | Zero-based ordered runtime coverage Phase 5; native integration pending |
-| `Remove` | first-class | Buffered array/dictionary `remove()`; intentionally returns `void` | Zero-based/container runtime coverage Phase 5; native integration pending |
-| `RemoveValue` | first-class | Buffered array `removeValue()` | Runtime coverage Phase 5; native integration pending |
-| `Find` | first-class | Array reader `find()`; zero-based result | Structural-value runtime coverage Phase 4; native integration pending |
-| `Has` | first-class | Array reader `has()` | Runtime coverage Phase 4; native integration pending |
-| `Count` | first-class | Array/dictionary reader `count()` | Runtime coverage Phase 4; native integration pending |
-| `Clear` | first-class | Buffered array/dictionary `clear()` | Runtime coverage Phase 5; native integration pending |
-| `OnInsert` | Rovy event | `ScribeArrayInserted` | Exact value/zero-based index runtime coverage Phase 6; native integration pending |
-| `OnRemove` | Rovy event | `ScribeArrayRemoved` | Exact value/zero-based index runtime coverage Phase 6; native integration pending |
-| `OnKeyAdded` | Rovy event | `ScribeKeyAdded` | Exact key/value runtime coverage Phase 6; native integration pending |
-| `OnKeyRemoved` | Rovy event | `ScribeKeyRemoved` | Exact key/value runtime coverage Phase 6; native integration pending |
-| `SetTimed` | first-class | Buffered timed writer `setTimed()` | Runtime coverage Phase 5; native integration pending |
-| `ExtendTimed` | first-class | Buffered timed writer `extendTimed()` | Runtime coverage Phase 5; native integration pending |
-| `Active` | first-class | Timed reader `active()` returns named `{ active, remaining }` record | Tuple-to-record runtime coverage Phase 4; native integration pending |
+| `Get` | first-class | Reader `get()` returns committed deep-read-only snapshot | Frozen revision cache Phase 4; pinned native same-set/client-server Studio gate |
+| `Clone` | first-class | Reader `clone()` returns fresh mutable clone | Independence Phase 4; pinned native alias-isolation Studio gate |
+| `Default` | first-class | Reader `default()` | Phase 4 plus pinned native client/server Studio gate |
+| `Set` | first-class | Buffered writer `set`; client only through `ScribeLocalWriter` | Queue/snapshot Phase 5; pinned native local/authoritative Studio gate |
+| `Update` | first-class | Buffered writer `update`, callback evaluated at flush | Ordered frozen-input Phase 5; pinned native latest-committed Studio gate |
+| `Observe` | Rovy event | `@scribeEvent` plus observer/EventReader | Registry subscription Phase 6; pinned native one-subscription dual-publication gate |
+| `Changed` | Rovy event | `ScribeValueChanged` | Coalescing/source Phase 6; pinned native server/local/replication Studio gate |
+| `Increment` | first-class | Buffered numeric `increment` with economy metadata | Ordered batch Phase 5; pinned native tagged/command/transaction Studio gate |
+| `Decrement` | first-class | Buffered numeric `decrement` with economy metadata | Transaction Phase 5; pinned native tagged sink Studio gate |
+| `Min` | first-class | Number reader `min()` | Phase 4 plus pinned native client/server Studio gate |
+| `Max` | first-class | Number reader `max()` | Phase 4 plus pinned native client/server Studio gate |
+| `Toggle` | first-class | Buffered boolean `toggle()` | Phase 5 plus pinned native two-flush Studio gate |
+| `Insert` | first-class | Buffered array `insert()` | Zero-based ordering Phase 5; pinned native ordered Studio gate |
+| `Remove` | first-class | Buffered array/dictionary `remove()`; intentionally returns `void` | Zero-based container Phase 5; pinned native array/dictionary Studio gate |
+| `RemoveValue` | first-class | Buffered array `removeValue()` | Phase 5 plus pinned native Studio gate |
+| `Find` | first-class | Array reader `find()`; zero-based result | Phase 4 plus pinned native zero-based Studio gate |
+| `Has` | first-class | Array reader `has()` | Phase 4 plus pinned native server/client Studio gate |
+| `Count` | first-class | Array/dictionary reader `count()` | Phase 4 plus pinned native server/client Studio gate |
+| `Clear` | first-class | Buffered array/dictionary `clear()` | Phase 5 plus pinned native bulk-clear gate; no fabricated per-entry events |
+| `OnInsert` | Rovy event | `ScribeArrayInserted` | Exact value/index Phase 6; pinned native ordered Studio gate |
+| `OnRemove` | Rovy event | `ScribeArrayRemoved` | Exact value/index Phase 6; pinned native remove/removeValue Studio gate |
+| `OnKeyAdded` | Rovy event | `ScribeKeyAdded` | Exact key/value Phase 6; pinned native Studio gate |
+| `OnKeyRemoved` | Rovy event | `ScribeKeyRemoved` | Exact key/value Phase 6; pinned native Studio gate |
+| `SetTimed` | first-class | Buffered timed writer `setTimed()` | Phase 5 plus pinned native Studio gate |
+| `ExtendTimed` | first-class | Buffered timed writer `extendTimed()` | Phase 5 plus pinned native Studio gate |
+| `Active` | first-class | Timed reader `active()` returns named `{ active, remaining }` record | Phase 4 tuple normalization plus pinned native Studio gate |
 
 ## Server lifecycle, persistence, and command API
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| `WaitForData` | Rovy event | Background lifecycle bridge plus ready/unavailable state/events | Non-yielding system bridge/runtime coverage Phase 6; native integration pending |
-| `GetState` | first-class | `ScribeServerReader.state(player)` | Non-yielding runtime coverage Phase 4; native integration pending |
-| `Get` | first-class | `get` returns optional; `require` supplies native error-style behavior | Loading/ready/session-ended runtime coverage Phase 4; native integration pending |
+| `WaitForData` | Rovy event | Background lifecycle bridge plus ready/unavailable state/events | Phase 6 plus pinned native readiness/session-end Studio gate |
+| `GetState` | first-class | `ScribeServerReader.state(player)` | Phase 4 plus pinned native Loading/Ready/SessionEnded Studio gate |
+| `Get` | first-class | `get` returns optional; `require` supplies native error-style behavior | Phase 4 plus pinned native two-bundle Studio gate |
 | player index access (`Data[player]`) | intentionally unsupported | Bracket access conflicts with injected service methods; use `get`/`require` | Negative type/runtime misuse test Phase 4 |
-| `Batch` | first-class | Automatic ordinary-write batch segments per player at every Rovy flush | Ordering/failure runtime coverage Phase 5; native integration pending |
-| `Transaction` | first-class | `ScribeServerWriter.transaction` replays one native transaction | Position/rollback/failure runtime coverage Phase 5; native integration pending |
-| `Flush` | Rovy job | Renamed `ScribePersistence.saveNow` | Post-write task, polling, completion-event, failure, and cancellation coverage Phase 8; native integration pending |
-| `GetSaveInfo` | first-class | `ScribePersistence.getSaveInfo` | Normalized frozen runtime coverage Phase 8; native integration pending |
-| `GetOffline` | Rovy job | `ScribePersistence.getOffline` | Persisted-root projection/private-root exclusion runtime coverage Phase 8; native integration pending |
-| `UpdateOffline` | Rovy job | `ScribePersistence.updateOffline` | Frozen non-yielding transform, schema validation, private-metadata preservation, and active-session failure coverage Phase 8 |
-| `ListVersions` | Rovy job | `ScribePersistence.listVersions` | Pascal-to-camel normalization runtime coverage Phase 8; native integration pending |
-| `GetVersion` | Rovy job | `ScribePersistence.getVersion` | Typed persisted projection runtime coverage Phase 8; native integration pending |
-| `RestoreVersion` | Rovy job | `ScribePersistence.restoreVersion` | Native reason propagation runtime coverage Phase 8; native integration pending |
-| `Erase` | Rovy job | `ScribePersistence.erase` | Native active-session failure propagation runtime coverage Phase 8; native integration pending |
-| `Export` | Rovy job | `ScribePersistence.export` | Optional string job runtime coverage Phase 8; native integration pending |
+| `Batch` | first-class | Automatic ordinary-write batch segments per player at every Rovy flush | Phase 5 ordering/failure plus pinned native operation-order Studio gate |
+| `Transaction` | first-class | `ScribeServerWriter.transaction` replays one native transaction | Phase 5 plus pinned native commit/rollback Studio gate |
+| `Flush` | Rovy job | Renamed `ScribePersistence.saveNow` | Phase 8 jobs plus pinned native forced-save/event Studio gate |
+| `GetSaveInfo` | first-class | `ScribePersistence.getSaveInfo` | Phase 8 normalization plus pinned native server/client Studio gate |
+| `GetOffline` | Rovy job | `ScribePersistence.getOffline` | Phase 8 projection plus pinned native fake-ProfileStore Studio gate |
+| `UpdateOffline` | Rovy job | `ScribePersistence.updateOffline` | Phase 8 transform/validation plus pinned native durable Studio gate |
+| `ListVersions` | Rovy job | `ScribePersistence.listVersions` | Phase 8 normalization plus pinned native version-query Studio gate |
+| `GetVersion` | Rovy job | `ScribePersistence.getVersion` | Phase 8 projection plus pinned native version-read Studio gate |
+| `RestoreVersion` | Rovy job | `ScribePersistence.restoreVersion` | Phase 8 reason propagation plus pinned native restore Studio gate |
+| `Erase` | Rovy job | `ScribePersistence.erase` | Phase 8 failure coverage plus pinned native erase Studio gate |
+| `Export` | Rovy job | `ScribePersistence.export` | Phase 8 optional-result coverage plus pinned native JSON export Studio gate |
 | `ProfileStore` | unsafe escape hatch | `ScribeUnsafe.profileStore` | Server-only runtime binding coverage Phase 8 |
 | `Raw` | unsafe escape hatch | `ScribeUnsafe.server` | Boundary-native runtime binding coverage Phase 8 |
 | `Command` | first-class | `@scribeCommand`, reader, responder, native handler bridge | Type, transformer, fake-runtime, and pinned native-dispatch coverage Phase 7 |
@@ -206,21 +217,21 @@ public `any`.
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| `IsReady` | first-class | `ScribeClientState.ready` | Flush-stable runtime coverage Phase 4; native integration pending |
-| `WaitForData` | Rovy event | Ready state plus ready/unavailable event; no yielding system call | Background task/ingress runtime coverage Phase 6; native integration pending |
-| `Request` | first-class | Non-yielding `ScribeCommand.call` plus native request task | Stable-handle, polling, rejection, and completion-event runtime coverage Phase 7; Roblox frame-order test pending |
-| `GetLeaderboard` | first-class | `ScribeLeaderboards.get` cached read | Frozen normalization and client/server native-signature runtime coverage Phase 9; native integration pending |
-| `GetMyRank` | first-class | `ScribeLeaderboards.getMyRank` cached read | Client/server native-signature runtime coverage Phase 9; native integration pending |
-| `OnLeaderboard` | Rovy event | `ScribeLeaderboardChanged` | Deferred normalized-snapshot runtime coverage Phase 6; native integration pending |
-| `GetServiceStatus` | first-class | `ScribeClientState.serviceStatus` / diagnostics | Flush-stable runtime coverage Phase 4; native integration pending |
-| `OnServiceStatus` | Rovy event | `ScribeStatusChanged` | Deferred signal/runtime coverage Phase 6; native integration pending |
-| `GetShared` | first-class | `ScribeSharedReader.get` with shared-only shape | Deep-freeze and visibility-filter runtime coverage Phase 4; native integration pending |
-| `OnSharedChanged` | Rovy event | `ScribeSharedChanged` | Frozen clone/removal runtime coverage Phase 6; native integration pending |
+| `IsReady` | first-class | `ScribeClientState.ready` | Phase 4 plus pinned native two-bundle readiness Studio gate |
+| `WaitForData` | Rovy event | Ready state plus ready/unavailable event; no yielding system call | Phase 6 background ingress plus pinned native ready Studio gate |
+| `Request` | first-class | Non-yielding `ScribeCommand.call` plus native request task | Phase 7 plus pinned default-transport sender/write/reply/ordering Studio gate |
+| `GetLeaderboard` | first-class | `ScribeLeaderboards.get` cached read | Phase 9 normalization plus pinned native replicated-board Studio gate |
+| `GetMyRank` | first-class | `ScribeLeaderboards.getMyRank` cached read | Phase 9 signatures plus pinned native client/server rank Studio gate |
+| `OnLeaderboard` | Rovy event | `ScribeLeaderboardChanged` | Phase 6 deferral plus pinned native replicated event Studio gate |
+| `GetServiceStatus` | first-class | `ScribeClientState.serviceStatus` / diagnostics | Phase 4 plus pinned native degrade/recover Studio gate |
+| `OnServiceStatus` | Rovy event | `ScribeStatusChanged` | Phase 6 deferral plus pinned native degrade/recover Studio gate |
+| `GetShared` | first-class | `ScribeSharedReader.get` with shared-only shape | Phase 4 plus pinned native default-transport SharedInit/Diff/Gone Studio gate |
+| `OnSharedChanged` | Rovy event | `ScribeSharedChanged` | Phase 6 plus pinned native immutable init/diff/removal Studio gate |
 | `Owns` | first-class | Non-authoritative mirror read in `ScribeOwnership` | Readiness-gated non-yielding client runtime coverage Phase 9 |
-| `OwnsAsync` | Rovy job | `ScribeOwnership.ownsSynced`; ownership-synced wait never yields a system | Client job/runtime coverage Phase 9; native integration pending |
+| `OwnsAsync` | Rovy job | `ScribeOwnership.ownsSynced`; ownership-synced wait never yields a system | Phase 9 plus pinned native replicated ownership Studio gate |
 | `ObserveOwned` | Rovy event | `ScribeOwnershipChanged` carries the changed key and value; no native subscription leaks | Deferred ownership-signal runtime coverage Phase 6 |
-| `OnOwnershipChanged` | Rovy event | `ScribeOwnershipChanged` | Client/server signal runtime coverage Phase 6; native integration pending |
-| `GetSaveInfo` | first-class | `ScribeClientState.saveInfo` | Readiness-gated flush-stable runtime coverage Phase 8; native integration pending |
+| `OnOwnershipChanged` | Rovy event | `ScribeOwnershipChanged` | Phase 6 plus pinned native grant/revoke client/server Studio gate |
+| `GetSaveInfo` | first-class | `ScribeClientState.saveInfo` | Phase 8 plus pinned native forced-save replication Studio gate |
 | `GetGiftCredits` | first-class | Readiness-gated client `ScribeMonetization.getGiftCredits` read | Frozen non-yielding client runtime coverage Phase 9 |
 | `GetPurchases` | first-class | Readiness-gated client monetization read, subject to native replication config | Filter translation and immutable record normalization coverage Phase 9 |
 | `Mock` | first-class | `ScribeTestRuntime.seed` | Buffered snapshot/state translation and edit-mode guard coverage Phase 10 |
@@ -235,7 +246,7 @@ public `any`.
 | server `GetMyRank` | first-class | Cached `ScribeLeaderboards.getMyRank(name, player)` | Server argument-order runtime coverage Phase 9 |
 | client `GetLeaderboard` | first-class | Cached `ScribeLeaderboards.get` | Native-shape call/normalization runtime coverage Phase 9 |
 | client `GetMyRank` | first-class | Cached `ScribeLeaderboards.getMyRank(name)` | Client argument-order and cross-player guard coverage Phase 9 |
-| client `OnLeaderboard` | Rovy event | `ScribeLeaderboardChanged` | Deferred normalized-snapshot runtime coverage Phase 6; native integration pending |
+| client `OnLeaderboard` | Rovy event | `ScribeLeaderboardChanged` | Phase 6 plus pinned native replicated event Studio gate |
 | `Leaderboards` | configuration pass-through | Typed declaration keyed by numeric schema paths | Type and transformer native-key coverage Phase 3/9 |
 | `Stat` | configuration pass-through | Static numeric schema path | Type plus transformer numeric-leaf diagnostic coverage Phase 3 |
 | `Limit` | configuration pass-through | `limit` | Transformer native-key coverage Phase 3 |
@@ -247,21 +258,21 @@ public `any`.
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| `PromptGift` | Rovy job | `ScribeMonetization.promptGift`; native implementation waits for durable saves | Argument snapshot, native reason, polling, and completion runtime coverage Phase 9 |
+| `PromptGift` | Rovy job | `ScribeMonetization.promptGift`; native implementation waits for durable saves | Phase 9 plus pinned native credit-funded offline-delivery Studio gate |
 | `GetGiftCredits` | first-class | `ScribeMonetization.getGiftCredits` | Frozen server/client and readiness-gated runtime coverage Phase 9 |
-| `HandleReceipt` | Rovy job | `ScribeReceipts.handleReceipt`; native fail-closed decision remains authoritative and default Scribe ownership is untouched | Immutable input and yielding job runtime coverage Phase 9; native integration pending |
+| `HandleReceipt` | Rovy job | `ScribeReceipts.handleReceipt`; native fail-closed decision remains authoritative and default Scribe ownership is untouched | Phase 9 plus pinned native known/unknown fail-closed Studio gate |
 | `TryHandleReceipt` | Rovy job | `ScribeReceipts.tryHandleReceipt`; native 1.0.11 returns `nil` for unknown products | Unknown-product and immutable input runtime coverage Phase 9 |
 | `Owns` | first-class | Cached ownership read; client remains non-authoritative | Client readiness gate and server signature runtime coverage Phase 9 |
 | `OwnsAsync` | Rovy job | Server `ownsAuthoritative` / client `ownsSynced` | Boundary guards, job isolation, and server session cancellation coverage Phase 9 |
 | `ObserveOwned` | Rovy event | `ScribeOwnershipChanged` | Deferred keyed payload bridge runtime Phase 6 |
-| `OnOwnershipChanged` | Rovy event | `ScribeOwnershipChanged` | Client/server signal runtime coverage Phase 6; native integration pending |
+| `OnOwnershipChanged` | Rovy event | `ScribeOwnershipChanged` | Phase 6 plus pinned native grant/revoke client/server Studio gate |
 | `GrantPerk` | first-class | Buffered authoritative mutation | Per-player native `Batch`, order, and failure accounting runtime coverage Phase 9 |
 | `RevokePerk` | first-class | Buffered authoritative mutation | Per-player native `Batch` runtime coverage Phase 9 |
 | `Purchase` | Rovy job | Buffered native atomic purchase with result handle | Flush-gated native `Purchase`, typed grant facade, rollback reason, cancellation, and batch-failure coverage Phase 9 |
 | `RecordPurchase` | first-class | Buffered purchase-log append | Immutable metadata snapshot and native-key translation coverage Phase 9 |
 | `GetPurchases` | first-class | Immutable normalized purchase-log read | Server/client filter and Robux/InGame normalization runtime coverage Phase 9 |
-| `OnGiftReceived` | Rovy event | `ScribeGiftReceived` | Deferred signal/runtime coverage Phase 6; native integration pending |
-| `OnGiftCredit` | Rovy event | `ScribeGiftCredit` | Deferred signal/runtime coverage Phase 6; native integration pending |
+| `OnGiftReceived` | Rovy event | `ScribeGiftReceived` | Phase 6 plus pinned native ProfileStore gift-delivery Studio gate |
+| `OnGiftCredit` | Rovy event | `ScribeGiftCredit` | Phase 6 plus pinned native receipt-to-credit Studio gate |
 | `Products` | configuration pass-through | Shared IDs/categories/grants plus server-only grant callbacks | Type, transformer, and setup callback adapter coverage Phase 3/9 |
 | `Passes` | configuration pass-through | Pass declarations | Type and transformer coverage Phase 3/9 |
 | `Perks` | configuration pass-through | Perk declarations | Type and transformer literal diagnostics Phase 3/9 |
@@ -277,7 +288,7 @@ public `any`.
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| tagged `Increment` / `Decrement` | first-class | `ScribeEconomyMeta` on numeric writer operations | Native-key translation/runtime coverage Phase 5; native integration pending |
+| tagged `Increment` / `Decrement` | first-class | `ScribeEconomyMeta` on numeric writer operations | Phase 5 plus pinned native source/sink analytics callback Studio gate |
 | `Economy.Resolve` | configuration pass-through | Server setup callback | Typed setup/native callback adapter coverage Phase 3 |
 | `Economy.Prefix` | configuration pass-through | Shared economy declaration | Transformer native-key coverage Phase 3 |
 | `Economy.Currencies` | configuration pass-through | Shared economy declaration keyed by numeric leaf name | Transformer numeric-leaf diagnostics and runtime metadata validation Phase 9 |
@@ -291,9 +302,9 @@ public `any`.
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
 | `Timed` | first-class | `s.timed` | Type, transformer, and native declarator coverage Phase 3 |
-| `SetTimed` | first-class | Buffered `ScribeTimedWriter.setTimed` | Runtime coverage Phase 5; native integration pending |
-| `ExtendTimed` | first-class | Buffered `ScribeTimedWriter.extendTimed` | Runtime coverage Phase 5; native integration pending |
-| `Active` | first-class | `ScribeTimedReader.active` | Tuple-to-record and flush-stable runtime coverage Phase 4 |
+| `SetTimed` | first-class | Buffered `ScribeTimedWriter.setTimed` | Phase 5 plus pinned native Studio gate |
+| `ExtendTimed` | first-class | Buffered `ScribeTimedWriter.extendTimed` | Phase 5 plus pinned native Studio gate |
+| `Active` | first-class | `ScribeTimedReader.active` | Phase 4 plus pinned native server/client Studio gate |
 | `OnCooldown` | Rovy job | Buffered check-and-arm; result exists only after the native batch commits | Result, polling, cancellation, and batch-order runtime coverage Phase 9 |
 | `PeekCooldown` | first-class | Committed `ScribeCooldowns.peek` | Native tuple normalization runtime coverage Phase 9 |
 | `ClearCooldown` | first-class | Buffered `ScribeCooldowns.clear` | Native per-player batch runtime coverage Phase 9 |
@@ -302,25 +313,25 @@ public `any`.
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| `SendMessage` | Rovy job | `ScribeMessaging.send`; native `MessageAsync` yields | Deferred task, immutable payload, polling, and failure runtime coverage Phase 8; native integration pending |
-| `OnMessage` | Rovy event | `ScribeMessageReceived` | Frozen payload/deferred signal runtime coverage Phase 6; native integration pending |
+| `SendMessage` | Rovy job | `ScribeMessaging.send`; native `MessageAsync` yields | Phase 8 plus pinned native online/offline ProfileStore Studio gate |
+| `OnMessage` | Rovy event | `ScribeMessageReceived` | Phase 6 plus pinned native online message Studio gate |
 
 ## Signals and lifecycle callbacks
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| `OnSave` | Rovy event | `ScribeSaveCompleted` | Payload/save-info runtime coverage Phase 6; native integration pending |
-| `SessionEnded` | Rovy event | `ScribeSessionEnded` | Cleanup/reason runtime coverage Phase 6; native integration pending |
-| `OnAnomaly` | Rovy event | `ScribeAnomaly` | Native and wrapper-write failure ingress Phase 6; native integration pending |
-| `OnGiftReceived` | Rovy event | `ScribeGiftReceived` | Runtime coverage Phase 6; native integration pending |
-| `OnGiftCredit` | Rovy event | `ScribeGiftCredit` | Runtime coverage Phase 6; native integration pending |
-| `OnOwnershipChanged` | Rovy event | `ScribeOwnershipChanged` | Client/server runtime coverage Phase 6; native integration pending |
-| `OnMessage` | Rovy event | `ScribeMessageReceived` | Frozen-payload runtime coverage Phase 6; native integration pending |
-| `OnLeaderboard` | Rovy event | `ScribeLeaderboardChanged` | Normalized-snapshot runtime coverage Phase 6; native integration pending |
-| `OnServiceStatus` | Rovy event | `ScribeStatusChanged` | Client runtime coverage Phase 6; native integration pending |
-| `OnSharedChanged` | Rovy event | `ScribeSharedChanged` | Frozen-clone runtime coverage Phase 6; native integration pending |
-| `Scribe.OnStatusChanged` | Rovy event | `ScribeStatusChanged` | Server runtime coverage Phase 6; native integration pending |
-| `Scribe.OnIssue` | Rovy event | `ScribeIssue` | Normalized-log runtime coverage Phase 6; native integration pending |
+| `OnSave` | Rovy event | `ScribeSaveCompleted` | Phase 6 plus pinned native forced-save Studio gate |
+| `SessionEnded` | Rovy event | `ScribeSessionEnded` | Phase 6 plus pinned native profile-end Studio gate |
+| `OnAnomaly` | Rovy event | `ScribeAnomaly` | Phase 6 plus pinned native transaction-rejection Studio gate |
+| `OnGiftReceived` | Rovy event | `ScribeGiftReceived` | Phase 6 plus pinned native gift-delivery Studio gate |
+| `OnGiftCredit` | Rovy event | `ScribeGiftCredit` | Phase 6 plus pinned native receipt-to-credit Studio gate |
+| `OnOwnershipChanged` | Rovy event | `ScribeOwnershipChanged` | Phase 6 plus pinned native client/server grant/revoke Studio gate |
+| `OnMessage` | Rovy event | `ScribeMessageReceived` | Phase 6 plus pinned native ProfileStore message Studio gate |
+| `OnLeaderboard` | Rovy event | `ScribeLeaderboardChanged` | Phase 6 plus pinned native replicated leaderboard Studio gate |
+| `OnServiceStatus` | Rovy event | `ScribeStatusChanged` | Phase 6 plus pinned native degrade/recover Studio gate |
+| `OnSharedChanged` | Rovy event | `ScribeSharedChanged` | Phase 6 plus pinned native default-transport init/diff/gone Studio gate |
+| `Scribe.OnStatusChanged` | Rovy event | `ScribeStatusChanged` | Phase 6 plus pinned native server degrade/recover Studio gate |
+| `Scribe.OnIssue` | Rovy event | `ScribeIssue` | Phase 6 plus pinned native normalized-log Studio gate |
 
 ## Testing and edit mode
 
@@ -373,20 +384,25 @@ public `any`.
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| Scribe Studio debug hook | configuration pass-through | Preserve the real module location and frozen native template metadata | Pinned full client-bundle Roblox Studio integration Phase 10 |
+| Scribe Studio debug hook | configuration pass-through | Preserve the real module location and frozen native template metadata | Pinned two-boundary Roblox Studio integration Phase 10/final gate |
 | custom `ScribeTransport` | configuration pass-through | Pass the same native transport object; never decode/re-encode buffers | Exact object and bidirectional buffer-identity runtime coverage Phase 10 |
-| default native transport | configuration pass-through | Scribe remains transport owner | Pinned command dispatcher Phase 7; no alternate Rovy codec |
+| default native transport | configuration pass-through | Scribe remains transport owner | Pinned RemoteEvent replication/command/shared-frame Studio gate |
 
 ## Remaining parity gaps
 
-The table has no unclassified member and no type-only placeholder checkpoint.
-Rows whose coverage checkpoint says “native integration pending” remain
-integration gaps. The verified gates cover every wrapper runtime branch through
-deterministic native-shaped bindings, the unmodified native command dispatcher,
-and one full native client bundle in Studio. Live DataStore/ProfileStore service
-calls and cross-frame command/diff arrival order still require a published-place
-integration environment and remain pending where the table says so. The wrapper
-therefore does not promise client diff-before-completion ordering.
+The table has no unclassified member, type-only placeholder checkpoint, or
+wrapper-native integration gap. The deterministic Studio gate runs the
+unmodified pinned server and client bundles twice consecutively over Scribe's
+default RemoteEvent transport. It uses Scribe's own deterministic ProfileStore
+test implementation so persistence, version, messaging, receipt, gift, and
+session behavior can be asserted without replacing the Scribe runtime.
+
+Two environmental checks remain outside this repository: Roblox cloud
+DataStore/ProfileStore availability in a published place, and the Marketplace
+purchase-prompt UI. Those services remain wholly Scribe-owned. The pinned
+default transport is verified to apply the authoritative diff before publishing
+command completion. A custom transport inherits that ordering guarantee only if
+it preserves Scribe frame order.
 
 If the project chooses a Scribe commit other than the baseline, this inventory
 must be regenerated from that exact source before runtime support is claimed.

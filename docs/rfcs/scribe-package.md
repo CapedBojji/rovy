@@ -474,18 +474,19 @@ writer operations carry the command handle, and the response resumes only after
 the boundary's native `Batch`/`Transaction` work and failure accounting finish.
 A write failure replaces a queued success with `write-failed`.
 
-The compatibility gate executes the unmodified Scribe 1.0.11
+The compatibility gates execute the unmodified Scribe 1.0.11
 `src/Server/Commands.luau` from commit
-`4253d303f3ea9e70b362d9e1e498b805ac3a8d01`. It proves the handler can yield
-through Scribe's actual `xpcall`, and a second integration test runs the Rovy
-queue/write/responder bridge through that pinned dispatcher. The fixture is
-test-only and is excluded from the npm package.
+`4253d303f3ea9e70b362d9e1e498b805ac3a8d01`. The focused dispatcher gate proves
+the handler can yield through Scribe's actual `xpcall`. The full Roblox Studio
+gate then runs both wrapper boundaries over Scribe's default RemoteEvent
+transport and proves the client applies the authoritative replication diff
+before command completion is published. The fixture is test-only and is
+excluded from the npm package.
 
-Command completion does not yet promise that the client mirror has applied a
-replication diff first. Server-side tests prove native writes finish before the
-reply is released, but an end-to-end Roblox transport test is still required to
-establish cross-frame client ordering for the supported Scribe version and
-custom transports.
+That ordering result applies to the supported peer's default transport. A
+custom transport inherits it only when the adapter preserves Scribe frame
+order; the wrapper deliberately does not reorder or add a revision barrier
+around arbitrary transport adapters.
 
 ## Phase 8 lifecycle and persistence checkpoint
 

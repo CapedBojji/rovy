@@ -7,17 +7,35 @@
       "rbxts_include": {
         "$path": "../../node_modules/roblox-ts/include"
       },
-      "RovyScribeBinding": {
-        "$className": "Folder",
-        "binding": {
-          "$path": "../../out/shared/binding.luau"
-        },
-        "schema": {
-          "$path": "../../out/shared/schema.luau"
-        }
+      "RovyScribe": {
+        "$path": "../../out/shared"
       },
-      "Scribe": {
-        "$path": ".native/Scribe/src"
+      "RovyScribeNativeFixture": {
+        "$path": "fixture.luau"
+      },
+      "RovyScribeGateControl": {
+        "$className": "RemoteEvent"
+      },
+      "NativeScribe": {
+        "$className": "Folder",
+        "Scribe": {
+          "$path": ".native/Scribe/src"
+        },
+        "test": {
+          "$className": "Folder",
+          "Helpers": {
+            "$className": "Folder",
+            "FakeProfileStore": {
+              "$path": ".native/Scribe/test/Helpers/FakeProfileStore.luau"
+            }
+          }
+        }
+      }
+    },
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "ScribeNativeRuntimeGate": {
+        "$path": "probe.server.luau"
       }
     },
     "StarterPlayer": {
