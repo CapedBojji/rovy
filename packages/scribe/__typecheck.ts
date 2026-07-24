@@ -21,6 +21,7 @@ import {
 	ScribeKeyAdded,
 	ScribeKeyRemoved,
 	ScribeLocalWriter,
+	ScribeMessaging,
 	ScribePersistence,
 	ScribePersistedShape,
 	ScribeReady,
@@ -30,6 +31,7 @@ import {
 	ScribeSharedReader,
 	ScribeSharedShape,
 	ScribeNativeModule,
+	ScribeUnsafe,
 	ScribeValueChanged,
 	configureScribeServer,
 	s,
@@ -210,6 +212,12 @@ export class InventoryItemAdded extends ScribeKeyAdded<typeof PlayerData, "Inven
 })
 export class InventoryItemRemoved extends ScribeKeyRemoved<typeof PlayerData, "Inventory"> {}
 
+@scribeEvent({
+	data: PlayerData,
+	kind: "jobCompleted",
+})
+export class PlayerDataJobCompleted extends ScribeJobCompleted<unknown> {}
+
 export class EquipItemResult {
 	constructor(
 		public readonly equipped: boolean,
@@ -266,6 +274,7 @@ export class RenderHud {
 		const sword = data.Inventory.at("IronSword").get();
 		hud.swordLevel.Text = sword === undefined ? "Not owned" : tostring(sword.Level);
 		hud.boost.Visible = data.ActiveBoost.active().active;
+		print(state.saveInfo.dirty);
 	}
 }
 
@@ -480,6 +489,9 @@ declare const inferredCommand: ScribeCommand<EquipItem>;
 declare const typedCommand: ScribeCommand<EquipItem, EquipItemResult>;
 declare const commandResponder: ScribeCommandResponder;
 declare const typedRequest: ScribeCommandRequest<EquipItem, EquipItemResult>;
+declare const persistenceService: ScribePersistence<typeof PlayerData>;
+declare const messagingService: ScribeMessaging<typeof PlayerData>;
+declare const unsafeService: ScribeUnsafe<typeof PlayerData>;
 
 clientData.Coins.get();
 clientData.Coins.default();
@@ -492,6 +504,22 @@ clientData.Inventory.at("IronSword").Level.get();
 clientData.ActiveBoost.active();
 localWrites.EquippedItem.set("IronSword");
 serverData.require(player).Secret.Flagged.get();
+const offlineHandle = persistenceService.getOffline(123);
+const offlineResult = persistenceService.takeResult(offlineHandle);
+if (offlineResult?.ok && offlineResult.value !== undefined) {
+	const offlineCoins: number = offlineResult.value.Coins;
+	print(offlineCoins);
+	// @ts-expect-error — session roots are not part of persisted snapshots.
+	offlineResult.value.Runtime;
+}
+const messageHandle = messagingService.send(123, {
+	kind: "award",
+	amount: 5,
+});
+const messageResult = messagingService.takeResult(messageHandle);
+print(messageResult, unsafeService.profileStore);
+// @ts-expect-error — raw ProfileStore access is isolated to ScribeUnsafe.
+persistenceService.profileStore;
 
 const inferredHandle = inferredCommand.call(new EquipItem("IronSword"));
 const inferredResult = inferredCommand.takeResult(inferredHandle);

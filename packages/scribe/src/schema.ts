@@ -144,6 +144,8 @@ export interface ScribeRuntimeSchemaDescriptor {
 	readonly members?: ReadonlyArray<string>;
 	readonly inner?: unknown;
 	readonly factory?: () => unknown;
+	/** Runtime-only type sample captured by the native Dynamic declarator. */
+	readonly sampledDatatype?: string;
 	readonly element?: unknown;
 	readonly visibility?: ScribeVisibility;
 	readonly datatype?: string;

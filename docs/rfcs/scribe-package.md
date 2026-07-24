@@ -1,6 +1,6 @@
 # RFC: `@rovy/scribe`
 
-Status: **Phase 7 native command bridge complete — lifecycle jobs next**
+Status: **Phase 8 lifecycle, persistence, and messaging jobs complete — feature services next**
 
 This RFC proposes a partitioned Rovy package that projects Scribe's field-oriented
 player-data API into stable readers, buffered writers, Rovy events, and non-yielding
@@ -486,3 +486,42 @@ replication diff first. Server-side tests prove native writes finish before the
 reply is released, but an end-to-end Roblox transport test is still required to
 establish cross-frame client ordering for the supported Scribe version and
 custom transports.
+
+## Phase 8 lifecycle and persistence checkpoint
+
+One app-local job runtime now owns every Phase 8 yielding call. Service methods
+only validate and snapshot their arguments, allocate a fresh
+`ScribeJobHandle<T>`, and enqueue work. Native calls begin in package-owned tasks
+after the current buffered Scribe writes commit. A same-system
+`writes.Coins.increment(...)` plus `persistence.saveNow(...)` therefore saves the
+new value, never the prior revision. Native task completion is promoted at a
+later flush pass into both a consumable polling result and one immutable
+`jobCompleted` Rovy event. Polling does not suppress that event.
+
+Native `(false, reason)` persistence returns become failed `ScribeJobResult`
+records rather than successful `false` values. Synchronous argument misuse still
+throws before a job is allocated. A server `SessionEnded` signal cancels pending
+player-bound jobs; a later return from the already-running native task cannot
+overwrite the cancellation.
+
+`ScribePersistence` implements save-now, save-info, offline read/update, version
+list/read/restore, erase, and export. Typed offline reads project only declared
+persisted roots: session roots and Scribe's private `_Scribe` bookkeeping never
+leak. Roblox datatype fields are unpacked through the pinned native codec on
+read and packed again on update. The update callback receives a deeply frozen
+typed clone, must not yield, must return the complete declared persisted shape,
+and is schema/bounds/serializability checked before only those declared roots are
+copied into Scribe's native draft. Private metadata remains untouched, and
+native active-session guards remain authoritative.
+
+The native 1.0.11 `GetOffline` and `GetVersion` APIs deliberately collapse a
+DataStore read failure and a missing record to `nil`; the wrapper consequently
+returns a successful `undefined` in either case and does not invent certainty
+the native API lacks.
+
+`ScribeMessaging.send` snapshots and validates one serializable payload, then
+uses native durable `SendMessage` in a job. Incoming messages continue through
+the Phase 6 deferred `ScribeMessageReceived` bridge. Server raw data and
+`ProfileStore` are exposed only by `ScribeUnsafe`; client save information is a
+flush-stable `ScribeClientState.saveInfo` snapshot and is never read through the
+native yielding path before readiness.

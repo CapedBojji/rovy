@@ -58,6 +58,12 @@ and runs the wrapper bridge end to end. General jobs and feature services remain
 incomplete; client diff-before-completion ordering remains deliberately
 unpromised pending an end-to-end Roblox transport test.
 
+Phase 8 added one post-write non-yielding job bridge, immutable polling and
+completion results, player-session cancellation, persistence/offline/version/GDPR
+services, native datatype projection for persisted snapshots, durable messaging,
+readiness-gated client save state, and raw/ProfileStore unsafe handles. Native
+full-bundle integration remains pending.
+
 ## Top-level Scribe module
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
@@ -164,17 +170,17 @@ unpromised pending an end-to-end Roblox transport test.
 | player index access (`Data[player]`) | intentionally unsupported | Bracket access conflicts with injected service methods; use `get`/`require` | Negative type/runtime misuse test Phase 4 |
 | `Batch` | first-class | Automatic ordinary-write batch segments per player at every Rovy flush | Ordering/failure runtime coverage Phase 5; native integration pending |
 | `Transaction` | first-class | `ScribeServerWriter.transaction` replays one native transaction | Position/rollback/failure runtime coverage Phase 5; native integration pending |
-| `Flush` | Rovy job | Renamed `ScribePersistence.saveNow` | Fixture |
-| `GetSaveInfo` | first-class | `ScribePersistence.getSaveInfo` | Type declared |
-| `GetOffline` | Rovy job | `ScribePersistence.getOffline` | Type declared |
-| `UpdateOffline` | Rovy job | `ScribePersistence.updateOffline` | Type declared; callback execution semantics need Phase 8 test |
-| `ListVersions` | Rovy job | `ScribePersistence.listVersions` | Type declared |
-| `GetVersion` | Rovy job | `ScribePersistence.getVersion` | Type declared |
-| `RestoreVersion` | Rovy job | `ScribePersistence.restoreVersion` | Type declared |
-| `Erase` | Rovy job | `ScribePersistence.erase` | Type declared |
-| `Export` | Rovy job | `ScribePersistence.export` | Type declared |
-| `ProfileStore` | unsafe escape hatch | `ScribeUnsafe.profileStore` | Type declared; runtime Phase 8 |
-| `Raw` | unsafe escape hatch | `ScribeUnsafe.server` | Type declared; runtime Phase 8 |
+| `Flush` | Rovy job | Renamed `ScribePersistence.saveNow` | Post-write task, polling, completion-event, failure, and cancellation coverage Phase 8; native integration pending |
+| `GetSaveInfo` | first-class | `ScribePersistence.getSaveInfo` | Normalized frozen runtime coverage Phase 8; native integration pending |
+| `GetOffline` | Rovy job | `ScribePersistence.getOffline` | Persisted-root projection/private-root exclusion runtime coverage Phase 8; native integration pending |
+| `UpdateOffline` | Rovy job | `ScribePersistence.updateOffline` | Frozen non-yielding transform, schema validation, private-metadata preservation, and active-session failure coverage Phase 8 |
+| `ListVersions` | Rovy job | `ScribePersistence.listVersions` | Pascal-to-camel normalization runtime coverage Phase 8; native integration pending |
+| `GetVersion` | Rovy job | `ScribePersistence.getVersion` | Typed persisted projection runtime coverage Phase 8; native integration pending |
+| `RestoreVersion` | Rovy job | `ScribePersistence.restoreVersion` | Native reason propagation runtime coverage Phase 8; native integration pending |
+| `Erase` | Rovy job | `ScribePersistence.erase` | Native active-session failure propagation runtime coverage Phase 8; native integration pending |
+| `Export` | Rovy job | `ScribePersistence.export` | Optional string job runtime coverage Phase 8; native integration pending |
+| `ProfileStore` | unsafe escape hatch | `ScribeUnsafe.profileStore` | Server-only runtime binding coverage Phase 8 |
+| `Raw` | unsafe escape hatch | `ScribeUnsafe.server` | Boundary-native runtime binding coverage Phase 8 |
 | `Command` | first-class | `@scribeCommand`, reader, responder, native handler bridge | Type, transformer, fake-runtime, and pinned native-dispatch coverage Phase 7 |
 
 ## Client API
@@ -195,7 +201,7 @@ unpromised pending an end-to-end Roblox transport test.
 | `OwnsAsync` | Rovy job | Ownership-synced wait represented by a handle/state, never a system yield | Type declared |
 | `ObserveOwned` | Rovy event | `ScribeOwnershipChanged` | General ownership-signal bridge runtime Phase 6; keyed service bridge Phase 9 |
 | `OnOwnershipChanged` | Rovy event | `ScribeOwnershipChanged` | Client/server signal runtime coverage Phase 6; native integration pending |
-| `GetSaveInfo` | first-class | Client save-state read | Type declared |
+| `GetSaveInfo` | first-class | `ScribeClientState.saveInfo` | Readiness-gated flush-stable runtime coverage Phase 8; native integration pending |
 | `GetGiftCredits` | first-class | Client monetization read | Type declared |
 | `GetPurchases` | first-class | Client monetization read, subject to native replication config | Type declared |
 | `Mock` | first-class | `ScribeTestRuntime.seed` | Type declared |
@@ -277,7 +283,7 @@ unpromised pending an end-to-end Roblox transport test.
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| `SendMessage` | Rovy job | `ScribeMessaging.send`; native `MessageAsync` yields | Type declared |
+| `SendMessage` | Rovy job | `ScribeMessaging.send`; native `MessageAsync` yields | Deferred task, immutable payload, polling, and failure runtime coverage Phase 8; native integration pending |
 | `OnMessage` | Rovy event | `ScribeMessageReceived` | Frozen payload/deferred signal runtime coverage Phase 6; native integration pending |
 
 ## Signals and lifecycle callbacks
@@ -356,10 +362,10 @@ unpromised pending an end-to-end Roblox transport test.
 
 The table has no unclassified member. Rows whose coverage checkpoint still says
 “type declared,” “fixture,” or names a future phase remain implementation gaps;
-the largest groups are persistence/offline/version/GDPR jobs, leaderboards,
-monetization/ownership/receipts, cooldowns/messaging, edit-mode tooling, and
-unsafe access. Full-bundle Roblox integration remains pending even where
-fake-binding or pinned-source coverage exists.
+the largest groups are leaderboards, monetization/ownership/receipts, cooldowns,
+edit-mode tooling, diagnostics, and Studio compatibility. Full-bundle Roblox
+integration remains pending even where fake-binding or pinned-source coverage
+exists.
 
 If the project chooses a Scribe commit other than the baseline, this inventory
 must be regenerated from that exact source before runtime support is claimed.

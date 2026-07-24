@@ -32,6 +32,9 @@ import type {
 import type {
 	ScribeEventRuntime,
 } from "./event-runtime";
+import {
+	assertScribeSerializable,
+} from "./serialization";
 
 type UnknownTable = Record<string | number, unknown>;
 type UnknownFactory = new (...args: Array<never>) => object;
@@ -768,7 +771,7 @@ function encodeClassFields(
 	for (let index = 0; index < fields.size(); index += 1) {
 		const field = fields[index];
 		const fieldValue = cloneScribeValue(input[field]);
-		assertWireSerializable(fieldValue, `${label}.${field}`, new Set());
+		assertScribeSerializable(fieldValue, `${label}.${field}`);
 		const descriptor = fieldTypes[index];
 		if (descriptor !== undefined && fieldValue !== undefined) {
 			assertWireShape(
@@ -807,11 +810,7 @@ function decodeClassFields(
 				typeIs(key, "string") && allowed.has(key),
 				`[rovy/scribe] ${label} contains unknown field '${tostring(key)}'`,
 			);
-			assertWireSerializable(
-				value,
-				`${label}.${key}`,
-				new Set(),
-			);
+			assertScribeSerializable(value, `${label}.${key}`);
 			const index = fields.indexOf(key as string);
 			const descriptor = index >= 0
 				? fieldTypes[index]
@@ -1103,70 +1102,4 @@ function strictArrayLength(value: unknown, path: string): number {
 		`[rovy/scribe] ${path} contains an array hole`,
 	);
 	return count;
-}
-
-function assertWireSerializable(
-	value: unknown,
-	path: string,
-	seen: Set<object>,
-	depth = 0,
-): void {
-	assert(
-		depth <= 25,
-		`[rovy/scribe] ${path} exceeds the serializable depth limit`,
-	);
-	if (value === undefined) return;
-	const valueType = typeOf(value);
-	if (
-		valueType === "string" ||
-		valueType === "number" ||
-		valueType === "boolean" ||
-		valueType === "buffer" ||
-		isSerializableDatatype(valueType)
-	) {
-		return;
-	}
-	assert(
-		typeIs(value, "table"),
-		`[rovy/scribe] ${path} is not Scribe-wire-serializable (${valueType})`,
-	);
-	const object = value as object;
-	assert(!seen.has(object), `[rovy/scribe] ${path} contains a cycle`);
-	seen.add(object);
-	for (const [key, child] of pairs(value as UnknownTable)) {
-		assert(
-			typeIs(key, "string") ||
-				(typeIs(key, "number") && key % 1 === 0),
-			`[rovy/scribe] ${path} contains an unsupported table key`,
-		);
-		assertWireSerializable(
-			child,
-			`${path}.${tostring(key)}`,
-			seen,
-			depth + 1,
-		);
-	}
-	seen.delete(object);
-}
-
-function isSerializableDatatype(valueType: string): boolean {
-	return (
-		valueType === "Vector3" ||
-		valueType === "Vector2" ||
-		valueType === "Vector3int16" ||
-		valueType === "Vector2int16" ||
-		valueType === "CFrame" ||
-		valueType === "Color3" ||
-		valueType === "BrickColor" ||
-		valueType === "UDim" ||
-		valueType === "UDim2" ||
-		valueType === "Rect" ||
-		valueType === "NumberRange" ||
-		valueType === "NumberSequence" ||
-		valueType === "ColorSequence" ||
-		valueType === "DateTime" ||
-		valueType === "EnumItem" ||
-		valueType === "Font" ||
-		valueType === "PhysicalProperties"
-	);
 }

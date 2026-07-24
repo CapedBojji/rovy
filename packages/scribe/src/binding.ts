@@ -203,8 +203,25 @@ function compileNativeSchemaDescriptor(
 			return module.Timed(
 				compileNativeSchemaValue(module, descriptor.inner),
 			);
-		case "dynamic":
-			return module.Dynamic(descriptor.factory!);
+		case "dynamic": {
+			const compiled = module.Dynamic(descriptor.factory!);
+			if (typeIs(compiled, "table")) {
+				const sampled = (
+					compiled as unknown as Record<string, unknown>
+				).Default;
+				const sampledType = typeOf(sampled);
+				const isSupported = module.Datatypes.IsSupported;
+				if (
+					typeIs(isSupported, "function") &&
+					isSupported(sampledType)
+				) {
+					(descriptor as {
+						sampledDatatype?: string;
+					}).sampledDatatype = sampledType;
+				}
+			}
+			return compiled;
+		}
 		case "optional":
 			return module.Optional(
 				compileNativeSchemaValue(module, descriptor.inner),

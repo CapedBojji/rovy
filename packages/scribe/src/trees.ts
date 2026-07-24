@@ -20,6 +20,7 @@ import type {
 import type {
 	ReadonlyDeep,
 	ScribeEconomyMeta,
+	ScribeSaveInfo,
 	ScribeSessionState,
 	ScribeStatus,
 	ScribeTransactionHandle,
@@ -253,6 +254,7 @@ export interface ScribeClientState<D extends AnyScribeData> {
 	readonly definition: D;
 	readonly ready: boolean;
 	readonly serviceStatus: ScribeStatus;
+	readonly saveInfo: ScribeSaveInfo;
 }
 
 export interface ScribeServerReader<D extends AnyScribeData> {

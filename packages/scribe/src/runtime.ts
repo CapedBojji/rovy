@@ -35,6 +35,18 @@ import {
 	ScribeCommandRuntime,
 	type ScribeCommandPlan,
 } from "./command-runtime";
+import {
+	ScribeJobRuntime,
+} from "./job-runtime";
+import {
+	ScribePersistenceRuntime,
+} from "./persistence";
+import {
+	ScribeMessagingRuntime,
+} from "./messaging";
+import {
+	ScribeUnsafeRuntime,
+} from "./unsafe";
 import type {
 	ScribeLogEntry,
 	ScribeMetricSummary,
@@ -107,6 +119,7 @@ export class ScribeRuntime implements FlushParticipant {
 	private readonly writeQueue: ScribeWriteQueue;
 	private readonly eventRuntime: ScribeEventRuntime;
 	private readonly commandRuntime: ScribeCommandRuntime;
+	private readonly jobRuntime: ScribeJobRuntime;
 	private readonly writeFailures = new Array<ScribeWriteFailure>();
 	private applyingWrites = false;
 	private readRevision = 0;
@@ -146,6 +159,11 @@ export class ScribeRuntime implements FlushParticipant {
 			this.bundles(),
 			eventRoutes,
 			(dataId) => this.changeSource(dataId),
+		);
+		this.jobRuntime = new ScribeJobRuntime(
+			boundary,
+			this.bundles(),
+			this.eventRuntime,
 		);
 		this.commandRuntime = new ScribeCommandRuntime(
 			boundary,
@@ -223,6 +241,31 @@ export class ScribeRuntime implements FlushParticipant {
 						this.eventRuntime.trackServerPlayer(dataId, player),
 				);
 				break;
+			case "persistence":
+				this.assertBoundary("server", "ScribePersistence");
+				handle = new ScribePersistenceRuntime(
+					bundle.definition,
+					bundle.active,
+					this.jobRuntime,
+					this.binding.module,
+				);
+				break;
+			case "messaging":
+				this.assertBoundary("server", "ScribeMessaging");
+				handle = new ScribeMessagingRuntime(
+					bundle.definition.publicToken,
+					bundle.active,
+					this.jobRuntime,
+				);
+				break;
+			case "unsafe":
+				handle = new ScribeUnsafeRuntime(
+					bundle.definition.publicToken,
+					this.binding,
+					bundle.native,
+					this.boundary,
+				);
+				break;
 			default:
 				handle = {
 					kind,
@@ -267,6 +310,7 @@ export class ScribeRuntime implements FlushParticipant {
 		}
 		const commandAfter =
 			this.commandRuntime.flushAfterWrites(failures);
+		const jobs = this.jobRuntime.flushAfterWrites();
 		this.readRevision += 1;
 		for (const [, handle] of this.handles) {
 			if (handle instanceof ScribeClientStateRuntime) handle.refresh();
@@ -275,7 +319,7 @@ export class ScribeRuntime implements FlushParticipant {
 			context,
 			this.readRevision,
 		);
-		return commandBefore || wrote || commandAfter || published;
+		return commandBefore || wrote || commandAfter || jobs || published;
 	}
 
 	drainWriteFailures(): ReadonlyArray<ScribeWriteFailure> {
@@ -300,6 +344,16 @@ export class ScribeRuntime implements FlushParticipant {
 			return "initialSnapshot";
 		}
 		return "replication";
+	}
+
+	private assertBoundary(
+		expected: ScribeRuntimeBoundary,
+		service: string,
+	): void {
+		assert(
+			this.boundary === expected,
+			`[rovy/scribe] ${service} is only available on the ${expected}`,
+		);
 	}
 }
 

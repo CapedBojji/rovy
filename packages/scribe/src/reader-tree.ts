@@ -2,6 +2,7 @@ import {
 	isScribeSchemaDescriptor,
 } from "./schema";
 import type {
+	ScribeSaveInfo,
 	ScribeSessionState,
 	ScribeStatus,
 } from "./types";
@@ -42,6 +43,7 @@ export function createScribeReadTree(
 export class ScribeClientStateRuntime {
 	ready = false;
 	serviceStatus: ScribeStatus;
+	saveInfo: ScribeSaveInfo = table.freeze({ dirty: false });
 
 	constructor(
 		readonly definition: AnyScribeData,
@@ -58,6 +60,9 @@ export class ScribeClientStateRuntime {
 		this.serviceStatus = typeIs(method, "function")
 			? (method as () => ScribeStatus)()
 			: this.statusFallback();
+		this.saveInfo = this.ready
+			? readClientSaveInfo(this.native)
+			: table.freeze({ dirty: false });
 	}
 }
 
@@ -374,6 +379,29 @@ function callNativeTuple(
 		`[rovy/scribe] native accessor does not expose ${name}`,
 	);
 	return (method as () => LuaTuple<[unknown, unknown?]>)();
+}
+
+function readClientSaveInfo(native: object): ScribeSaveInfo {
+	const method = (native as UnknownTable).GetSaveInfo;
+	if (!typeIs(method, "function")) {
+		return table.freeze({ dirty: false });
+	}
+	const [ok, raw] = pcall(() => (method as () => unknown)());
+	if (!ok || !typeIs(raw, "table")) {
+		return table.freeze({ dirty: false });
+	}
+	const info = raw as UnknownTable;
+	return table.freeze({
+		lastSaveAt: typeIs(info.LastSaveAt, "number")
+			? info.LastSaveAt
+			: undefined,
+		lastResult:
+			info.LastResult === "Ok" || info.LastResult === "Fail"
+				? info.LastResult
+				: undefined,
+		dirty: info.Dirty === true,
+		size: typeIs(info.Size, "number") ? info.Size : undefined,
+	});
 }
 
 function methodArgument(

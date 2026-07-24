@@ -10,6 +10,8 @@ import type {
 	ScribeChangeSource,
 } from "./events";
 import type {
+	ScribeJobHandle,
+	ScribeJobResult,
 	ScribeLogEntry,
 	ScribeSaveInfo,
 	ScribeStatus,
@@ -132,6 +134,12 @@ export interface ScribeCommandCompletedIngress {
 	readonly result: ScribeCommandResult<unknown>;
 }
 
+export interface ScribeJobCompletedIngress extends ScribeIngressBase {
+	readonly kind: "jobCompleted";
+	readonly handle: ScribeJobHandle<unknown>;
+	readonly result: ScribeJobResult<unknown>;
+}
+
 export type ScribeIngressRecord =
 	| ScribeChangedIngress
 	| ScribeArrayIngress
@@ -149,7 +157,8 @@ export type ScribeIngressRecord =
 	| ScribeServiceStatusIngress
 	| ScribeSharedIngress
 	| ScribeIssueIngress
-	| ScribeCommandCompletedIngress;
+	| ScribeCommandCompletedIngress
+	| ScribeJobCompletedIngress;
 
 /**
  * Package-owned callback ingress. Native callbacks do no Rovy work: they only

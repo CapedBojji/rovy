@@ -172,6 +172,8 @@ export class ScribeCommandCompleted<Command extends object, Result> {
 }
 
 export class ScribeJobCompleted<T> {
+	readonly definition = undefined! as AnyScribeData;
+	readonly player?: Player;
 	readonly handle = undefined! as ScribeJobHandle<T>;
 	readonly result = undefined! as ScribeJobResult<T>;
 }

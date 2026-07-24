@@ -33,6 +33,8 @@ import type {
 	ScribeWriteFailure,
 } from "./write-queue";
 import type {
+	ScribeJobHandle,
+	ScribeJobResult,
 	ScribeLogEntry,
 	ScribeSaveInfo,
 	ScribeStatus,
@@ -204,6 +206,21 @@ export class ScribeEventRuntime {
 			commandId,
 			handle,
 			request,
+			result,
+		});
+	}
+
+	publishJobCompletion(
+		dataId: string,
+		handle: ScribeJobHandle<unknown>,
+		result: ScribeJobResult<unknown>,
+		player?: Player,
+	): void {
+		this.ingress.enqueue({
+			kind: "jobCompleted",
+			dataId,
+			player,
+			handle,
 			result,
 		});
 	}
@@ -746,6 +763,10 @@ export class ScribeEventRuntime {
 			case "commandCompleted":
 				event.handle = record.handle;
 				event.request = record.request;
+				event.result = record.result;
+				break;
+			case "jobCompleted":
+				event.handle = record.handle;
 				event.result = record.result;
 				break;
 		}
