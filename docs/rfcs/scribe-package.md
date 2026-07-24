@@ -525,3 +525,42 @@ the Phase 6 deferred `ScribeMessageReceived` bridge. Server raw data and
 `ProfileStore` are exposed only by `ScribeUnsafe`; client save information is a
 flush-stable `ScribeClientState.saveInfo` snapshot and is never read through the
 native yielding path before readiness.
+
+## Phase 9 feature-service checkpoint
+
+Leaderboards now call the exact boundary-specific Scribe 1.0.11 signatures and
+normalize native `{ Rank, UserId, Name, Score }` entries into deeply immutable
+lowercase records. Client ownership, gift-credit, and purchase-log reads first
+check `IsReady`, so they return conservative empty/false snapshots instead of
+entering Scribe's yielding convenience methods from a Rovy system.
+`ScribeOwnership.ownsSynced` moves the client's yielding `OwnsAsync` wait into a
+job; `ownsAuthoritative` remains the separately named server job.
+
+Perk grants/revocations, purchase-log appends, cooldown clears, cooldown arms,
+and soft-currency purchases join the same per-player write queue as normal
+writer-tree operations. They therefore retain system call order, run in native
+`Data.Batch`, and complete before a command response associated with that flush
+is released. `Purchase` still delegates atomic debit/grant/log rollback to
+Scribe's native transaction; the wrapper supplies only a lowercase typed,
+signal-free immediate grant facade. Purchase and cooldown handles are completed
+from the committed write pass, including native refusal, thrown-operation,
+outer-batch failure, and session-cancellation results.
+
+Gift prompts, authoritative ownership checks, client ownership-sync waits, and
+receipt handling stay in package-owned tasks because their native paths may
+yield. Native receipt ownership and fail-closed decisions are unchanged.
+Purchase and receipt inputs are snapshotted; purchase history is normalized
+across native Robux and in-game record shapes and returned deeply frozen.
+
+Economy tags preserve native field semantics while adding early wrapper checks:
+metadata must be serializable, custom field names must be declared for the
+mutated numeric leaf, and authored economy declarations reject nonexistent
+static currency leaves, duplicate slots, or more than Roblox's three slots.
+Native Scribe still owns event emission, transaction deferral, and rollback
+suppression.
+
+`ScribeMonetization` is injectable on both boundaries because Scribe exposes
+client gift-credit and purchase-history mirrors. Its authoritative methods
+remain server-guarded at runtime. This corrects the Phase 0 stub, which
+incorrectly made the entire service server-only and thereby hid documented
+client reads.

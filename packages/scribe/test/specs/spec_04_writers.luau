@@ -365,7 +365,15 @@ local function registerData(scribe)
 		profileStoreIndex = "Writers",
 		profileKeyPrefix = "PLAYER_",
 		template = template,
-		options = {},
+		options = {
+			Economy = {
+				Currencies = {
+					Coins = {
+						Fields = { "Region" },
+					},
+				},
+			},
+		},
 	})
 	return data, template
 end
@@ -430,6 +438,20 @@ return function(TS, t)
 			t.expect(economy.TransactionType).toBe("Reward")
 			t.expect(economy.ItemSku).toBe("enemy")
 			t.expect(economy.Fields.Region).toBe("US")
+			t.expect(function()
+				writes.Coins:increment(1, {
+					fields = {
+						Typo = "US",
+					},
+				})
+			end).toThrow()
+			t.expect(function()
+				writes.Coins:increment(1, {
+					fields = {
+						Region = function() end,
+					},
+				})
+			end).toThrow()
 		end)
 
 		t.it("evaluates updates in call order and snapshots queued arguments", function()

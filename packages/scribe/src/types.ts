@@ -122,14 +122,20 @@ export interface ScribePurchaseRecord {
 	readonly itemId: string;
 	readonly timestamp: number;
 	readonly metadata?: Readonly<Record<string, ScribeSerializable>>;
+	readonly product?: string;
+	readonly purchaseId?: string;
+	readonly priceInRobux?: number;
+	readonly from?: ScribeSerializable;
+	readonly currency?: string;
+	readonly amount?: number;
 }
 
 export interface ScribeEconomyMeta {
 	readonly flow?: "source" | "sink";
-	readonly transactionType?: string;
+	readonly transactionType?: string | EnumItem;
 	readonly itemSku?: string;
 	readonly currency?: string;
-	readonly fields?: Readonly<Record<string, ScribePrimitive>>;
+	readonly fields?: Readonly<Record<string, ScribeSerializable>>;
 }
 
 export interface ScribeTransport {

@@ -59,6 +59,7 @@ export const SCRIBE_CLIENT_DATA_PARAM_KINDS: ReadonlyArray<ScribeDataParamKind> 
 	"local-writer",
 	"shared-reader",
 	"leaderboards",
+	"monetization",
 	"ownership",
 	"testing",
 	"unsafe",

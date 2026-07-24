@@ -64,16 +64,24 @@ export interface ScribePurchaseSpec<D extends AnyScribeData> {
 }
 
 export interface ScribeMonetization<D extends AnyScribeData> extends ScribeJobResults {
+	readonly definition: D;
 	promptGift(buyer: Player, productName: string, recipientUserId: number): ScribeJobHandle<boolean>;
 	getGiftCredits(player?: Player): Readonly<Record<string, number>>;
 	purchase(player: Player, spec: ScribePurchaseSpec<D>): ScribeJobHandle<boolean>;
-	recordPurchase(player: Player, record: Omit<ScribePurchaseRecord, "kind" | "timestamp">): void;
+	recordPurchase(player: Player, record: ScribePurchaseEntry): void;
 	getPurchases(player?: Player, filter?: ScribePurchaseFilter): ReadonlyArray<ScribePurchaseRecord>;
+}
+
+export interface ScribePurchaseEntry {
+	readonly category?: string;
+	readonly itemId: string;
+	readonly metadata?: Readonly<Record<string, ScribeSerializable>>;
 }
 
 export interface ScribeOwnership<D extends AnyScribeData> extends ScribeJobResults {
 	readonly definition: D;
 	owns(key: string, player?: Player): boolean;
+	ownsSynced(key: string, timeout?: number): ScribeJobHandle<boolean>;
 	ownsAuthoritative(player: Player, key: string): ScribeJobHandle<boolean>;
 	grantPerk(player: Player, key: string): void;
 	revokePerk(player: Player, key: string): void;

@@ -152,6 +152,7 @@ export type {
 	ScribeMonetization,
 	ScribeOwnership,
 	ScribePersistence,
+	ScribePurchaseEntry,
 	ScribePurchaseSpec,
 	ScribeReceiptInfo,
 	ScribeReceipts,

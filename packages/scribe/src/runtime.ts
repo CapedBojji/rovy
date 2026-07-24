@@ -47,6 +47,21 @@ import {
 import {
 	ScribeUnsafeRuntime,
 } from "./unsafe";
+import {
+	ScribeLeaderboardsRuntime,
+} from "./leaderboards";
+import {
+	ScribeMonetizationRuntime,
+} from "./monetization";
+import {
+	ScribeOwnershipRuntime,
+} from "./ownership";
+import {
+	ScribeReceiptsRuntime,
+} from "./receipts";
+import {
+	ScribeCooldownsRuntime,
+} from "./cooldowns";
 import type {
 	ScribeLogEntry,
 	ScribeMetricSummary,
@@ -248,6 +263,50 @@ export class ScribeRuntime implements FlushParticipant {
 					bundle.active,
 					this.jobRuntime,
 					this.binding.module,
+				);
+				break;
+			case "leaderboards":
+				handle = new ScribeLeaderboardsRuntime(
+					bundle.definition.publicToken,
+					this.boundary,
+					bundle.active,
+				);
+				break;
+			case "monetization":
+				handle = new ScribeMonetizationRuntime(
+					bundle.definition,
+					this.boundary,
+					bundle.active,
+					this.jobRuntime,
+					this.writeQueue,
+				);
+				break;
+			case "ownership":
+				handle = new ScribeOwnershipRuntime(
+					bundle.definition.publicToken,
+					this.boundary,
+					bundle.active,
+					this.jobRuntime,
+					this.writeQueue,
+				);
+				break;
+			case "receipts":
+				this.assertBoundary("server", "ScribeReceipts");
+				handle = new ScribeReceiptsRuntime(
+					bundle.definition.publicToken,
+					this.boundary,
+					bundle.active,
+					this.jobRuntime,
+				);
+				break;
+			case "cooldowns":
+				this.assertBoundary("server", "ScribeCooldowns");
+				handle = new ScribeCooldownsRuntime(
+					bundle.definition.publicToken,
+					this.boundary,
+					bundle.active,
+					this.jobRuntime,
+					this.writeQueue,
 				);
 				break;
 			case "messaging":

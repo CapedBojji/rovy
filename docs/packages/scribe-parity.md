@@ -190,20 +190,20 @@ full-bundle integration remains pending.
 | `IsReady` | first-class | `ScribeClientState.ready` | Flush-stable runtime coverage Phase 4; native integration pending |
 | `WaitForData` | Rovy event | Ready state plus ready/unavailable event; no yielding system call | Background task/ingress runtime coverage Phase 6; native integration pending |
 | `Request` | first-class | Non-yielding `ScribeCommand.call` plus native request task | Stable-handle, polling, rejection, and completion-event runtime coverage Phase 7; Roblox frame-order test pending |
-| `GetLeaderboard` | first-class | `ScribeLeaderboards.get` cached read | Type declared |
-| `GetMyRank` | first-class | `ScribeLeaderboards.getMyRank` cached read | Type declared |
+| `GetLeaderboard` | first-class | `ScribeLeaderboards.get` cached read | Frozen normalization and client/server native-signature runtime coverage Phase 9; native integration pending |
+| `GetMyRank` | first-class | `ScribeLeaderboards.getMyRank` cached read | Client/server native-signature runtime coverage Phase 9; native integration pending |
 | `OnLeaderboard` | Rovy event | `ScribeLeaderboardChanged` | Deferred normalized-snapshot runtime coverage Phase 6; native integration pending |
 | `GetServiceStatus` | first-class | `ScribeClientState.serviceStatus` / diagnostics | Flush-stable runtime coverage Phase 4; native integration pending |
 | `OnServiceStatus` | Rovy event | `ScribeStatusChanged` | Deferred signal/runtime coverage Phase 6; native integration pending |
 | `GetShared` | first-class | `ScribeSharedReader.get` with shared-only shape | Deep-freeze and visibility-filter runtime coverage Phase 4; native integration pending |
 | `OnSharedChanged` | Rovy event | `ScribeSharedChanged` | Frozen clone/removal runtime coverage Phase 6; native integration pending |
-| `Owns` | first-class | Non-authoritative mirror read in `ScribeOwnership` | Type declared |
-| `OwnsAsync` | Rovy job | Ownership-synced wait represented by a handle/state, never a system yield | Type declared |
-| `ObserveOwned` | Rovy event | `ScribeOwnershipChanged` | General ownership-signal bridge runtime Phase 6; keyed service bridge Phase 9 |
+| `Owns` | first-class | Non-authoritative mirror read in `ScribeOwnership` | Readiness-gated non-yielding client runtime coverage Phase 9 |
+| `OwnsAsync` | Rovy job | `ScribeOwnership.ownsSynced`; ownership-synced wait never yields a system | Client job/runtime coverage Phase 9; native integration pending |
+| `ObserveOwned` | Rovy event | `ScribeOwnershipChanged` carries the changed key and value; no native subscription leaks | Deferred ownership-signal runtime coverage Phase 6 |
 | `OnOwnershipChanged` | Rovy event | `ScribeOwnershipChanged` | Client/server signal runtime coverage Phase 6; native integration pending |
 | `GetSaveInfo` | first-class | `ScribeClientState.saveInfo` | Readiness-gated flush-stable runtime coverage Phase 8; native integration pending |
-| `GetGiftCredits` | first-class | Client monetization read | Type declared |
-| `GetPurchases` | first-class | Client monetization read, subject to native replication config | Type declared |
+| `GetGiftCredits` | first-class | Readiness-gated client `ScribeMonetization.getGiftCredits` read | Frozen non-yielding client runtime coverage Phase 9 |
+| `GetPurchases` | first-class | Readiness-gated client monetization read, subject to native replication config | Filter translation and immutable record normalization coverage Phase 9 |
 | `Mock` | first-class | `ScribeTestRuntime.seed` | Type declared |
 | `MockCommand` | first-class | `ScribeTestRuntime.mockCommand` | Type declared |
 | `Raw` | unsafe escape hatch | `ScribeUnsafe.client` | Type declared |
@@ -212,60 +212,60 @@ full-bundle integration remains pending.
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| server `GetLeaderboard` | first-class | Cached `ScribeLeaderboards.get`; native call does not issue a live OrderedDataStore read | Type declared |
-| server `GetMyRank` | first-class | Cached `ScribeLeaderboards.getMyRank(name, player)` | Type declared |
-| client `GetLeaderboard` | first-class | Cached `ScribeLeaderboards.get` | Type declared |
-| client `GetMyRank` | first-class | Cached `ScribeLeaderboards.getMyRank(name)` | Type declared |
+| server `GetLeaderboard` | first-class | Cached `ScribeLeaderboards.get`; native call does not issue a live OrderedDataStore read | Native-shape call/normalization runtime coverage Phase 9 |
+| server `GetMyRank` | first-class | Cached `ScribeLeaderboards.getMyRank(name, player)` | Server argument-order runtime coverage Phase 9 |
+| client `GetLeaderboard` | first-class | Cached `ScribeLeaderboards.get` | Native-shape call/normalization runtime coverage Phase 9 |
+| client `GetMyRank` | first-class | Cached `ScribeLeaderboards.getMyRank(name)` | Client argument-order and cross-player guard coverage Phase 9 |
 | client `OnLeaderboard` | Rovy event | `ScribeLeaderboardChanged` | Deferred normalized-snapshot runtime coverage Phase 6; native integration pending |
-| `Leaderboards` | configuration pass-through | Typed declaration keyed by numeric schema paths | Type declared |
-| `Stat` | configuration pass-through | Static numeric schema path | Type declared |
-| `Limit` | configuration pass-through | `limit` | Type declared |
-| `Scale` | configuration pass-through | `scale` | Type declared |
-| `Replicate` | configuration pass-through | `replicate` | Type declared |
-| `StoreName` | configuration pass-through | `storeName`; present upstream but omitted from the initial plan | Type declared |
+| `Leaderboards` | configuration pass-through | Typed declaration keyed by numeric schema paths | Type and transformer native-key coverage Phase 3/9 |
+| `Stat` | configuration pass-through | Static numeric schema path | Type plus transformer numeric-leaf diagnostic coverage Phase 3 |
+| `Limit` | configuration pass-through | `limit` | Transformer native-key coverage Phase 3 |
+| `Scale` | configuration pass-through | `scale` | Transformer native-key coverage Phase 3 |
+| `Replicate` | configuration pass-through | `replicate` | Transformer native-key coverage Phase 3 |
+| `StoreName` | configuration pass-through | `storeName`; present upstream but omitted from the initial plan | Transformer native-key coverage Phase 3 |
 
 ## Monetization, gifting, ownership, and receipts
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| `PromptGift` | Rovy job | `ScribeMonetization.promptGift`; native implementation waits for durable saves | Type declared |
-| `GetGiftCredits` | first-class | `ScribeMonetization.getGiftCredits` | Type declared |
-| `HandleReceipt` | Rovy job | Receipt service/setup bridge; must run outside scheduled systems and preserve fail-closed result | Type declared; setup contract unresolved |
-| `TryHandleReceipt` | Rovy job | `ScribeReceipts.tryHandleReceipt`; native 1.0.11 returns `nil` for unknown products | Type coverage Phase 3; runtime Phase 9 |
-| `Owns` | first-class | Cached ownership read; client remains non-authoritative | Type declared |
-| `OwnsAsync` | Rovy job | Server authoritative ownership check / client synced wait | Type declared |
-| `ObserveOwned` | Rovy event | `ScribeOwnershipChanged` | General signal bridge runtime Phase 6; keyed service bridge Phase 9 |
+| `PromptGift` | Rovy job | `ScribeMonetization.promptGift`; native implementation waits for durable saves | Argument snapshot, native reason, polling, and completion runtime coverage Phase 9 |
+| `GetGiftCredits` | first-class | `ScribeMonetization.getGiftCredits` | Frozen server/client and readiness-gated runtime coverage Phase 9 |
+| `HandleReceipt` | Rovy job | `ScribeReceipts.handleReceipt`; native fail-closed decision remains authoritative and default Scribe ownership is untouched | Immutable input and yielding job runtime coverage Phase 9; native integration pending |
+| `TryHandleReceipt` | Rovy job | `ScribeReceipts.tryHandleReceipt`; native 1.0.11 returns `nil` for unknown products | Unknown-product and immutable input runtime coverage Phase 9 |
+| `Owns` | first-class | Cached ownership read; client remains non-authoritative | Client readiness gate and server signature runtime coverage Phase 9 |
+| `OwnsAsync` | Rovy job | Server `ownsAuthoritative` / client `ownsSynced` | Boundary guards, job isolation, and server session cancellation coverage Phase 9 |
+| `ObserveOwned` | Rovy event | `ScribeOwnershipChanged` | Deferred keyed payload bridge runtime Phase 6 |
 | `OnOwnershipChanged` | Rovy event | `ScribeOwnershipChanged` | Client/server signal runtime coverage Phase 6; native integration pending |
-| `GrantPerk` | first-class | Buffered authoritative mutation | Type declared |
-| `RevokePerk` | first-class | Buffered authoritative mutation | Type declared |
-| `Purchase` | Rovy job | Buffered atomic purchase with result handle | Type declared |
-| `RecordPurchase` | first-class | Buffered purchase-log append | Type declared |
-| `GetPurchases` | first-class | Immutable purchase-log read | Type declared |
+| `GrantPerk` | first-class | Buffered authoritative mutation | Per-player native `Batch`, order, and failure accounting runtime coverage Phase 9 |
+| `RevokePerk` | first-class | Buffered authoritative mutation | Per-player native `Batch` runtime coverage Phase 9 |
+| `Purchase` | Rovy job | Buffered native atomic purchase with result handle | Flush-gated native `Purchase`, typed grant facade, rollback reason, cancellation, and batch-failure coverage Phase 9 |
+| `RecordPurchase` | first-class | Buffered purchase-log append | Immutable metadata snapshot and native-key translation coverage Phase 9 |
+| `GetPurchases` | first-class | Immutable normalized purchase-log read | Server/client filter and Robux/InGame normalization runtime coverage Phase 9 |
 | `OnGiftReceived` | Rovy event | `ScribeGiftReceived` | Deferred signal/runtime coverage Phase 6; native integration pending |
 | `OnGiftCredit` | Rovy event | `ScribeGiftCredit` | Deferred signal/runtime coverage Phase 6; native integration pending |
-| `Products` | configuration pass-through | Shared IDs/categories/grants plus server-only grant callbacks | Type declared |
-| `Passes` | configuration pass-through | Pass declarations | Type declared |
-| `Perks` | configuration pass-through | Perk declarations | Type declared |
-| `OwnReceipts` | configuration pass-through | Receipt ownership setup; multi-bundle conflicts fail startup | Type declared |
-| `PurchaseLog` | configuration pass-through | `ScribePurchaseLogConfig` | Type declared |
-| `GiftCooldown` | configuration pass-through | `gifting.cooldown` | Type declared |
-| `GiftMaxPending` | configuration pass-through | `gifting.maxPending` | Type declared |
-| `GiftIntentTTL` | configuration pass-through | `gifting.intentTtl` | Type declared |
-| `AllowDuplicateGifts` | configuration pass-through | `gifting.allowDuplicate` | Type declared |
-| `NoGiftIntentPolicy` | configuration pass-through | `gifting.noIntentPolicy` | Type declared |
+| `Products` | configuration pass-through | Shared IDs/categories/grants plus server-only grant callbacks | Type, transformer, and setup callback adapter coverage Phase 3/9 |
+| `Passes` | configuration pass-through | Pass declarations | Type and transformer coverage Phase 3/9 |
+| `Perks` | configuration pass-through | Perk declarations | Type and transformer literal diagnostics Phase 3/9 |
+| `OwnReceipts` | configuration pass-through | Native receipt ownership flag; default Scribe `ProcessReceipt` remains untouched | Type and transformer coverage Phase 3/9 |
+| `PurchaseLog` | configuration pass-through | `ScribePurchaseLogConfig` | Type and transformer nested-key coverage Phase 3/9 |
+| `GiftCooldown` | configuration pass-through | `gifting.cooldown` | Transformer top-level native-key coverage Phase 3 |
+| `GiftMaxPending` | configuration pass-through | `gifting.maxPending` | Transformer top-level native-key coverage Phase 3 |
+| `GiftIntentTTL` | configuration pass-through | `gifting.intentTtl` | Transformer top-level native-key coverage Phase 3 |
+| `AllowDuplicateGifts` | configuration pass-through | `gifting.allowDuplicate` | Transformer top-level native-key coverage Phase 3 |
+| `NoGiftIntentPolicy` | configuration pass-through | `gifting.noIntentPolicy` | Transformer enum/native-key coverage Phase 3 |
 
 ## Economy analytics
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
 | tagged `Increment` / `Decrement` | first-class | `ScribeEconomyMeta` on numeric writer operations | Native-key translation/runtime coverage Phase 5; native integration pending |
-| `Economy.Resolve` | configuration pass-through | Server setup callback | Type declared |
-| `Economy.Prefix` | configuration pass-through | Shared economy declaration | Type declared |
-| `Economy.Currencies` | configuration pass-through | Shared economy declaration | Type declared |
-| currency `Label` | configuration pass-through | Currency declaration | Type declared |
-| currency `Fields` | configuration pass-through | Declared custom field slots | Type declared |
-| currency `Resolve` | configuration pass-through | Server setup callback | Type declared |
-| `LogEconomyEvent` | configuration pass-through | Server setup callback; native analytics remains authoritative | Type declared |
+| `Economy.Resolve` | configuration pass-through | Server setup callback | Typed setup/native callback adapter coverage Phase 3 |
+| `Economy.Prefix` | configuration pass-through | Shared economy declaration | Transformer native-key coverage Phase 3 |
+| `Economy.Currencies` | configuration pass-through | Shared economy declaration keyed by numeric leaf name | Transformer numeric-leaf diagnostics and runtime metadata validation Phase 9 |
+| currency `Label` | configuration pass-through | Currency declaration | Transformer native-key coverage Phase 3 |
+| currency `Fields` | configuration pass-through | At most three declared custom field slots | Duplicate/limit transformer diagnostics and per-write declared-name validation Phase 9 |
+| currency `Resolve` | configuration pass-through | Server setup callback | Typed setup/native callback adapter coverage Phase 3 |
+| `LogEconomyEvent` | configuration pass-through | Server setup callback; native analytics remains authoritative | Typed setup/native callback adapter coverage Phase 3 |
 
 ## Timed fields and cooldowns
 
@@ -275,9 +275,9 @@ full-bundle integration remains pending.
 | `SetTimed` | first-class | Buffered `ScribeTimedWriter.setTimed` | Runtime coverage Phase 5; native integration pending |
 | `ExtendTimed` | first-class | Buffered `ScribeTimedWriter.extendTimed` | Runtime coverage Phase 5; native integration pending |
 | `Active` | first-class | `ScribeTimedReader.active` | Fixture |
-| `OnCooldown` | Rovy job | Buffered check-and-arm; result exists only after flush | Type declared |
-| `PeekCooldown` | first-class | Committed `ScribeCooldowns.peek` | Type declared |
-| `ClearCooldown` | first-class | Buffered `ScribeCooldowns.clear` | Type declared |
+| `OnCooldown` | Rovy job | Buffered check-and-arm; result exists only after the native batch commits | Result, polling, cancellation, and batch-order runtime coverage Phase 9 |
+| `PeekCooldown` | first-class | Committed `ScribeCooldowns.peek` | Native tuple normalization runtime coverage Phase 9 |
+| `ClearCooldown` | first-class | Buffered `ScribeCooldowns.clear` | Native per-player batch runtime coverage Phase 9 |
 
 ## Messaging
 
@@ -361,11 +361,10 @@ full-bundle integration remains pending.
 ## Remaining parity gaps
 
 The table has no unclassified member. Rows whose coverage checkpoint still says
-“type declared,” “fixture,” or names a future phase remain implementation gaps;
-the largest groups are leaderboards, monetization/ownership/receipts, cooldowns,
-edit-mode tooling, diagnostics, and Studio compatibility. Full-bundle Roblox
-integration remains pending even where fake-binding or pinned-source coverage
-exists.
+“type declared,” “fixture,” or names a future phase remain implementation gaps.
+The largest remaining groups are edit-mode tooling, diagnostics, and Studio
+compatibility. Full-bundle Roblox integration remains pending even where
+fake-binding or pinned-source coverage exists.
 
 If the project chooses a Scribe commit other than the baseline, this inventory
 must be regenerated from that exact source before runtime support is claimed.

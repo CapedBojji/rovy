@@ -704,7 +704,7 @@ function validateScribeDataOptionValue(
 			);
 			return;
 		case "economy":
-			validateScribeEconomyOption(state, value);
+			validateScribeEconomyOption(state, value, template);
 			return;
 		case "perks":
 			if (
@@ -809,6 +809,7 @@ function validateScribeNamedConfigs(
 function validateScribeEconomyOption(
 	state: TransformState,
 	value: ts.Expression,
+	template: ts.Expression,
 ): void {
 	const economy = validateInlineScribeObject(
 		state,
@@ -824,7 +825,19 @@ function validateScribeEconomyOption(
 		currencies,
 		"economy.currencies",
 		SCRIBE_ECONOMY_CURRENCY_KEYS,
-		(_name, currency) => {
+		(name, currency) => {
+			if (
+				scribeTemplateHasNumericCurrencyName(
+					state,
+					template,
+					name,
+				) === "no"
+			) {
+				state.diagnostic(
+					currency,
+					`[rovy/scribe] economy currency '${name}' must name a numeric schema leaf`,
+				);
+			}
 			const fields = propertyValue(currency, "fields");
 			if (fields === undefined) return;
 			if (!ts.isArrayLiteralExpression(fields)) {
@@ -834,8 +847,23 @@ function validateScribeEconomyOption(
 				);
 				return;
 			}
+			if (fields.elements.length > 3) {
+				state.diagnostic(
+					fields,
+					"[rovy/scribe] economy currencies can declare at most three custom fields",
+				);
+			}
+			const declared = new Set<string>();
 			for (const field of fields.elements) {
-				if (ts.isStringLiteralLike(field)) continue;
+				if (ts.isStringLiteralLike(field)) {
+					validateEconomyFieldName(
+						state,
+						field,
+						field.text,
+						declared,
+					);
+					continue;
+				}
 				if (!ts.isObjectLiteralExpression(field)) {
 					state.diagnostic(
 						field,
@@ -855,10 +883,117 @@ function validateScribeEconomyOption(
 						name ?? field,
 						"[rovy/scribe] economy field requires a string literal name",
 					);
+				} else {
+					validateEconomyFieldName(
+						state,
+						name,
+						name.text,
+						declared,
+					);
 				}
 			}
 		},
 	);
+}
+
+function validateEconomyFieldName(
+	state: TransformState,
+	node: ts.Node,
+	name: string,
+	declared: Set<string>,
+): void {
+	if (name.length === 0) {
+		state.diagnostic(
+			node,
+			"[rovy/scribe] economy field names must not be empty",
+		);
+		return;
+	}
+	if (declared.has(name)) {
+		state.diagnostic(
+			node,
+			`[rovy/scribe] duplicate economy field '${name}'`,
+		);
+		return;
+	}
+	declared.add(name);
+}
+
+type ScribeNumericCurrencyMatch = "yes" | "dynamic" | "no";
+
+function scribeTemplateHasNumericCurrencyName(
+	state: TransformState,
+	template: ts.Expression,
+	currencyName: string,
+): ScribeNumericCurrencyMatch {
+	return visitScribeNumericCurrency(
+		state,
+		template,
+		currencyName,
+		undefined,
+		false,
+	);
+}
+
+function visitScribeNumericCurrency(
+	state: TransformState,
+	expression: ts.Expression,
+	currencyName: string,
+	fieldName: string | undefined,
+	dynamicLeaf: boolean,
+): ScribeNumericCurrencyMatch {
+	const current = unwrapScribeSchemaExpression(
+		state,
+		expression.getSourceFile(),
+		expression,
+	).expression;
+	const helper = scribeSchemaHelperCall(
+		state,
+		current.getSourceFile(),
+		current,
+	);
+	if (
+		helper === "int" ||
+		helper === "number" ||
+		ts.isNumericLiteral(current)
+	) {
+		if (dynamicLeaf) return "dynamic";
+		return fieldName === currencyName ? "yes" : "no";
+	}
+	if (
+		helper === "arrayOf" ||
+		helper === "dictOf"
+	) {
+		const element = (current as ts.CallExpression).arguments[0];
+		if (element === undefined) return "no";
+		return visitScribeNumericCurrency(
+			state,
+			element,
+			currencyName,
+			undefined,
+			true,
+		);
+	}
+	if (ts.isObjectLiteralExpression(current)) {
+		let sawDynamic = false;
+		for (const property of current.properties) {
+			if (ts.isSpreadAssignment(property)) continue;
+			const child = propertyInitializer(property);
+			const childName = propertyNameText(property.name);
+			if (child === undefined || childName === undefined) continue;
+			const result = visitScribeNumericCurrency(
+				state,
+				child,
+				currencyName,
+				childName,
+				false,
+			);
+			if (result === "yes") return "yes";
+			if (result === "dynamic") sawDynamic = true;
+		}
+		return sawDynamic ? "dynamic" : "no";
+	}
+	return "no";
 }
 
 function scribeTemplatePathIsNumeric(
@@ -5034,7 +5169,7 @@ const SCRIBE_DATA_PARAM_INFOS: ReadonlyArray<ScribeDataParamInfo> = [
 	{ name: "ScribeServerWriter", prefix: "@rovy/scribe/server-writer:", boundary: "server" },
 	{ name: "ScribePersistence", prefix: "@rovy/scribe/persistence:", boundary: "server" },
 	{ name: "ScribeLeaderboards", prefix: "@rovy/scribe/leaderboards:", boundary: "both" },
-	{ name: "ScribeMonetization", prefix: "@rovy/scribe/monetization:", boundary: "server" },
+	{ name: "ScribeMonetization", prefix: "@rovy/scribe/monetization:", boundary: "both" },
 	{ name: "ScribeOwnership", prefix: "@rovy/scribe/ownership:", boundary: "both" },
 	{ name: "ScribeReceipts", prefix: "@rovy/scribe/receipts:", boundary: "server" },
 	{ name: "ScribeCooldowns", prefix: "@rovy/scribe/cooldowns:", boundary: "server" },

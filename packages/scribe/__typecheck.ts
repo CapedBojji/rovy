@@ -16,14 +16,19 @@ import {
 	ScribeCommandReader,
 	ScribeCommandRequest,
 	ScribeCommandResponder,
+	ScribeCooldowns,
 	ScribeDataOptions,
 	ScribeJobCompleted,
 	ScribeKeyAdded,
 	ScribeKeyRemoved,
+	ScribeLeaderboards,
 	ScribeLocalWriter,
 	ScribeMessaging,
+	ScribeMonetization,
+	ScribeOwnership,
 	ScribePersistence,
 	ScribePersistedShape,
+	ScribePurchaseRecord,
 	ScribeReady,
 	ScribeReceipts,
 	ScribeServerReader,
@@ -93,6 +98,49 @@ export const PlayerData = scribeData({
 		saveInterval: 60,
 		boundsPolicy: "clamp",
 		wipeGuardPolicy: "block",
+		leaderboards: {
+			Coins: {
+				stat: "Coins",
+				limit: 25,
+				replicate: true,
+			},
+		},
+		products: {
+			Coins100: {
+				id: 123,
+				category: "Currency",
+				grants: "VIP",
+			},
+		},
+		passes: {
+			VIP: {
+				id: 456,
+				category: "Access",
+			},
+		},
+		perks: ["VIP"],
+		ownReceipts: true,
+		purchaseLog: {
+			robuxCap: 50,
+			inGameCap: 50,
+			replicateRobux: true,
+		},
+		gifting: {
+			cooldown: 10,
+			maxPending: 5,
+			intentTtl: 300,
+			allowDuplicate: false,
+			noIntentPolicy: "grantOrCredit",
+		},
+		economy: {
+			prefix: true,
+			currencies: {
+				Coins: {
+					label: "Gold",
+					fields: ["Region"],
+				},
+			},
+		},
 	},
 });
 
@@ -491,6 +539,11 @@ declare const commandResponder: ScribeCommandResponder;
 declare const typedRequest: ScribeCommandRequest<EquipItem, EquipItemResult>;
 declare const persistenceService: ScribePersistence<typeof PlayerData>;
 declare const messagingService: ScribeMessaging<typeof PlayerData>;
+declare const leaderboardService: ScribeLeaderboards<typeof PlayerData>;
+declare const monetizationService: ScribeMonetization<typeof PlayerData>;
+declare const ownershipService: ScribeOwnership<typeof PlayerData>;
+declare const cooldownService: ScribeCooldowns<typeof PlayerData>;
+declare const receiptService: ScribeReceipts<typeof PlayerData>;
 declare const unsafeService: ScribeUnsafe<typeof PlayerData>;
 
 clientData.Coins.get();
@@ -520,6 +573,81 @@ const messageResult = messagingService.takeResult(messageHandle);
 print(messageResult, unsafeService.profileStore);
 // @ts-expect-error — raw ProfileStore access is isolated to ScribeUnsafe.
 persistenceService.profileStore;
+
+const leaderboardEntries = leaderboardService.get("Coins", 10);
+const leaderboardScore: number | undefined = leaderboardEntries[0]?.score;
+const playerRank = leaderboardService.getMyRank("Coins", player);
+const mirroredOwnership: boolean = ownershipService.owns("VIP", player);
+const syncedOwnership = ownershipService.ownsSynced("VIP", 5);
+const authoritativeOwnership = ownershipService.ownsAuthoritative(
+	player,
+	"VIP",
+);
+ownershipService.grantPerk(player, "VIP");
+ownershipService.revokePerk(player, "VIP");
+const giftCredits = monetizationService.getGiftCredits(player);
+const gift = monetizationService.promptGift(player, "Coins100", 123);
+const purchase = monetizationService.purchase(player, {
+	cost: {
+		path: "Coins",
+		amount: 100,
+	},
+	category: "Potion",
+	itemId: "HealthPotion",
+	metadata: {
+		Region: "US",
+	},
+	grant(writes) {
+		writes.Inventory.at("HealthPotion").set({
+			Amount: 1,
+			Level: 1,
+		});
+	},
+});
+monetizationService.recordPurchase(player, {
+	category: "Potion",
+	itemId: "HealthPotion",
+	metadata: {
+		Region: "US",
+	},
+});
+const purchaseRecords: ReadonlyArray<ScribePurchaseRecord> =
+	monetizationService.getPurchases(player, {
+		kind: "InGame",
+		limit: 10,
+	});
+const cooldown = cooldownService.onCooldown(player, "Daily", 60);
+const cooldownState = cooldownService.peek(player, "Daily");
+cooldownService.clear(player, "Daily");
+const receipt = receiptService.tryHandleReceipt({
+	PlayerId: 123,
+	PlaceIdWherePurchased: 456,
+	PurchaseId: "receipt",
+	ProductId: 789,
+	CurrencySpent: 99,
+});
+print(
+	leaderboardScore,
+	playerRank,
+	mirroredOwnership,
+	syncedOwnership,
+	authoritativeOwnership,
+	giftCredits,
+	gift,
+	purchase,
+	purchaseRecords,
+	cooldown,
+	cooldownState,
+	receipt,
+);
+monetizationService.purchase(player, {
+	cost: {
+		// @ts-expect-error — purchase costs must reference a numeric schema leaf.
+		path: "EquippedItem",
+		amount: 1,
+	},
+	itemId: "Invalid",
+});
 
 const inferredHandle = inferredCommand.call(new EquipItem("IronSword"));
 const inferredResult = inferredCommand.takeResult(inferredHandle);

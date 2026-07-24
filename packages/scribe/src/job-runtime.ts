@@ -25,9 +25,10 @@ interface PendingJob {
 	readonly handle: InternalJobHandle;
 	readonly owner: ScribeJobOwner;
 	readonly player?: Player;
-	readonly execute: () => ScribeJobResult<unknown>;
+	readonly execute?: () => ScribeJobResult<unknown>;
 	started: boolean;
 	canceled: boolean;
+	completionQueued: boolean;
 }
 
 interface JobCompletion {
@@ -79,6 +80,77 @@ export class ScribeJobRuntime {
 		execute: () => ScribeJobResult<T>,
 		player?: Player,
 	): ScribeJobHandle<T> {
+		const handle = this.allocate(
+			owner,
+			operation,
+			player,
+			execute as () => ScribeJobResult<unknown>,
+			false,
+		);
+		this.queued.push(handle.id);
+		return handle as ScribeJobHandle<T>;
+	}
+
+	reserveBuffered<T>(
+		owner: ScribeJobOwner,
+		operation: string,
+		player: Player,
+	): ScribeJobHandle<T> {
+		return this.allocate(
+			owner,
+			operation,
+			player,
+			undefined,
+			true,
+		) as ScribeJobHandle<T>;
+	}
+
+	completeBuffered<T>(
+		owner: ScribeJobOwner,
+		handle: ScribeJobHandle<T>,
+		result: ScribeJobResult<T>,
+	): void {
+		const pending = this.pending.get(handle.id);
+		assert(
+			pending !== undefined &&
+				pending.handle === handle &&
+				pending.owner.key === owner.key,
+			"[rovy/scribe] cannot complete an unknown or foreign buffered job handle",
+		);
+		assert(
+			!pending.canceled &&
+				!pending.completionQueued &&
+				!this.results.has(handle.id),
+			"[rovy/scribe] buffered job completed more than once",
+		);
+		this.queueCompletion(
+			pending,
+			result as ScribeJobResult<unknown>,
+		);
+	}
+
+	canRunBuffered<T>(
+		owner: ScribeJobOwner,
+		handle: ScribeJobHandle<T>,
+	): boolean {
+		const pending = this.pending.get(handle.id);
+		return (
+			pending !== undefined &&
+			pending.handle === handle &&
+			pending.owner.key === owner.key &&
+			!pending.canceled &&
+			!pending.completionQueued &&
+			!this.results.has(handle.id)
+		);
+	}
+
+	private allocate(
+		owner: ScribeJobOwner,
+		operation: string,
+		player: Player | undefined,
+		execute: (() => ScribeJobResult<unknown>) | undefined,
+		started: boolean,
+	): InternalJobHandle {
 		assert(
 			this.bundleById.has(owner.dataId),
 			`[rovy/scribe] cannot queue ${operation} for unknown data definition '${owner.dataId}'`,
@@ -94,12 +166,12 @@ export class ScribeJobRuntime {
 			handle,
 			owner,
 			player,
-			execute: execute as () => ScribeJobResult<unknown>,
-			started: false,
+			execute,
+			started,
 			canceled: false,
+			completionQueued: false,
 		});
-		this.queued.push(handle.id);
-		return handle as ScribeJobHandle<T>;
+		return handle;
 	}
 
 	hasResult<T>(
@@ -183,24 +255,30 @@ export class ScribeJobRuntime {
 			if (
 				pending.player !== player ||
 				this.results.has(pending.handle.id) ||
-				pending.canceled
+				pending.canceled ||
+				pending.completionQueued
 			) {
 				continue;
 			}
 			pending.canceled = true;
-			this.completions.push({
-				handleId: pending.handle.id,
-				result: table.freeze({
+			this.queueCompletion(
+				pending,
+				table.freeze({
 					ok: false,
 					error: reason,
 				}),
-			});
+			);
 		}
 	}
 
 	private start(pending: PendingJob): void {
 		task.spawn(() => {
-			const [ok, valueOrError] = pcall(pending.execute);
+			const execute = pending.execute;
+			assert(
+				execute !== undefined,
+				"[rovy/scribe] buffered job cannot start as a yielding job",
+			);
+			const [ok, valueOrError] = pcall(execute);
 			if (pending.canceled) return;
 			const result: ScribeJobResult<unknown> = ok
 				? valueOrError
@@ -208,10 +286,19 @@ export class ScribeJobRuntime {
 						ok: false,
 						error: `${pending.handle.operation}-error: ${tostring(valueOrError)}`,
 					});
-			this.completions.push({
-				handleId: pending.handle.id,
-				result,
-			});
+			this.queueCompletion(pending, result);
+		});
+	}
+
+	private queueCompletion(
+		pending: PendingJob,
+		result: ScribeJobResult<unknown>,
+	): void {
+		if (pending.completionQueued) return;
+		pending.completionQueued = true;
+		this.completions.push({
+			handleId: pending.handle.id,
+			result,
 		});
 	}
 

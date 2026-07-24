@@ -83,6 +83,7 @@ import {
 		ScribeDiagnostics,
 		ScribeLeaderboards,
 		ScribeLocalWriter,
+		ScribeMonetization,
 		ScribePersistence,
 		ScribeServerReader,
 		ScribeServerWriter,
@@ -1157,6 +1158,7 @@ class ClientSystem {
 		local: ScribeLocalWriter<typeof PlayerData>,
 		sharedReader: ScribeSharedReader<typeof PlayerData>,
 		boards: ScribeLeaderboards<typeof PlayerData>,
+		monetization: ScribeMonetization<typeof PlayerData>,
 		command: ScribeCommand<Fetch>,
 		diagnostics: ScribeDiagnostics,
 	) {
@@ -1170,6 +1172,7 @@ class ClientSystem {
 	assert.match(clientResult.printed, /id: "@rovy\/scribe\/local-writer:src\/client\/main\/PlayerData"/);
 	assert.match(clientResult.printed, /id: "@rovy\/scribe\/shared-reader:src\/client\/main\/PlayerData"/);
 	assert.match(clientResult.printed, /id: "@rovy\/scribe\/leaderboards:src\/client\/main\/PlayerData"/);
+	assert.match(clientResult.printed, /id: "@rovy\/scribe\/monetization:src\/client\/main\/PlayerData"/);
 	assert.match(clientResult.printed, /id: "@rovy\/scribe\/command-client:src\/client\/main@Fetch"/);
 	assert.match(clientResult.printed, /id: "@rovy\/scribe\/diagnostics"/);
 	assert.match(clientResult.printed, /command\.call\(new Fetch\("coins"\), "src\/client\/main:0"\)/);
@@ -1249,6 +1252,9 @@ export const BadData = scribeData({
 				Coins: {
 					fields: [{ typo: true }],
 				},
+				Missing: {
+					fields: ["A", "B", "C", "C"],
+				},
 			},
 		},
 	},
@@ -1268,6 +1274,9 @@ export const BadData = scribeData({
 	assert.match(diagnostics, /leaderboards\.Bad has unknown option 'typo'/);
 	assert.match(diagnostics, /stat 'Public' must reference a numeric schema leaf/);
 	assert.match(diagnostics, /economy field has unknown option 'typo'/);
+	assert.match(diagnostics, /economy currency 'Missing' must name a numeric schema leaf/);
+	assert.match(diagnostics, /economy currencies can declare at most three custom fields/);
+	assert.match(diagnostics, /duplicate economy field 'C'/);
 });
 
 runCase("@server/@client guard system registration and lowered params", () => {

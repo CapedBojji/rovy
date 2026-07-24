@@ -14,6 +14,9 @@ import {
 import {
 	isScribeSchemaDescriptor,
 } from "./schema";
+import {
+	assertScribeSerializable,
+} from "./serialization";
 import type {
 	ScribeEconomyMeta,
 	ScribeTransactionHandle,
@@ -22,16 +25,34 @@ import type {
 type UnknownTable = Record<string | number, unknown>;
 type NativeMethod = (...args: ReadonlyArray<unknown>) => unknown;
 
-export interface ScribeWriteOperation {
+interface ScribeWriteOperationBase {
 	readonly sequence: number;
 	readonly dataId: string;
 	readonly player?: Player;
 	readonly path: ReadonlyArray<string | number>;
-	readonly kind: ScribeWriteKind;
 	readonly args: ReadonlyArray<unknown>;
 	readonly transactionId?: number;
 	readonly commandHandleId?: number;
 }
+
+export interface ScribeTreeWriteOperation
+	extends ScribeWriteOperationBase
+{
+	readonly kind: ScribeWriteKind;
+}
+
+export interface ScribeCustomWriteOperation
+	extends ScribeWriteOperationBase
+{
+	readonly kind: "custom";
+	readonly label: string;
+	readonly apply: () => string | undefined | void;
+	readonly onFailure?: (error: string) => void;
+}
+
+export type ScribeWriteOperation =
+	| ScribeTreeWriteOperation
+	| ScribeCustomWriteOperation;
 
 export interface ScribeWriteFailure {
 	readonly dataId: string;
@@ -98,6 +119,43 @@ export class ScribeWriteQueue {
 		this.pending.push({
 			entryKind: "ordinary",
 			operation: this.materialize(dataId, player, write),
+		});
+	}
+
+	enqueueCustom(
+		dataId: string,
+		player: Player,
+		label: string,
+		apply: () => string | undefined | void,
+		onFailure?: (error: string) => void,
+	): void {
+		assert(
+			this.boundary === "server",
+			"[rovy/scribe] feature writes are server-only",
+		);
+		assert(
+			!this.activeTransaction,
+			"[rovy/scribe] feature writes cannot be queued from inside writes.transaction",
+		);
+		assert(
+			typeIs(apply, "function"),
+			"[rovy/scribe] feature write requires an apply callback",
+		);
+		this.bundle(dataId);
+		this.pending.push({
+			entryKind: "ordinary",
+			operation: table.freeze({
+				sequence: this.nextSequence(),
+				dataId,
+				player,
+				path: table.freeze(new Array<string | number>()),
+				kind: "custom",
+				args: table.freeze(new Array<unknown>()),
+				commandHandleId: this.commandHandleId,
+				label,
+				apply,
+				onFailure,
+			}),
 		});
 	}
 
@@ -216,7 +274,19 @@ export class ScribeWriteQueue {
 		player: Player | undefined,
 		write: ScribeQueuedWrite,
 		transactionId?: number,
-	): ScribeWriteOperation {
+	): ScribeTreeWriteOperation {
+		const definition = this.bundle(dataId).definition;
+		if (
+			(write.kind === "increment" ||
+				write.kind === "decrement") &&
+			write.args[1] !== undefined
+		) {
+			validateEconomyMeta(
+				definition,
+				write.path,
+				write.args[1],
+			);
+		}
 		const path = new Array<string | number>();
 		for (const segment of write.path) path.push(segment);
 		const args = new Array<defined>();
@@ -263,6 +333,10 @@ export class ScribeWriteQueue {
 		const first = operations[0];
 		const player = first.player!;
 		const bundle = this.bundle(first.dataId);
+		const softFailures = new Array<{
+			readonly operation: ScribeWriteOperation;
+			readonly error: string;
+		}>();
 		const [ok, failureReason] = pcall(() => {
 			callNative(bundle.active, "Batch", player, () => {
 				const root = callNative(bundle.active, "Get", player);
@@ -271,15 +345,30 @@ export class ScribeWriteQueue {
 					"[rovy/scribe] native Server.Get returned no accessor during Batch",
 				);
 				for (const operation of operations) {
-					applyOperation(
+					const operationFailure = applyOperation(
 						bundle.definition.template,
 						root,
 						operation,
 					);
+					if (operationFailure !== undefined) {
+						softFailures.push({
+							operation,
+							error: operationFailure,
+						});
+					}
 				}
 			});
 		});
-		if (!ok) this.recordFailure(operations, tostring(failureReason));
+		if (!ok) {
+			this.recordFailure(operations, tostring(failureReason));
+			return;
+		}
+		for (const failure of softFailures) {
+			this.recordFailure(
+				[failure.operation],
+				failure.error,
+			);
+		}
 	}
 
 	private applyTransaction(entry: TransactionEntry): void {
@@ -349,6 +438,15 @@ export class ScribeWriteQueue {
 				error: failureReason,
 			}),
 		);
+		for (const operation of operations) {
+			if (
+				operation.kind !== "custom" ||
+				operation.onFailure === undefined
+			) {
+				continue;
+			}
+			pcall(operation.onFailure, failureReason);
+		}
 	}
 }
 
@@ -356,7 +454,15 @@ function applyOperation(
 	template: object,
 	root: object,
 	operation: ScribeWriteOperation,
-): void {
+): string | undefined {
+	if (operation.kind === "custom") {
+		const result = operation.apply();
+		assert(
+			result === undefined || typeIs(result, "string"),
+			`[rovy/scribe] buffered feature '${operation.label}' returned an invalid failure`,
+		);
+		return result as string | undefined;
+	}
 	const node = resolveNativeNode(template, root, operation.path);
 	const args = operation.args;
 	switch (operation.kind) {
@@ -366,14 +472,14 @@ function applyOperation(
 				"Set",
 				restoreNil(args[0]),
 			);
-			return;
+			return undefined;
 		case "update": {
 			const transform = args[0] as (current: unknown) => unknown;
 			callNative(node, "Update", (current: unknown) => {
 				const safe = freezeScribeValue(cloneScribeValue(current));
 				return cloneScribeValue(transform(safe));
 			});
-			return;
+			return undefined;
 		}
 		case "increment":
 		case "decrement":
@@ -385,10 +491,10 @@ function applyOperation(
 				args[0],
 				compileEconomyMeta(args[1] as ScribeEconomyMeta | undefined),
 			);
-			return;
+			return undefined;
 		case "toggle":
 			callNative(node, "Toggle");
-			return;
+			return undefined;
 		case "insert":
 			callNative(
 				node,
@@ -398,7 +504,7 @@ function applyOperation(
 					? undefined
 					: (args[1] as number) + 1,
 			);
-			return;
+			return undefined;
 		case "remove": {
 			const target = args[0];
 			callNative(
@@ -406,14 +512,14 @@ function applyOperation(
 				"Remove",
 				typeIs(target, "number") ? target + 1 : target,
 			);
-			return;
+			return undefined;
 		}
 		case "removeValue":
 			callNative(node, "RemoveValue", restoreNil(args[0]));
-			return;
+			return undefined;
 		case "clear":
 			callNative(node, "Clear");
-			return;
+			return undefined;
 		case "setTimed":
 			callNative(
 				node,
@@ -421,10 +527,10 @@ function applyOperation(
 				restoreNil(args[0]),
 				args[1],
 			);
-			return;
+			return undefined;
 		case "extendTimed":
 			callNative(node, "ExtendTimed", args[0]);
-			return;
+			return undefined;
 	}
 }
 
@@ -505,6 +611,92 @@ function compileEconomyMeta(
 		Currency: meta.currency,
 		Fields: cloneScribeValue(meta.fields),
 	};
+}
+
+function validateEconomyMeta(
+	definition: RuntimeScribeDataDefinition,
+	path: ReadonlyArray<string | number>,
+	value: unknown,
+): asserts value is ScribeEconomyMeta {
+	assert(
+		typeIs(value, "table"),
+		"[rovy/scribe] economy metadata must be a table",
+	);
+	const meta = value as Record<string, unknown>;
+	assert(
+		meta.flow === undefined ||
+			meta.flow === "source" ||
+			meta.flow === "sink",
+		"[rovy/scribe] economy metadata flow must be 'source' or 'sink'",
+	);
+	assert(
+		meta.transactionType === undefined ||
+			typeIs(meta.transactionType, "string") ||
+			typeOf(meta.transactionType) === "EnumItem",
+		"[rovy/scribe] economy metadata transactionType must be a string or EnumItem",
+	);
+	assertOptionalNonemptyString(
+		meta.itemSku,
+		"economy metadata itemSku",
+	);
+	assertOptionalNonemptyString(
+		meta.currency,
+		"economy metadata currency",
+	);
+	if (meta.fields === undefined) return;
+	assert(
+		typeIs(meta.fields, "table"),
+		"[rovy/scribe] economy metadata fields must be a table",
+	);
+	assertScribeSerializable(meta.fields, "economy metadata fields");
+
+	const fieldName = tostring(path[path.size() - 1]);
+	const options = definition.options as UnknownTable | undefined;
+	const economy = (
+		options?.Economy ??
+		options?.economy
+	) as UnknownTable | undefined;
+	const currencies = (
+		economy?.Currencies ??
+		economy?.currencies
+	) as UnknownTable | undefined;
+	const currency = currencies?.[fieldName] as UnknownTable | undefined;
+	assert(
+		typeIs(currency, "table"),
+		`[rovy/scribe] economy fields were supplied for undeclared currency '${fieldName}'`,
+	);
+	const declared = new Set<string>();
+	const specs = (
+		currency.Fields ??
+		currency.fields ??
+		[]
+	) as ReadonlyArray<unknown>;
+	for (const spec of specs) {
+		if (typeIs(spec, "string")) {
+			declared.add(spec);
+		} else if (typeIs(spec, "table")) {
+			const tableSpec = spec as UnknownTable;
+			const name = tableSpec.Name ?? tableSpec.name;
+			if (typeIs(name, "string")) declared.add(name);
+		}
+	}
+	for (const [name] of pairs(meta.fields as UnknownTable)) {
+		assert(
+			typeIs(name, "string") && declared.has(name),
+			`[rovy/scribe] economy field '${tostring(name)}' is not declared for currency '${fieldName}'`,
+		);
+	}
+}
+
+function assertOptionalNonemptyString(
+	value: unknown,
+	label: string,
+): void {
+	assert(
+		value === undefined ||
+			(typeIs(value, "string") && value.size() > 0),
+		`[rovy/scribe] ${label} must be a non-empty string`,
+	);
 }
 
 function callNative(
