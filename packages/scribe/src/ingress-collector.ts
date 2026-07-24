@@ -3,6 +3,10 @@ import {
 	freezeScribeValue,
 } from "./reader-tree";
 import type {
+	ScribeCommandHandle,
+	ScribeCommandResult,
+} from "./commands";
+import type {
 	ScribeChangeSource,
 } from "./events";
 import type {
@@ -120,6 +124,14 @@ export interface ScribeIssueIngress extends ScribeIngressBase {
 	readonly entry: ScribeLogEntry;
 }
 
+export interface ScribeCommandCompletedIngress {
+	readonly kind: "commandCompleted";
+	readonly commandId: string;
+	readonly handle: ScribeCommandHandle<object, unknown>;
+	readonly request: object;
+	readonly result: ScribeCommandResult<unknown>;
+}
+
 export type ScribeIngressRecord =
 	| ScribeChangedIngress
 	| ScribeArrayIngress
@@ -136,7 +148,8 @@ export type ScribeIngressRecord =
 	| ScribeLeaderboardIngress
 	| ScribeServiceStatusIngress
 	| ScribeSharedIngress
-	| ScribeIssueIngress;
+	| ScribeIssueIngress
+	| ScribeCommandCompletedIngress;
 
 /**
  * Package-owned callback ingress. Native callbacks do no Rovy work: they only

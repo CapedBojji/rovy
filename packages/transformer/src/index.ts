@@ -3096,7 +3096,7 @@ function datastoreValidatorForType(
 		const declaration = typeDeclarationForTypeReference(state, type);
 		if (declaration === undefined) return unsupportedDatastoreType(state, type, path, name);
 		seen.add(key);
-		if (ts.isTypeAliasDeclaration(declaration)) {
+			if (ts.isTypeAliasDeclaration(declaration)) {
 			const validator = datastoreValidatorForType(state, sourceFile, declaration.type, path, seen);
 			seen.delete(key);
 			return validator;
@@ -3342,6 +3342,20 @@ function buildScribeCommandMeta(
 					: "unknown"),
 			),
 			prop("fields", arr(constructorFieldNames(node).map(str), false)),
+			prop(
+				"optionalFields",
+				arr(
+					constructorOptionalFieldNames(state, node).map(str),
+					false,
+				),
+			),
+			prop(
+				"fieldTypes",
+				arr(
+					constructorFieldTypes(state, node),
+					false,
+				),
+			),
 			prop("result", result ?? id("undefined")),
 			prop(
 				"resultFields",
@@ -3349,6 +3363,27 @@ function buildScribeCommandMeta(
 					(resultClass !== undefined
 						? constructorFieldNames(resultClass)
 						: []).map(str),
+					false,
+				),
+			),
+			prop(
+				"resultOptionalFields",
+				arr(
+					(resultClass !== undefined
+						? constructorOptionalFieldNames(
+								state,
+								resultClass,
+							)
+						: []).map(str),
+					false,
+				),
+			),
+			prop(
+				"resultFieldTypes",
+				arr(
+					resultClass !== undefined
+						? constructorFieldTypes(state, resultClass)
+						: [],
 					false,
 				),
 			),
@@ -3394,6 +3429,407 @@ function constructorFieldNames(node: ts.ClassDeclaration): string[] {
 		if (ts.isIdentifier(param.name)) fields.push(param.name.text);
 	}
 	return fields;
+}
+
+function constructorOptionalFieldNames(
+	state: TransformState,
+	node: ts.ClassDeclaration,
+): string[] {
+	const ctor = node.members.find(ts.isConstructorDeclaration);
+	const fields: string[] = [];
+	for (const param of ctor?.parameters ?? []) {
+		if (
+			ts.isIdentifier(param.name) &&
+			(param.questionToken !== undefined ||
+					param.initializer !== undefined ||
+					scribeTypeAllowsNil(state, param.type))
+		) {
+			fields.push(param.name.text);
+		}
+	}
+	return fields;
+}
+
+function constructorFieldTypes(
+	state: TransformState,
+	node: ts.ClassDeclaration,
+): ts.Expression[] {
+	const ctor = node.members.find(ts.isConstructorDeclaration);
+	const output: ts.Expression[] = [];
+	for (const param of ctor?.parameters ?? []) {
+		if (!ts.isIdentifier(param.name)) continue;
+		output.push(
+			scribeWireDescriptor(
+				state,
+				param.type,
+				new Set<ts.Node>(),
+			),
+		);
+	}
+	return output;
+}
+
+function scribeWireDescriptor(
+	state: TransformState,
+	node: ts.TypeNode | undefined,
+	seen: Set<ts.Node>,
+): ts.Expression {
+	if (node === undefined || seen.has(node)) {
+		return obj([prop("kind", str("serializable"))], false);
+	}
+	seen.add(node);
+	const finish = (expression: ts.Expression): ts.Expression => {
+		seen.delete(node);
+		return expression;
+	};
+	switch (node.kind) {
+		case ts.SyntaxKind.StringKeyword:
+			return finish(obj([prop("kind", str("string"))], false));
+		case ts.SyntaxKind.NumberKeyword:
+			return finish(obj([prop("kind", str("number"))], false));
+		case ts.SyntaxKind.BooleanKeyword:
+			return finish(obj([prop("kind", str("boolean"))], false));
+		case ts.SyntaxKind.UndefinedKeyword:
+		case ts.SyntaxKind.NullKeyword:
+			return finish(obj([prop("kind", str("nil"))], false));
+	}
+	if (ts.isLiteralTypeNode(node)) {
+		const literal = scribeWireLiteral(node.literal);
+		return finish(
+			literal === undefined
+				? obj([prop("kind", str("serializable"))], false)
+				: obj(
+						[
+							prop("kind", str("literal")),
+							prop("literal", literal),
+						],
+						false,
+					),
+		);
+	}
+	if (ts.isUnionTypeNode(node)) {
+		return finish(
+			obj(
+				[
+					prop("kind", str("union")),
+					prop(
+						"options",
+						arr(
+							node.types.map((part) =>
+								scribeWireDescriptor(state, part, seen)),
+							false,
+						),
+					),
+				],
+				false,
+			),
+		);
+	}
+	if (ts.isArrayTypeNode(node)) {
+		return finish(
+			scribeWireArrayDescriptor(
+				scribeWireDescriptor(state, node.elementType, seen),
+			),
+		);
+	}
+	if (ts.isTupleTypeNode(node)) {
+		return finish(
+			obj(
+				[
+					prop("kind", str("tuple")),
+					prop(
+						"elements",
+						arr(
+							node.elements.map((element) => {
+								const named = ts.isNamedTupleMember(element)
+									? element
+									: undefined;
+								const value = named?.type ?? element;
+								const inner = ts.isOptionalTypeNode(value)
+									? value.type
+									: value;
+								const optional =
+									named?.questionToken !== undefined ||
+									ts.isOptionalTypeNode(value) ||
+									scribeTypeAllowsNil(state, inner);
+								return obj(
+									[
+										prop(
+											"value",
+											scribeWireDescriptor(
+												state,
+												inner,
+												seen,
+											),
+										),
+										prop("optional", bool(optional)),
+									],
+									false,
+								);
+							}),
+							false,
+						),
+					),
+				],
+				false,
+			),
+		);
+	}
+	if (ts.isTypeLiteralNode(node)) {
+		return finish(
+			scribeWireObjectDescriptor(
+				state,
+				node.members,
+				seen,
+			),
+		);
+	}
+	if (ts.isTypeReferenceNode(node)) {
+		const name = lastTypeName(node.typeName);
+		if (name === "buffer") {
+			return finish(obj([prop("kind", str("buffer"))], false));
+		}
+		if (SCRIBE_WIRE_DATATYPES.has(name)) {
+			return finish(
+				obj(
+					[
+						prop("kind", str("datatype")),
+						prop("name", str(name)),
+					],
+					false,
+				),
+			);
+		}
+		if (name === "Array" || name === "ReadonlyArray") {
+			return finish(
+				scribeWireArrayDescriptor(
+					scribeWireDescriptor(
+						state,
+						node.typeArguments?.[0],
+						seen,
+					),
+				),
+			);
+		}
+		if (name === "Record") {
+			return finish(
+				obj(
+					[
+						prop("kind", str("record")),
+						prop(
+							"key",
+							scribeWireDescriptor(
+								state,
+								node.typeArguments?.[0],
+								seen,
+							),
+						),
+						prop(
+							"element",
+							scribeWireDescriptor(
+								state,
+								node.typeArguments?.[1],
+								seen,
+							),
+						),
+					],
+					false,
+				),
+			);
+		}
+		if (name === "Readonly") {
+			return finish(
+				scribeWireDescriptor(
+					state,
+					node.typeArguments?.[0],
+					seen,
+				),
+			);
+		}
+		const declaration = typeDeclarationForTypeReference(state, node);
+		if (declaration !== undefined) {
+			if (ts.isTypeAliasDeclaration(declaration)) {
+				return finish(
+					scribeWireDescriptor(
+						state,
+						declaration.type,
+						seen,
+					),
+				);
+			}
+			if (ts.isInterfaceDeclaration(declaration)) {
+				return finish(
+					scribeWireObjectDescriptor(
+						state,
+						declaration.members,
+						seen,
+					),
+				);
+			}
+			if (ts.isClassDeclaration(declaration)) {
+				const ctor = declaration.members.find(
+					ts.isConstructorDeclaration,
+				);
+				return finish(
+					scribeWireObjectDescriptor(
+						state,
+						ctor?.parameters ?? [],
+						seen,
+					),
+				);
+			}
+		}
+	}
+	return finish(obj([prop("kind", str("serializable"))], false));
+}
+
+function scribeWireArrayDescriptor(
+	element: ts.Expression,
+): ts.Expression {
+	return obj(
+		[
+			prop("kind", str("array")),
+			prop("element", element),
+		],
+		false,
+	);
+}
+
+function scribeWireObjectDescriptor(
+	state: TransformState,
+	members: readonly (
+		| ts.TypeElement
+		| ts.ParameterDeclaration
+	)[],
+	seen: Set<ts.Node>,
+): ts.Expression {
+	const fields = new Array<ts.ObjectLiteralElementLike>();
+	for (const member of members) {
+		if (
+			!ts.isPropertySignature(member) &&
+			!ts.isParameter(member)
+		) {
+			continue;
+		}
+		const name = ts.isParameter(member)
+			? ts.isIdentifier(member.name)
+				? member.name.text
+				: undefined
+			: propertyNameText(member.name);
+		if (name === undefined) continue;
+		fields.push(
+			prop(
+				name,
+				obj(
+					[
+						prop(
+							"value",
+							scribeWireDescriptor(
+								state,
+								member.type,
+								seen,
+							),
+						),
+						prop(
+							"optional",
+							bool(
+								member.questionToken !== undefined ||
+									(ts.isParameter(member) &&
+										member.initializer !== undefined) ||
+									scribeTypeAllowsNil(state, member.type),
+							),
+						),
+					],
+					false,
+				),
+			),
+		);
+	}
+	return obj(
+		[
+			prop("kind", str("object")),
+			prop("fields", obj(fields, false)),
+		],
+		false,
+	);
+}
+
+function scribeWireLiteral(
+	literal: ts.LiteralTypeNode["literal"],
+): ts.Expression | undefined {
+	if (ts.isStringLiteral(literal)) return str(literal.text);
+	if (ts.isNumericLiteral(literal)) return num(Number(literal.text));
+	if (literal.kind === ts.SyntaxKind.TrueKeyword) return bool(true);
+	if (literal.kind === ts.SyntaxKind.FalseKeyword) return bool(false);
+	if (
+		ts.isPrefixUnaryExpression(literal) &&
+		ts.isNumericLiteral(literal.operand)
+	) {
+		const value = Number(literal.operand.text);
+		return num(
+			literal.operator === ts.SyntaxKind.MinusToken
+				? -value
+				: value,
+		);
+	}
+	return undefined;
+}
+
+const SCRIBE_WIRE_DATATYPES = new Set([
+	"Vector3",
+	"Vector2",
+	"Vector3int16",
+	"Vector2int16",
+	"CFrame",
+	"Color3",
+	"BrickColor",
+	"UDim",
+	"UDim2",
+	"Rect",
+	"NumberRange",
+	"NumberSequence",
+	"ColorSequence",
+	"DateTime",
+	"EnumItem",
+	"Font",
+	"PhysicalProperties",
+]);
+
+function scribeTypeAllowsNil(
+	state: TransformState,
+	node: ts.TypeNode | undefined,
+	seen = new Set<ts.Node>(),
+): boolean {
+	if (node === undefined || seen.has(node)) return false;
+	seen.add(node);
+	if (
+		node.kind === ts.SyntaxKind.UndefinedKeyword ||
+		node.kind === ts.SyntaxKind.NullKeyword ||
+		ts.isOptionalTypeNode(node)
+	) {
+		return true;
+	}
+	if (ts.isUnionTypeNode(node)) {
+		return node.types.some((part) =>
+			scribeTypeAllowsNil(state, part, seen));
+	}
+	if (ts.isTypeReferenceNode(node)) {
+		const declaration = typeDeclarationForTypeReference(
+			state,
+			node,
+		);
+		if (
+			declaration !== undefined &&
+			ts.isTypeAliasDeclaration(declaration)
+		) {
+			return scribeTypeAllowsNil(
+				state,
+				declaration.type,
+				seen,
+			);
+		}
+	}
+	return false;
 }
 
 function buildWidgetMeta(classId: string, name: string): ts.ObjectLiteralExpression {
@@ -3680,6 +4116,10 @@ function validateScribeSerializableType(
 	}
 	if (ts.isArrayTypeNode(node)) {
 		validateScribeSerializableType(state, node.elementType, label, seen);
+		return;
+	}
+	if (ts.isOptionalTypeNode(node)) {
+		validateScribeSerializableType(state, node.type, label, seen);
 		return;
 	}
 	if (ts.isTupleTypeNode(node)) {

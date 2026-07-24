@@ -15,14 +15,47 @@ export interface RuntimeScribeDataDefinition {
 	readonly publicToken: AnyScribeData;
 }
 
+export interface RuntimeScribeWireField {
+	readonly value: RuntimeScribeWireDescriptor;
+	readonly optional: boolean;
+}
+
+export interface RuntimeScribeWireDescriptor {
+	readonly kind:
+		| "serializable"
+		| "nil"
+		| "string"
+		| "number"
+		| "boolean"
+		| "buffer"
+		| "datatype"
+		| "literal"
+		| "array"
+		| "tuple"
+		| "object"
+		| "record"
+		| "union";
+	readonly name?: string;
+	readonly literal?: string | number | boolean;
+	readonly element?: RuntimeScribeWireDescriptor;
+	readonly elements?: ReadonlyArray<RuntimeScribeWireField>;
+	readonly fields?: Readonly<Record<string, RuntimeScribeWireField>>;
+	readonly key?: RuntimeScribeWireDescriptor;
+	readonly options?: ReadonlyArray<RuntimeScribeWireDescriptor>;
+}
+
 export interface RuntimeScribeCommandDefinition {
 	readonly id: string;
 	readonly name: string;
 	readonly dataId: string;
 	readonly ctor: Ctor;
 	readonly fields: ReadonlyArray<string>;
+	readonly optionalFields?: ReadonlyArray<string>;
+	readonly fieldTypes?: ReadonlyArray<RuntimeScribeWireDescriptor>;
 	readonly result: Ctor;
 	readonly resultFields: ReadonlyArray<string>;
+	readonly resultOptionalFields?: ReadonlyArray<string>;
+	readonly resultFieldTypes?: ReadonlyArray<RuntimeScribeWireDescriptor>;
 }
 
 export interface RuntimeScribeEventDefinition {

@@ -1089,11 +1089,50 @@ export class EquipCompleted {}
 	assert.match(result.printed, /rovyScribe\.__command\(EquipItem, \{ id: "src\/main@EquipItem"/);
 	assert.match(result.printed, /dataId: "src\/main\/PlayerData"/);
 	assert.match(result.printed, /fields: \["itemId"\]/);
+	assert.match(result.printed, /optionalFields: \[\]/);
+	assert.match(result.printed, /fieldTypes: \[\{ kind: "string" \}\]/);
 	assert.match(result.printed, /resultFields: \["ok", "reason"\]/);
+	assert.match(result.printed, /resultOptionalFields: \["reason"\]/);
+	assert.match(result.printed, /resultFieldTypes: \[\{ kind: "boolean" \}/);
 	assert.match(result.printed, /rovy\.__event\(CoinsChanged/);
 	assert.match(result.printed, /rovyScribe\.__event\(CoinsChanged, \{ id: "src\/main@CoinsChanged"/);
 	assert.match(result.printed, /kind: "changed", path: "Coins"/);
 	assert.match(result.printed, /commandId: "src\/main@EquipItem", kind: "commandCompleted"/);
+});
+
+runCase("scribe command metadata emits recursive wire-shape descriptors", () => {
+	const result = compileFixture(`
+${header}
+export const PlayerData = scribeData({
+	name: "PlayerData",
+	profileStoreIndex: "PlayerData",
+	profileKeyPrefix: "PLAYER_",
+	template: { Coins: s.int(0) },
+});
+type Payload = {
+	tags: ReadonlyArray<"pvp" | "pve">;
+	flags: Record<string, boolean>;
+	pair: [number, string?];
+};
+class ComplexResult {
+	constructor(public readonly values?: ReadonlyArray<number>) {}
+}
+@scribeCommand({ data: PlayerData, result: ComplexResult })
+class ComplexCommand {
+	constructor(
+		public readonly payload: Payload,
+		public readonly position: Vector3,
+	) {}
+}
+`);
+	assertNoDiagnostics(result, "scribe command wire shapes");
+	assert.match(result.printed, /kind: "object"/);
+	assert.match(result.printed, /kind: "array"/);
+	assert.match(result.printed, /kind: "record"/);
+	assert.match(result.printed, /kind: "tuple"/);
+	assert.match(result.printed, /kind: "union"/);
+	assert.match(result.printed, /kind: "datatype", name: "Vector3"/);
+	assert.match(result.printed, /resultOptionalFields: \["values"\]/);
 });
 
 runCase("scribe injected params lower to stable boundary-specific external ids", () => {

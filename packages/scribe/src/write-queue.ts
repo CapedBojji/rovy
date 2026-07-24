@@ -30,6 +30,7 @@ export interface ScribeWriteOperation {
 	readonly kind: ScribeWriteKind;
 	readonly args: ReadonlyArray<unknown>;
 	readonly transactionId?: number;
+	readonly commandHandleId?: number;
 }
 
 export interface ScribeWriteFailure {
@@ -65,6 +66,7 @@ export class ScribeWriteQueue {
 	private sequence = 0;
 	private transactionSequence = 0;
 	private activeTransaction = false;
+	private commandHandleId?: number;
 	private pending = new Array<WriteEntry>();
 	private failures = new Array<ScribeWriteFailure>();
 
@@ -140,6 +142,21 @@ export class ScribeWriteQueue {
 			operations,
 		});
 		return table.freeze({ id: transactionId, player });
+	}
+
+	withCommandScope<Result>(
+		commandHandleId: number,
+		callback: () => Result,
+	): Result {
+		assert(
+			this.commandHandleId === undefined,
+			"[rovy/scribe] command write scopes cannot nest",
+		);
+		this.commandHandleId = commandHandleId;
+		const [ok, result] = pcall(callback);
+		this.commandHandleId = undefined;
+		assert(ok, tostring(result));
+		return result as Result;
 	}
 
 	hasPending(): boolean {
@@ -219,6 +236,7 @@ export class ScribeWriteQueue {
 			kind: write.kind,
 			args: table.freeze(args),
 			transactionId,
+			commandHandleId: this.commandHandleId,
 		});
 	}
 

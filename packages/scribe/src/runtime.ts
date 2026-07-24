@@ -31,6 +31,10 @@ import {
 	ScribeEventRuntime,
 	type ScribeEventRoute,
 } from "./event-runtime";
+import {
+	ScribeCommandRuntime,
+	type ScribeCommandPlan,
+} from "./command-runtime";
 import type {
 	ScribeLogEntry,
 	ScribeMetricSummary,
@@ -102,6 +106,7 @@ export class ScribeRuntime implements FlushParticipant {
 	private readonly handles = new Map<string, ScribeRuntimeHandle | object>();
 	private readonly writeQueue: ScribeWriteQueue;
 	private readonly eventRuntime: ScribeEventRuntime;
+	private readonly commandRuntime: ScribeCommandRuntime;
 	private readonly writeFailures = new Array<ScribeWriteFailure>();
 	private applyingWrites = false;
 	private readRevision = 0;
@@ -116,6 +121,7 @@ export class ScribeRuntime implements FlushParticipant {
 		transport?: ScribeTransport,
 		serverSetups?: ReadonlyMap<string, ScribeRuntimeServerSetup>,
 		eventRoutes: ReadonlyArray<ScribeEventRoute> = [],
+		commandPlans: ReadonlyArray<ScribeCommandPlan> = [],
 	) {
 		this.diagnostics = new ScribeDiagnosticsHandle(binding);
 		this.writeQueue = new ScribeWriteQueue(
@@ -140,6 +146,13 @@ export class ScribeRuntime implements FlushParticipant {
 			this.bundles(),
 			eventRoutes,
 			(dataId) => this.changeSource(dataId),
+		);
+		this.commandRuntime = new ScribeCommandRuntime(
+			boundary,
+			this.bundles(),
+			commandPlans,
+			this.writeQueue,
+			this.eventRuntime,
 		);
 	}
 
@@ -222,7 +235,24 @@ export class ScribeRuntime implements FlushParticipant {
 		return handle;
 	}
 
+	hasCommandPlan(commandId: string): boolean {
+		return this.commandRuntime.hasPlan(commandId);
+	}
+
+	commandClient(commandId: string): object {
+		return this.commandRuntime.clientFacade(commandId);
+	}
+
+	commandReader(commandId: string): object {
+		return this.commandRuntime.serverReader(commandId);
+	}
+
+	commandResponder(): object {
+		return this.commandRuntime.responder();
+	}
+
 	flush(context: FlushContext): boolean {
+		const commandBefore = this.commandRuntime.flushBeforeWrites();
 		this.applyingWrites = true;
 		const [writeOk, wroteOrError] = pcall(() =>
 			this.writeQueue.flush(),
@@ -230,10 +260,13 @@ export class ScribeRuntime implements FlushParticipant {
 		this.applyingWrites = false;
 		assert(writeOk, tostring(wroteOrError));
 		const wrote = wroteOrError as boolean;
-		for (const failure of this.writeQueue.drainFailures()) {
+		const failures = this.writeQueue.drainFailures();
+		for (const failure of failures) {
 			this.writeFailures.push(failure);
 			this.eventRuntime.recordWriteFailure(failure);
 		}
+		const commandAfter =
+			this.commandRuntime.flushAfterWrites(failures);
 		this.readRevision += 1;
 		for (const [, handle] of this.handles) {
 			if (handle instanceof ScribeClientStateRuntime) handle.refresh();
@@ -242,7 +275,7 @@ export class ScribeRuntime implements FlushParticipant {
 			context,
 			this.readRevision,
 		);
-		return wrote || published;
+		return commandBefore || wrote || commandAfter || published;
 	}
 
 	drainWriteFailures(): ReadonlyArray<ScribeWriteFailure> {

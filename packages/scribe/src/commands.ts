@@ -71,7 +71,7 @@ export interface ScribeCommandReader<
 export interface ScribeCommandResponder {
 	resolve<Command extends object, Result>(
 		request: ScribeCommandRequest<Command, Result>,
-		result: Result,
+		result: NoInfer<Result>,
 	): void;
 	reject<Command extends object, Result>(
 		request: ScribeCommandRequest<Command, Result>,

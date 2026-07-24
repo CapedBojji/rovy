@@ -50,6 +50,14 @@ leaf coalescing, exact structural records, lifecycle/signal bridges, and deferre
 Rovy `send`/`trigger` publication. Commands, general jobs, and native integration
 coverage remain incomplete.
 
+Phase 7 added stable non-yielding client command handles, native request tasks,
+one-consumer server queues, flush-gated responders, request/result wire-shape
+validation, cancellation/timeout handling, and command-completion events. The
+unmodified pinned Scribe 1.0.11 dispatcher proves its `xpcall` path is yieldable
+and runs the wrapper bridge end to end. General jobs and feature services remain
+incomplete; client diff-before-completion ordering remains deliberately
+unpromised pending an end-to-end Roblox transport test.
+
 ## Top-level Scribe module
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
@@ -167,7 +175,7 @@ coverage remain incomplete.
 | `Export` | Rovy job | `ScribePersistence.export` | Type declared |
 | `ProfileStore` | unsafe escape hatch | `ScribeUnsafe.profileStore` | Type declared; runtime Phase 8 |
 | `Raw` | unsafe escape hatch | `ScribeUnsafe.server` | Type declared; runtime Phase 8 |
-| `Command` | first-class | `@scribeCommand`, reader, responder, native handler bridge | Type fixture; runtime Phase 7 |
+| `Command` | first-class | `@scribeCommand`, reader, responder, native handler bridge | Type, transformer, fake-runtime, and pinned native-dispatch coverage Phase 7 |
 
 ## Client API
 
@@ -175,7 +183,7 @@ coverage remain incomplete.
 | --- | --- | --- | --- |
 | `IsReady` | first-class | `ScribeClientState.ready` | Flush-stable runtime coverage Phase 4; native integration pending |
 | `WaitForData` | Rovy event | Ready state plus ready/unavailable event; no yielding system call | Background task/ingress runtime coverage Phase 6; native integration pending |
-| `Request` | first-class | Non-yielding `ScribeCommand.call` plus native request task | Type fixture; runtime Phase 7 |
+| `Request` | first-class | Non-yielding `ScribeCommand.call` plus native request task | Stable-handle, polling, rejection, and completion-event runtime coverage Phase 7; Roblox frame-order test pending |
 | `GetLeaderboard` | first-class | `ScribeLeaderboards.get` cached read | Type declared |
 | `GetMyRank` | first-class | `ScribeLeaderboards.getMyRank` cached read | Type declared |
 | `OnLeaderboard` | Rovy event | `ScribeLeaderboardChanged` | Deferred normalized-snapshot runtime coverage Phase 6; native integration pending |
@@ -346,18 +354,12 @@ coverage remain incomplete.
 
 ## Remaining parity gaps
 
-All transformer, runtime, fake-binding, and native-integration coverage remains open
-after Phase 0. The table has no unclassified member, but no row labeled
-first-class/event/job/pass-through/unsafe should be treated as implemented until
-its named phase tests exist.
+The table has no unclassified member. Rows whose coverage checkpoint still says
+“type declared,” “fixture,” or names a future phase remain implementation gaps;
+the largest groups are persistence/offline/version/GDPR jobs, leaderboards,
+monetization/ownership/receipts, cooldowns/messaging, edit-mode tooling, and
+unsafe access. Full-bundle Roblox integration remains pending even where
+fake-binding or pinned-source coverage exists.
 
-The target-version decision blocks these rows:
-
-- `Configure`
-- `Reason`
-- `TryHandleReceipt`
-- `Mode`
-- `TargetUserId`
-
-If the project chooses a Scribe commit other than the baseline, this inventory must
-be regenerated from that exact source before runtime implementation begins.
+If the project chooses a Scribe commit other than the baseline, this inventory
+must be regenerated from that exact source before runtime support is claimed.

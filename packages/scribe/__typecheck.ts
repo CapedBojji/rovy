@@ -14,6 +14,7 @@ import {
 	ScribeCommand,
 	ScribeCommandCompleted,
 	ScribeCommandReader,
+	ScribeCommandRequest,
 	ScribeCommandResponder,
 	ScribeDataOptions,
 	ScribeJobCompleted,
@@ -295,7 +296,7 @@ class EquipItemPressed {
 export class RequestEquipItem {
 	run(
 		pressed: EventReader<EquipItemPressed>,
-		equip: ScribeCommand<EquipItem>,
+		equip: ScribeCommand<EquipItem, EquipItemResult>,
 	): void {
 		pressed.forEach((event) => {
 			equip.call(new EquipItem(event.itemId));
@@ -325,7 +326,7 @@ export class ShowEquipItemResult {
 @system({ schedule: Update })
 export class HandleEquipItem {
 	run(
-		requests: ScribeCommandReader<EquipItem>,
+		requests: ScribeCommandReader<EquipItem, EquipItemResult>,
 		data: ScribeServerReader<typeof PlayerData>,
 		writes: ScribeServerWriter<typeof PlayerData>,
 		respond: ScribeCommandResponder,
@@ -477,6 +478,8 @@ declare const localWrites: ScribeLocalWriter<typeof PlayerData>;
 declare const serverData: ScribeServerReader<typeof PlayerData>;
 declare const inferredCommand: ScribeCommand<EquipItem>;
 declare const typedCommand: ScribeCommand<EquipItem, EquipItemResult>;
+declare const commandResponder: ScribeCommandResponder;
+declare const typedRequest: ScribeCommandRequest<EquipItem, EquipItemResult>;
 
 clientData.Coins.get();
 clientData.Coins.default();
@@ -503,6 +506,9 @@ if (typedResult?.ok) {
 	const equipped: boolean = typedResult.value.equipped;
 	print(equipped);
 }
+commandResponder.resolve(typedRequest, new EquipItemResult(true));
+// @ts-expect-error — result must match the explicit command result generic.
+commandResponder.resolve(typedRequest, "not-a-result");
 
 declare const completedJob: ScribeJobCompleted<boolean>;
 const jobValue: boolean | undefined = completedJob.result.ok ? completedJob.result.value : undefined;

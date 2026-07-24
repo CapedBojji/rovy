@@ -42,6 +42,10 @@ import {
 	type ScribeEventRoute,
 } from "./event-runtime";
 import {
+	compileScribeCommandPlans,
+	type ScribeCommandPlan,
+} from "./command-runtime";
+import {
 	ScribeRuntime,
 	type ScribeRuntimeBoundary,
 	type ScribeRuntimeServerSetup,
@@ -151,6 +155,11 @@ export class ScribeClientPlugin implements Plugin, ScribeBoundaryPluginDelegate 
 			this.boundary,
 			this.options,
 			compileScribeEventRoutes(registry, rovyScribe.events()),
+			compileScribeCommandPlans(
+				registry,
+				rovyScribe.commands(),
+				this.boundary,
+			),
 		);
 	}
 }
@@ -180,6 +189,11 @@ export class ScribeServerPlugin implements Plugin, ScribeBoundaryPluginDelegate 
 			this.boundary,
 			this.options,
 			compileScribeEventRoutes(registry, rovyScribe.events()),
+			compileScribeCommandPlans(
+				registry,
+				rovyScribe.commands(),
+				this.boundary,
+			),
 		);
 	}
 }
@@ -223,6 +237,7 @@ function installScribeRuntime(
 	boundary: ScribeRuntimeBoundary,
 	options: ScribePluginOptions,
 	eventRoutes: ReadonlyArray<ScribeEventRoute>,
+	commandPlans: ReadonlyArray<ScribeCommandPlan>,
 ): ScribeRuntime {
 	const marked = app as App & Record<string, unknown>;
 	const existing = marked[SCRIBE_RUNTIME_MARKER] as ScribeRuntime | undefined;
@@ -252,6 +267,7 @@ function installScribeRuntime(
 		options.transport,
 		setups,
 		eventRoutes,
+		commandPlans,
 	);
 	scribeBundleConstructed = true;
 	marked[SCRIBE_RUNTIME_MARKER] = runtime;
@@ -271,14 +287,24 @@ function installScribeRuntime(
 	}
 
 	for (const command of rovyScribe.commands()) {
+		if (!runtime.hasCommandPlan(command.id)) continue;
 		if (boundary === "client") {
-			app.insertParam(commandClientParamId(command.id), runtime);
+			app.insertParam(
+				commandClientParamId(command.id),
+				runtime.commandClient(command.id),
+			);
 		} else {
-			app.insertParam(commandReaderParamId(command.id), runtime);
+			app.insertParam(
+				commandReaderParamId(command.id),
+				runtime.commandReader(command.id),
+			);
 		}
 	}
 	if (boundary === "server") {
-		app.insertParam(SCRIBE_COMMAND_RESPONDER_PARAM, runtime);
+		app.insertParam(
+			SCRIBE_COMMAND_RESPONDER_PARAM,
+			runtime.commandResponder(),
+		);
 	}
 	return runtime;
 }

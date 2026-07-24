@@ -1,6 +1,6 @@
 # RFC: `@rovy/scribe`
 
-Status: **Phase 6 change journal and Rovy events complete — commands next**
+Status: **Phase 7 native command bridge complete — lifecycle jobs next**
 
 This RFC proposes a partitioned Rovy package that projects Scribe's field-oriented
 player-data API into stable readers, buffered writers, Rovy events, and non-yielding
@@ -448,3 +448,41 @@ unavailable, session end, save, anomaly, gift, ownership, message, leaderboard,
 service-status, shared-data, and top-level issue/status callbacks enter the same
 deferred ingress path. Server profile waits and client readiness waits run only
 in package-owned background tasks, never in a Rovy system or observer.
+
+## Phase 7 command checkpoint
+
+`ScribeCommand<C, R>.call()` now snapshots and validates one request-class
+instance, assigns a stable call-site handle, and queues native
+`Client.Request` work for the next Rovy flush. The yielding request runs only in
+a package-owned task. Its immutable result is both pollable and published once
+through a declared `commandCompleted` Rovy event; polling does not suppress the
+event.
+
+The transformer emits required/optional constructor fields plus recursive wire
+shape descriptors for primitives, literals, unions, arrays, tuples, records,
+objects, buffers, and supported Roblox datatypes. Runtime validation therefore
+checks the contents of the single native `"table"` argument, not only its outer
+Lua type. Unknown, missing, wrongly typed, cyclic, or otherwise nonserializable
+request/result data fails with a typed command rejection.
+
+On the server, the plugin registers only command contracts that have one
+`ScribeCommandReader` consumer. A second consumer is a startup error. Native
+handlers preserve Scribe's real sender, readiness gate, argument-count check,
+rate limit, framing, and timeout; they suspend internally while the Rovy reader
+handles the request. `ScribeCommandResponder` accepts one response. Associated
+writer operations carry the command handle, and the response resumes only after
+the boundary's native `Batch`/`Transaction` work and failure accounting finish.
+A write failure replaces a queued success with `write-failed`.
+
+The compatibility gate executes the unmodified Scribe 1.0.11
+`src/Server/Commands.luau` from commit
+`4253d303f3ea9e70b362d9e1e498b805ac3a8d01`. It proves the handler can yield
+through Scribe's actual `xpcall`, and a second integration test runs the Rovy
+queue/write/responder bridge through that pinned dispatcher. The fixture is
+test-only and is excluded from the npm package.
+
+Command completion does not yet promise that the client mirror has applied a
+replication diff first. Server-side tests prove native writes finish before the
+reply is released, but an end-to-end Roblox transport test is still required to
+establish cross-frame client ordering for the supported Scribe version and
+custom transports.

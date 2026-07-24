@@ -7,6 +7,10 @@ import type {
 import type {
 	ScribeBinding,
 } from "./binding";
+import type {
+	ScribeCommandHandle,
+	ScribeCommandResult,
+} from "./commands";
 import {
 	ScribeChangeJournal,
 	type ScribeJournalRecord,
@@ -186,6 +190,21 @@ export class ScribeEventRuntime {
 			player,
 			path: immutableIngressPath(first?.path ?? []),
 			reason: failure.error,
+		});
+	}
+
+	publishCommandCompletion(
+		commandId: string,
+		handle: ScribeCommandHandle<object, unknown>,
+		request: object,
+		result: ScribeCommandResult<unknown>,
+	): void {
+		this.ingress.enqueue({
+			kind: "commandCompleted",
+			commandId,
+			handle,
+			request,
+			result,
 		});
 	}
 
@@ -649,11 +668,15 @@ export class ScribeEventRuntime {
 	): object {
 		const factory = route.definition.ctor as unknown as new () => object;
 		const event = new factory() as UnknownTable;
-		const bundle = this.bundleById.get(record.dataId);
+		const bundle = "dataId" in record
+			? this.bundleById.get(record.dataId)
+			: undefined;
 		if (bundle !== undefined) {
 			event.definition = bundle.definition.publicToken;
 		}
-		if (record.player !== undefined) event.player = record.player;
+		if ("player" in record && record.player !== undefined) {
+			event.player = record.player;
+		}
 		switch (record.kind) {
 			case "changed":
 				event.path = record.path;
@@ -720,6 +743,11 @@ export class ScribeEventRuntime {
 			case "issue":
 				event.entry = record.entry;
 				break;
+			case "commandCompleted":
+				event.handle = record.handle;
+				event.request = record.request;
+				event.result = record.result;
+				break;
 		}
 		return table.freeze(event);
 	}
@@ -753,7 +781,14 @@ function routeMatches(
 	route: ScribeEventRoute,
 	record: ScribeJournalRecord,
 ): boolean {
+	if (record.kind === "commandCompleted") {
+		return (
+			route.definition.kind === "commandCompleted" &&
+			route.definition.commandId === record.commandId
+		);
+	}
 	if (
+		!("dataId" in record) ||
 		route.definition.dataId !== record.dataId ||
 		route.definition.kind !== record.kind
 	) {
