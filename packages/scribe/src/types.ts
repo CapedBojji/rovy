@@ -82,6 +82,15 @@ export interface ScribeLogEntry {
 	readonly context?: Readonly<Record<string, ScribeSerializable>>;
 }
 
+export interface ScribeNativeLogEntry {
+	readonly At: number;
+	readonly Level: ScribeLogLevel;
+	readonly Category: ScribeLogCategory;
+	readonly Code: string;
+	readonly Message: string;
+	readonly Context?: Readonly<Record<string, ScribeSerializable>>;
+}
+
 export interface ScribeStatusThresholds {
 	readonly failWindow?: number;
 	readonly failCount?: number;
@@ -203,15 +212,22 @@ export interface ScribeNativeModule {
 	readonly Configure: (config: { readonly AutoSaveInterval?: number }) => void;
 	readonly GetStatus: () => ScribeStatus;
 	readonly OnStatusChanged: ScribeNativeSignal<readonly [status: ScribeStatus]>;
-	readonly OnIssue: ScribeNativeSignal<readonly [entry: ScribeLogEntry]>;
-	readonly AddLogSink: (sink: (entry: ScribeLogEntry) => void) => void;
+	readonly OnIssue: ScribeNativeSignal<readonly [entry: ScribeNativeLogEntry]>;
+	readonly AddLogSink: (sink: (entry: ScribeNativeLogEntry) => void) => void;
 	readonly GetRecentLogs: (filter?: {
-		readonly level?: ScribeLogLevel;
-		readonly category?: ScribeLogCategory;
-		readonly code?: string;
-		readonly limit?: number;
-	}) => ReadonlyArray<ScribeLogEntry>;
-	readonly GetMetrics: () => Readonly<Record<string, number | ScribeMetricSummary>>;
+		readonly Level?: ScribeLogLevel;
+		readonly Category?: ScribeLogCategory;
+		readonly Code?: string;
+		readonly Limit?: number;
+	}) => ReadonlyArray<ScribeNativeLogEntry>;
+	readonly GetMetrics: () => Readonly<Record<
+		string,
+		number | {
+			readonly Count: number;
+			readonly Average: number;
+			readonly Max: number;
+		}
+	>>;
 }
 
 export interface ScribeMetricSummary {

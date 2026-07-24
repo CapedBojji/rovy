@@ -64,13 +64,25 @@ services, native datatype projection for persisted snapshots, durable messaging,
 readiness-gated client save state, and raw/ProfileStore unsafe handles. Native
 full-bundle integration remains pending.
 
+Phase 9 added boundary-aware leaderboard, monetization, ownership, receipt, and
+cooldown services; native atomic purchase delegation; typed immediate grant
+facades; purchase-record normalization; and economy declaration/runtime
+validation.
+
+Phase 10 added normalized immutable diagnostics, buffered client edit-mode
+seeding and typed mock commands, a complete unsafe datatype facade, exact custom
+transport buffer-identity coverage, strict peer-version enforcement, and a real
+Roblox Studio client-bundle test. The Studio test uses the unmodified pinned
+Scribe peer, preserves its frozen `__ScribeTemplate`, and observes the native
+`_ScribeClientDebugHook` with both endpoints attached.
+
 ## Top-level Scribe module
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| `Version` | first-class | `scribeVersion()` and binding version | Binding/runtime unit coverage Phase 2; native integration pending |
-| `new` | first-class | `scribeData` declaration plus plugin-owned bundle construction | Fake-binding runtime coverage Phase 2; native integration pending |
-| callable `Scribe(options)` | first-class | Same mapping as `new`; game code never constructs a second wrapper state | Fake-binding runtime coverage Phase 2; native integration pending |
+| `Version` | first-class | `scribeVersion()` and binding version | Unit coverage Phase 2; pinned native Studio coverage Phase 10 |
+| `new` | first-class | `scribeData` declaration plus plugin-owned bundle construction | Fake-binding Phase 2; pinned native client bundle Phase 10 |
+| callable `Scribe(options)` | first-class | Same mapping as `new`; game code never constructs a second wrapper state | Fake-binding Phase 2; pinned native client bundle Phase 10 |
 | `ServerOnly` | first-class | `s.serverOnly` | Type projection and native declarator coverage Phase 3 |
 | `Shared` | first-class | `s.shared` | Type projection and native declarator coverage Phase 3 |
 | `Session` | first-class | `s.session` | Type projection and native declarator coverage Phase 3 |
@@ -100,27 +112,27 @@ full-bundle integration remains pending.
 | `EnumItem` | first-class | `s.enumItem` | Type and native declarator coverage Phase 3 |
 | `Font` | first-class | `s.font` | Type and native declarator coverage Phase 3 |
 | `PhysicalProperties` | first-class | `s.physicalProperties` | Type and native declarator coverage Phase 3 |
-| `Datatypes.IsSupported` | unsafe escape hatch | `ScribeUnsafe.datatypes`; migration/tooling only | Type declared; runtime Phase 10 |
-| `Datatypes.Pack` | unsafe escape hatch | `ScribeUnsafe.datatypes.pack` | Type declared; runtime Phase 10 |
-| `Datatypes.Unpack` | unsafe escape hatch | `ScribeUnsafe.datatypes.unpack` | Type declared; runtime Phase 10 |
-| `Datatypes.NONFINITE` | intentionally unsupported | Internal validation prefix, not a documented game API; exposing it would couple Rovy to an implementation detail | Negative public-surface type test required in Phase 10 |
+| `Datatypes.IsSupported` | unsafe escape hatch | `ScribeUnsafe.datatypes.isSupported`; migration/tooling only | Type and direct runtime coverage Phase 10 |
+| `Datatypes.Pack` | unsafe escape hatch | `ScribeUnsafe.datatypes.pack` | Type and direct runtime coverage Phase 8/10 |
+| `Datatypes.Unpack` | unsafe escape hatch | `ScribeUnsafe.datatypes.unpack` | Type and direct runtime coverage Phase 8/10 |
+| `Datatypes.NONFINITE` | intentionally unsupported | Internal validation prefix, not a documented game API; exposing it would couple Rovy to an implementation detail | Negative public-surface type coverage Phase 10 |
 | `Reason` | first-class | Typed `ScribeReasonConstants` from the native module | Binding type coverage Phase 3; runtime export Phase 8 |
 | `Configure` | configuration pass-through | `ScribePlugin.configure`, exactly once before bundle construction | Binding and conflict unit coverage Phase 3 |
-| `GetStatus` | first-class | `ScribeDiagnostics.status` | Binding proxy/unit coverage Phase 2; signal/native coverage pending |
+| `GetStatus` | first-class | `ScribeDiagnostics.status` | Normalized unit and pinned native Studio coverage Phase 10 |
 | `OnStatusChanged` | Rovy event | `ScribeStatusChanged` | Deferred signal/runtime coverage Phase 6; native integration pending |
 | `OnIssue` | Rovy event | `ScribeIssue` | Deferred normalized-signal/runtime coverage Phase 6; native integration pending |
-| `AddLogSink` | first-class | `ScribeDiagnostics.addSink`, installed during setup | Binding proxy/unit coverage Phase 2; native coverage pending |
-| `GetRecentLogs` | first-class | `ScribeDiagnostics.recentLogs` | Binding proxy/unit coverage Phase 2; native coverage pending |
-| `GetMetrics` | first-class | `ScribeDiagnostics.metrics` | Binding proxy/unit coverage Phase 2; native coverage pending |
+| `AddLogSink` | first-class | `ScribeDiagnostics.addSink`, installed during setup | Frozen-normalization unit and pinned native Studio coverage Phase 10 |
+| `GetRecentLogs` | first-class | `ScribeDiagnostics.recentLogs` | Filter translation, normalization, and pinned native Studio coverage Phase 10 |
+| `GetMetrics` | first-class | `ScribeDiagnostics.metrics` | Summary normalization and pinned native Studio coverage Phase 10 |
 
 ## Exported Scribe contract types
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| `ScribeTransport` | configuration pass-through | `ScribeTransport` preserves opaque buffers and sender identity | Type declared |
-| `Op` / wire operations | intentionally unsupported | Scribe owns its wire protocol; Rovy must not decode/re-encode native operations | Runtime protocol-isolation test Phase 10 |
-| `LogEntry`, `LogLevel`, `LogCategory`, `Status` | first-class | Lower-camel immutable diagnostic records and literal unions | Type declared |
-| `LogCode` | first-class | Preserved as a stable string until the selected Scribe range is frozen | Type declared; literal snapshot Phase 10 |
+| `ScribeTransport` | configuration pass-through | `ScribeTransport` preserves opaque buffers and sender identity | Type plus bidirectional exact-buffer identity coverage Phase 10 |
+| `Op` / wire operations | intentionally unsupported | Scribe owns its wire protocol; Rovy must not decode/re-encode native operations | Same-object transport and unchanged-buffer runtime coverage Phase 10 |
+| `LogEntry`, `LogLevel`, `LogCategory`, `Status` | first-class | Lower-camel immutable diagnostic records and literal unions | Type plus malformed/frozen normalization coverage Phase 10 |
+| `LogCode` | first-class | Preserved as a stable string because native codes can expand inside a compatible peer release | Type and native diagnostic coverage Phase 10 |
 | `SaveInfo` | first-class | `ScribeSaveInfo` | Type declared |
 | `LeaderboardEntry` | first-class | `ScribeLeaderboardEntry` | Type declared |
 | `LeaderboardConfig` | configuration pass-through | `ScribeLeaderboardConfig` with numeric-path validation | Type declared |
@@ -204,9 +216,9 @@ full-bundle integration remains pending.
 | `GetSaveInfo` | first-class | `ScribeClientState.saveInfo` | Readiness-gated flush-stable runtime coverage Phase 8; native integration pending |
 | `GetGiftCredits` | first-class | Readiness-gated client `ScribeMonetization.getGiftCredits` read | Frozen non-yielding client runtime coverage Phase 9 |
 | `GetPurchases` | first-class | Readiness-gated client monetization read, subject to native replication config | Filter translation and immutable record normalization coverage Phase 9 |
-| `Mock` | first-class | `ScribeTestRuntime.seed` | Type declared |
-| `MockCommand` | first-class | `ScribeTestRuntime.mockCommand` | Type declared |
-| `Raw` | unsafe escape hatch | `ScribeUnsafe.client` | Type declared |
+| `Mock` | first-class | `ScribeTestRuntime.seed` | Buffered snapshot/state translation and edit-mode guard coverage Phase 10 |
+| `MockCommand` | first-class | `ScribeTestRuntime.mockCommand` | Typed wire round-trip, unknown-contract, and edit-mode guard coverage Phase 10 |
+| `Raw` | unsafe escape hatch | `ScribeUnsafe.client` | Boundary-native runtime binding coverage Phase 8 |
 
 ## Leaderboards
 
@@ -314,8 +326,8 @@ full-bundle integration remains pending.
 | `OverriddenUserId` | configuration pass-through | `overriddenUserId` | Type declared |
 | `DontSave` | configuration pass-through | `dontSave` | Type declared |
 | `ResetData` | configuration pass-through | `resetData` | Type declared |
-| client `Mock` | first-class | `ScribeTestRuntime.seed` | Type declared |
-| client `MockCommand` | first-class | `ScribeTestRuntime.mockCommand` | Type declared |
+| client `Mock` | first-class | `ScribeTestRuntime.seed` | Buffered committed-read stability, state translation, visibility validation, and edit-mode guard coverage Phase 10 |
+| client `MockCommand` | first-class | `ScribeTestRuntime.mockCommand` | Request/result class validation and native mock round-trip coverage Phase 10 |
 
 ## Bundle options and setup callbacks
 
@@ -324,8 +336,8 @@ full-bundle integration remains pending.
 | `Template` | first-class | `scribeData.template` | Fixture |
 | `ProfileStoreIndex` | configuration pass-through | `profileStoreIndex` (required) | Fixture |
 | `ProfileKeyPrefix` | configuration pass-through | `profileKeyPrefix` (required) | Fixture |
-| `Transport` | configuration pass-through | Plugin `transport`; opaque buffer contract preserved | Type declared |
-| `TransportChannel` | configuration pass-through | `transportChannel`; derive from data ID when absent | Type declared |
+| `Transport` | configuration pass-through | Plugin `transport`; opaque buffer contract preserved | Same-object and unchanged-buffer runtime coverage Phase 10 |
+| `TransportChannel` | configuration pass-through | `transportChannel`; derive from data ID when absent | Derived/explicit runtime coverage Phase 2/10 |
 | `Migrations` | configuration pass-through | `configureScribeServer(...).migrations` | Typed replacement-to-native-mutation adapter coverage Phase 3 |
 | `OnPlayerInit` | configuration pass-through | Dedicated synchronous `ScribeInitializationTree`; native callback still runs before Ready | Type and raw-table adapter coverage Phase 3 |
 | `SaveInterval` | configuration pass-through | `saveInterval`; process-global conflict detection required | Fixture |
@@ -354,17 +366,18 @@ full-bundle integration remains pending.
 
 | Native surface | Classification | Rovy mapping / reason | Coverage checkpoint |
 | --- | --- | --- | --- |
-| Scribe Studio debug hook | configuration pass-through | Preserve the real module location and frozen native template metadata | Native integration Phase 10 |
-| custom `ScribeTransport` | configuration pass-through | Pass the same native transport object; never decode/re-encode buffers | Type declared; native integration Phase 10 |
-| default native transport | configuration pass-through | Scribe remains transport owner | Native integration Phase 2/7 |
+| Scribe Studio debug hook | configuration pass-through | Preserve the real module location and frozen native template metadata | Pinned full client-bundle Roblox Studio integration Phase 10 |
+| custom `ScribeTransport` | configuration pass-through | Pass the same native transport object; never decode/re-encode buffers | Exact object and bidirectional buffer-identity runtime coverage Phase 10 |
+| default native transport | configuration pass-through | Scribe remains transport owner | Pinned command dispatcher Phase 7; no alternate Rovy codec |
 
 ## Remaining parity gaps
 
 The table has no unclassified member. Rows whose coverage checkpoint still says
-“type declared,” “fixture,” or names a future phase remain implementation gaps.
-The largest remaining groups are edit-mode tooling, diagnostics, and Studio
-compatibility. Full-bundle Roblox integration remains pending even where
-fake-binding or pinned-source coverage exists.
+“type declared,” “fixture,” or “native integration pending” remain audit or
+integration gaps. Phase 10 closes edit-mode tooling, diagnostics, custom
+transport, datatype-escape-hatch, strict-version, and client Studio-hook
+coverage. Full live server/ProfileStore and cross-frame command-order integration
+remain pending where the table says so.
 
 If the project chooses a Scribe commit other than the baseline, this inventory
 must be regenerated from that exact source before runtime support is claimed.

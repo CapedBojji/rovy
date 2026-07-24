@@ -19,9 +19,13 @@ type UnknownTable = Record<string, unknown>;
 class ScribeUnsafeDatatypesRuntime implements ScribeUnsafeDatatypes {
 	constructor(private readonly module: ScribeNativeModule) {}
 
+	isSupported(name: string): boolean {
+		return this.module.Datatypes.IsSupported(name);
+	}
+
 	pack(name: string, value: ScribeSerializable): buffer {
 		assert(
-			this.module.Datatypes.IsSupported(name),
+			this.isSupported(name),
 			`[rovy/scribe] ScribeUnsafe.datatypes does not support '${name}'`,
 		);
 		return this.module.Datatypes.Pack(
@@ -32,7 +36,7 @@ class ScribeUnsafeDatatypesRuntime implements ScribeUnsafeDatatypes {
 
 	unpack(name: string, bytes: buffer): unknown {
 		assert(
-			this.module.Datatypes.IsSupported(name),
+			this.isSupported(name),
 			`[rovy/scribe] ScribeUnsafe.datatypes does not support '${name}'`,
 		);
 		return this.module.Datatypes.Unpack(name, bytes);

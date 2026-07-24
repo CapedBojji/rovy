@@ -155,6 +155,82 @@ export class ScribeCommandRuntime {
 		return facade;
 	}
 
+	registerClientMock(
+		dataId: string,
+		commandCtor: object,
+		handler: (request: object) => unknown,
+	): void {
+		this.assertBoundary("client", "ScribeTestRuntime.mockCommand");
+		assert(
+			typeIs(handler, "function"),
+			"[rovy/scribe] mockCommand requires a handler",
+		);
+		let plan: ScribeCommandPlan | undefined;
+		for (const [, candidate] of this.planById) {
+			if (candidate.definition.ctor === commandCtor) {
+				plan = candidate;
+				break;
+			}
+		}
+		assert(
+			plan !== undefined,
+			"[rovy/scribe] mockCommand requires a registered command contract with an injected client ScribeCommand consumer",
+		);
+		const definition = plan.definition;
+		assert(
+			definition.dataId === dataId,
+			`[rovy/scribe] command '${definition.name}' belongs to a different Scribe data definition`,
+		);
+		const bundle = this.requireBundle(definition.dataId);
+		const mock = (bundle.active as UnknownTable).MockCommand;
+		assert(
+			typeIs(mock, "function"),
+			`[rovy/scribe] native client bundle '${bundle.definition.name}' does not expose MockCommand`,
+		);
+		(mock as (
+			name: string,
+			handler: (payload: unknown) => unknown,
+		) => void)(
+			definition.name,
+			(payload) => {
+				const decoded = decodeClassFields(
+					definition.ctor,
+					definition.fields,
+					definition.optionalFields ?? [],
+					definition.fieldTypes ?? [],
+					payload,
+					"mock command request",
+				);
+				if (!decoded.ok) {
+					error(
+						`[rovy/scribe] invalid mock command request: ${decoded.error}`,
+					);
+				}
+				const result = handler(decoded.value);
+				assertClassInstance(
+					result,
+					definition.result,
+					`[rovy/scribe] ${definition.name} mock must return an instance of its result class`,
+				);
+				const immutable = cloneClassInstance(
+					definition.result,
+					definition.resultFields,
+					definition.resultOptionalFields ?? [],
+					definition.resultFieldTypes ?? [],
+					result as object,
+					"mock result",
+				);
+				return encodeServerEnvelope(
+					definition,
+					table.freeze({
+						ok: true,
+						value: immutable,
+					}),
+				);
+			},
+		);
+	}
+
 	serverReader(commandId: string): object {
 		this.assertBoundary("server", "ScribeCommandReader");
 		this.requirePlan(commandId);

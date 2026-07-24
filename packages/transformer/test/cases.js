@@ -88,6 +88,7 @@ import {
 		ScribeServerReader,
 		ScribeServerWriter,
 		ScribeSharedReader,
+		ScribeTestRuntime,
 		ScribeValueChanged,
 		rovyScribe,
 		s,
@@ -1159,6 +1160,7 @@ class ClientSystem {
 		sharedReader: ScribeSharedReader<typeof PlayerData>,
 		boards: ScribeLeaderboards<typeof PlayerData>,
 		monetization: ScribeMonetization<typeof PlayerData>,
+		testing: ScribeTestRuntime<typeof PlayerData>,
 		command: ScribeCommand<Fetch>,
 		diagnostics: ScribeDiagnostics,
 	) {
@@ -1173,6 +1175,7 @@ class ClientSystem {
 	assert.match(clientResult.printed, /id: "@rovy\/scribe\/shared-reader:src\/client\/main\/PlayerData"/);
 	assert.match(clientResult.printed, /id: "@rovy\/scribe\/leaderboards:src\/client\/main\/PlayerData"/);
 	assert.match(clientResult.printed, /id: "@rovy\/scribe\/monetization:src\/client\/main\/PlayerData"/);
+	assert.match(clientResult.printed, /id: "@rovy\/scribe\/testing:src\/client\/main\/PlayerData"/);
 	assert.match(clientResult.printed, /id: "@rovy\/scribe\/command-client:src\/client\/main@Fetch"/);
 	assert.match(clientResult.printed, /id: "@rovy\/scribe\/diagnostics"/);
 	assert.match(clientResult.printed, /command\.call\(new Fetch\("coins"\), "src\/client\/main:0"\)/);
@@ -1226,6 +1229,23 @@ class BadClient {
 }
 `, { fileName: "client/main.ts" });
 	assert.match(boundary.diagnostics.join("\n"), /ScribeServerWriter can only be injected from the server boundary/);
+
+	const testingBoundary = compileFixture(`
+${header}
+export const PlayerData = scribeData({
+	name: "PlayerData",
+	profileStoreIndex: "PlayerData",
+	profileKeyPrefix: "PLAYER_",
+	template: { Coins: s.int(0) },
+});
+@schedule class Update {}
+@server
+@system({ schedule: Update })
+class BadServer {
+	run(testing: ScribeTestRuntime<typeof PlayerData>) {}
+}
+`, { fileName: "server/main.ts" });
+	assert.match(testingBoundary.diagnostics.join("\n"), /ScribeTestRuntime can only be injected from the client boundary/);
 
 	const schema = compileFixture(`
 ${header}

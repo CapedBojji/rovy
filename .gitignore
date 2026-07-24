@@ -16,3 +16,5 @@
 .rovy
 **/**/.rovy-build
 **/**/sourcemap.json
+/packages/scribe/test/studio/.native
+/packages/scribe/test/studio/.build

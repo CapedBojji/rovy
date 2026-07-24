@@ -12,7 +12,9 @@ import type {
 	ScribeJobHandle,
 	ScribeJobResults,
 	ScribeLeaderboardEntry,
+	ScribeLogCategory,
 	ScribeLogEntry,
+	ScribeLogLevel,
 	ScribeMetricSummary,
 	ScribeNativeModule,
 	ScribePurchaseFilter,
@@ -128,6 +130,7 @@ export interface ScribeMockState {
 }
 
 export interface ScribeTestRuntime<D extends AnyScribeData> {
+	readonly definition: D;
 	seed(values?: DeepPartial<ScribeClientShape<D>>, state?: ScribeMockState): void;
 	mockCommand<Command extends object, Result>(
 		command: ScribeCommandConstructor<Command>,
@@ -138,8 +141,8 @@ export interface ScribeTestRuntime<D extends AnyScribeData> {
 export interface ScribeDiagnostics {
 	status(): ScribeStatus;
 	recentLogs(filter?: {
-		readonly level?: string;
-		readonly category?: string;
+		readonly level?: ScribeLogLevel;
+		readonly category?: ScribeLogCategory;
 		readonly code?: string;
 		readonly limit?: number;
 	}): ReadonlyArray<ScribeLogEntry>;
@@ -148,6 +151,7 @@ export interface ScribeDiagnostics {
 }
 
 export interface ScribeUnsafeDatatypes {
+	isSupported(name: string): boolean;
 	pack(name: string, value: ScribeSerializable): buffer;
 	unpack(name: string, bytes: buffer): unknown;
 }

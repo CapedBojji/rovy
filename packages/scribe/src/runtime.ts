@@ -4,7 +4,6 @@ import type {
 	ScribeBinding,
 	NativeScribeBundle,
 	CompiledScribeBundleOptions,
-	ScribeLogFilter,
 } from "./binding";
 import type { ScribeDataParamKind } from "./param-ids";
 import type { RuntimeScribeDataDefinition } from "./registry";
@@ -62,10 +61,13 @@ import {
 import {
 	ScribeCooldownsRuntime,
 } from "./cooldowns";
+import {
+	ScribeDiagnosticsRuntime,
+} from "./diagnostics";
+import {
+	ScribeTestingRuntime,
+} from "./testing";
 import type {
-	ScribeLogEntry,
-	ScribeMetricSummary,
-	ScribeStatus,
 	ScribeTransport,
 } from "./types";
 
@@ -107,28 +109,8 @@ export interface ScribeRuntimeServerSetup {
 	readonly profileStore?: unknown;
 }
 
-export class ScribeDiagnosticsHandle {
-	constructor(private readonly binding: ScribeBinding) {}
-
-	status(): ScribeStatus {
-		return this.binding.status();
-	}
-
-	recentLogs(filter?: ScribeLogFilter): ReadonlyArray<ScribeLogEntry> {
-		return this.binding.recentLogs(filter);
-	}
-
-	metrics(): Readonly<Record<string, number | ScribeMetricSummary>> {
-		return this.binding.metrics();
-	}
-
-	addSink(sink: (entry: ScribeLogEntry) => void): void {
-		this.binding.addLogSink(sink);
-	}
-}
-
 export class ScribeRuntime implements FlushParticipant {
-	readonly diagnostics: ScribeDiagnosticsHandle;
+	readonly diagnostics: ScribeDiagnosticsRuntime;
 	private readonly bundleById = new Map<string, ScribeInstalledBundle>();
 	private readonly handles = new Map<string, ScribeRuntimeHandle | object>();
 	private readonly writeQueue: ScribeWriteQueue;
@@ -151,7 +133,7 @@ export class ScribeRuntime implements FlushParticipant {
 		eventRoutes: ReadonlyArray<ScribeEventRoute> = [],
 		commandPlans: ReadonlyArray<ScribeCommandPlan> = [],
 	) {
-		this.diagnostics = new ScribeDiagnosticsHandle(binding);
+		this.diagnostics = new ScribeDiagnosticsRuntime(binding);
 		this.writeQueue = new ScribeWriteQueue(
 			boundary,
 			(dataId) => this.requireBundle(dataId),
@@ -307,6 +289,16 @@ export class ScribeRuntime implements FlushParticipant {
 					bundle.active,
 					this.jobRuntime,
 					this.writeQueue,
+				);
+				break;
+			case "testing":
+				this.assertBoundary("client", "ScribeTestRuntime");
+				handle = new ScribeTestingRuntime(
+					bundle.definition,
+					this.boundary,
+					bundle.active,
+					this.writeQueue,
+					this.commandRuntime,
 				);
 				break;
 			case "messaging":

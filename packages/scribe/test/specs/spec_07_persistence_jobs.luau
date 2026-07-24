@@ -667,8 +667,12 @@ return function(TS, t)
 				options = {},
 			})
 			local persistence
+			local unsafe
 			local Capture = help.sysClass(function(_, injected)
 				persistence = injected
+			end)
+			local CaptureUnsafe = help.sysClass(function(_, injected)
+				unsafe = injected
 			end)
 			coreRovy:__system(Capture, {
 				id = "game/CapturePackedOfflineDatatype",
@@ -680,6 +684,16 @@ return function(TS, t)
 					},
 				},
 			})
+			coreRovy:__system(CaptureUnsafe, {
+				id = "game/CapturePackedUnsafe",
+				schedule = Update,
+				params = {
+					{
+						kind = "external",
+						id = serverScribe.unsafeParamId(data.id),
+					},
+				},
+			})
 			local module, raw = packedDatatypeModule(help)
 			local app = App.new()
 			app:addPlugin(serverScribe.ScribeServerPlugin.new({
@@ -687,6 +701,14 @@ return function(TS, t)
 			}))
 			app:start()
 			app:runSchedule(Update)
+
+			t.expect(unsafe.datatypes:isSupported("table")).toBe(true)
+			t.expect(unsafe.datatypes:isSupported("Vector3")).toBe(false)
+			local unsafePacked = unsafe.datatypes:pack("table", { X = 9 })
+			t.expect(unsafe.datatypes:unpack("table", unsafePacked).X).toBe(9)
+			t.expect(function()
+				unsafe.datatypes:pack("Vector3", {})
+			end).toThrow()
 
 			local readHandle = persistence:getOffline(7)
 			app:flush()

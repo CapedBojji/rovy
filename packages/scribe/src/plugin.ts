@@ -71,6 +71,8 @@ export interface ScribePluginOptions {
 	readonly strict?: boolean;
 }
 
+export const SCRIBE_SUPPORTED_VERSION = "1.0.11";
+
 export type ScribeImmediateTree<D extends AnyScribeData> =
 	& ScribeReadTree<ScribeFullSchema<D>>
 	& ScribeWriteTree<ScribeFullSchema<D>>;
@@ -246,6 +248,11 @@ function installScribeRuntime(
 	const binding = resolveScribeBinding(
 		options.module,
 		options.resolveModule ?? rovyScribe.moduleResolver(),
+	);
+	assert(
+		options.strict === false ||
+			binding.version === SCRIBE_SUPPORTED_VERSION,
+		`[rovy/scribe] unsupported Scribe version '${binding.version}'; this package is tested against '${SCRIBE_SUPPORTED_VERSION}' (set strict: false only to opt into unverified compatibility)`,
 	);
 	if (installedVersion !== undefined) {
 		assert(

@@ -164,6 +164,7 @@ export type {
 
 export {
 	ACTIVE_SCRIBE_BOUNDARY,
+	SCRIBE_SUPPORTED_VERSION,
 	ScribeClientPlugin,
 	ScribePlugin,
 	ScribeServerPlugin,

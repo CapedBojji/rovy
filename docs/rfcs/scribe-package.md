@@ -564,3 +564,33 @@ client gift-credit and purchase-history mirrors. Its authoritative methods
 remain server-guarded at runtime. This corrects the Phase 0 stub, which
 incorrectly made the entire service server-only and thereby hid documented
 client reads.
+
+## Phase 10 diagnostics, testing, transport, and Studio checkpoint
+
+`ScribeDiagnostics` now validates and normalizes native Pascal-case logs and
+metric summaries into deeply frozen lower-camel records. Log filters translate
+back to native key casing, malformed native payloads fail clearly, and sinks
+receive snapshots rather than live context tables.
+
+`ScribeTestRuntime` is client-only. `seed` snapshots partial client-visible data
+and optional perk, gift-credit, leaderboard, and purchase-log state, then applies
+native `Client.Mock` at a Rovy flush. Same-set committed readers stay unchanged.
+`mockCommand` uses the declared command wire metadata in both directions, so
+request and result classes retain the same validation as live commands. Both
+methods capture native edit-mode state at service construction and reject play
+mode synchronously.
+
+`ScribeUnsafe.datatypes` now covers native `IsSupported`, `Pack`, and `Unpack`;
+the internal `NONFINITE` codec marker remains absent by design. Custom transports
+are passed by identity, and tests prove all send/listen directions receive the
+same opaque buffer without a wrapper codec.
+
+Strict compatibility defaults to the one tested peer,
+`ericplane/scribe@1.0.11` at commit
+`4253d303f3ea9e70b362d9e1e498b805ac3a8d01`. Other versions fail before bundle
+construction unless the user explicitly sets `strict: false`.
+
+The native Studio gate builds a scratch place without vendoring Scribe. In a
+real client playtest it constructs the bundle through `NativeScribeBinding`,
+preserves Scribe's frozen `__ScribeTemplate`, exercises native diagnostics, and
+observes `_ScribeClientDebugHook` with its `Request` and `Stream` endpoints.

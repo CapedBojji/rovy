@@ -18,6 +18,7 @@ import {
 	ScribeCommandResponder,
 	ScribeCooldowns,
 	ScribeDataOptions,
+	ScribeDiagnostics,
 	ScribeJobCompleted,
 	ScribeKeyAdded,
 	ScribeKeyRemoved,
@@ -35,15 +36,20 @@ import {
 	ScribeServerWriter,
 	ScribeSharedReader,
 	ScribeSharedShape,
+	ScribeTestRuntime,
 	ScribeNativeModule,
 	ScribeUnsafe,
 	ScribeValueChanged,
+	SCRIBE_SUPPORTED_VERSION,
 	configureScribeServer,
 	s,
 	scribeCommand,
 	scribeData,
 	scribeEvent,
 } from "@rovy/scribe";
+
+const supportedScribeVersion: "1.0.11" = SCRIBE_SUPPORTED_VERSION;
+print(supportedScribeVersion);
 
 // Rovy core does not currently export a built-in Update schedule.
 class Update {}
@@ -544,6 +550,8 @@ declare const monetizationService: ScribeMonetization<typeof PlayerData>;
 declare const ownershipService: ScribeOwnership<typeof PlayerData>;
 declare const cooldownService: ScribeCooldowns<typeof PlayerData>;
 declare const receiptService: ScribeReceipts<typeof PlayerData>;
+declare const testingService: ScribeTestRuntime<typeof PlayerData>;
+declare const diagnosticsService: ScribeDiagnostics;
 declare const unsafeService: ScribeUnsafe<typeof PlayerData>;
 
 clientData.Coins.get();
@@ -571,6 +579,10 @@ const messageHandle = messagingService.send(123, {
 });
 const messageResult = messagingService.takeResult(messageHandle);
 print(messageResult, unsafeService.profileStore);
+const supportsVector3 = unsafeService.datatypes.isSupported("Vector3");
+print(supportsVector3);
+// @ts-expect-error — Scribe's internal validation prefix is not public parity.
+unsafeService.datatypes.NONFINITE;
 // @ts-expect-error — raw ProfileStore access is isolated to ScribeUnsafe.
 persistenceService.profileStore;
 
@@ -626,6 +638,43 @@ const receipt = receiptService.tryHandleReceipt({
 	ProductId: 789,
 	CurrencySpent: 99,
 });
+testingService.seed(
+	{
+		Coins: 500,
+		Public: {
+			DisplayName: "Preview",
+		},
+	},
+	{
+		perks: ["VIP"],
+		leaderboards: {
+			Coins: [
+				{
+					rank: 1,
+					userId: 123,
+					name: "Preview",
+					score: 500,
+				},
+			],
+		},
+	},
+);
+testingService.mockCommand(
+	EquipItem,
+	(request) =>
+		new EquipItemResult(
+			request.itemId === "IronSword",
+			request.itemId === "IronSword" ? undefined : "not-owned",
+		),
+);
+const diagnosticStatus = diagnosticsService.status();
+const diagnosticLogs = diagnosticsService.recentLogs({
+	level: "Warn",
+	category: "Persistence",
+	limit: 10,
+});
+const diagnosticMetrics = diagnosticsService.metrics();
+diagnosticsService.addSink((entry) => print(entry.code));
 print(
 	leaderboardScore,
 	playerRank,
@@ -639,6 +688,9 @@ print(
 	cooldown,
 	cooldownState,
 	receipt,
+	diagnosticStatus,
+	diagnosticLogs,
+	diagnosticMetrics,
 );
 monetizationService.purchase(player, {
 	cost: {

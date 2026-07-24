@@ -109,7 +109,47 @@ return function(TS, t)
 			scheduleOnly()
 			help.registerData(serverScribe, "game/Transport", "Transport")
 			local module, created = help.nativeModule()
-			local transport = { Name = "TestTransport" }
+			local sentToClient
+			local sentToAll
+			local sentToServer
+			local serverListener
+			local clientListener
+			local transport = {
+				Name = "TestTransport",
+				SendToClient = function(_player, bytes)
+					sentToClient = bytes
+				end,
+				SendToAllClients = function(bytes)
+					sentToAll = bytes
+				end,
+				ListenServer = function(callback)
+					serverListener = callback
+				end,
+				SendToServer = function(bytes)
+					sentToServer = bytes
+				end,
+				ListenClient = function(callback)
+					clientListener = callback
+				end,
+			}
+			local player = {}
+			local outbound = buffer.create(4)
+			buffer.writeu32(outbound, 0, 0xA1B2C3D4)
+			local serverReceived
+			local clientReceived
+			local nativeNew = module.new
+			module.new = function(options)
+				options.Transport.ListenServer(function(sender, bytes)
+					serverReceived = { sender, bytes }
+				end)
+				options.Transport.ListenClient(function(bytes)
+					clientReceived = bytes
+				end)
+				options.Transport.SendToClient(player, outbound)
+				options.Transport.SendToAllClients(outbound)
+				options.Transport.SendToServer(outbound)
+				return nativeNew(options)
+			end
 			local plugin = serverScribe.ScribeServerPlugin.new({
 				module = module,
 				transport = transport,
@@ -119,6 +159,15 @@ return function(TS, t)
 			app:start()
 
 			t.expect(created[1].options.Transport).toBe(transport)
+			t.expect(sentToClient).toBe(outbound)
+			t.expect(sentToAll).toBe(outbound)
+			t.expect(sentToServer).toBe(outbound)
+			serverListener(player, outbound)
+			clientListener(outbound)
+			t.expect(serverReceived[1]).toBe(player)
+			t.expect(serverReceived[2]).toBe(outbound)
+			t.expect(clientReceived).toBe(outbound)
+			t.expect(buffer.readu32(clientReceived, 0)).toBe(0xA1B2C3D4)
 		end)
 
 		t.it("configures native Scribe once before bundles and rejects conflicts", function()
@@ -156,6 +205,32 @@ return function(TS, t)
 			t.expect(
 				tostring(err):find("conflicting process-wide", 1, true) ~= nil
 			).toBe(true)
+		end)
+
+		t.it("rejects unverified native versions unless strict compatibility is disabled", function()
+			reset()
+			scheduleOnly()
+			help.registerData(serverScribe, "game/StrictVersion", "StrictVersion")
+			local unverified = help.nativeModule("1.0.12")
+			local strictApp = App.new()
+			strictApp:addPlugin(serverScribe.ScribeServerPlugin.new({
+				module = unverified,
+			}))
+			t.expect(function()
+				strictApp:start()
+			end).toThrow()
+
+			reset()
+			scheduleOnly()
+			help.registerData(serverScribe, "game/LooseVersion", "LooseVersion")
+			local optedOut = help.nativeModule("1.0.12")
+			local looseApp = App.new()
+			looseApp:addPlugin(serverScribe.ScribeServerPlugin.new({
+				module = optedOut,
+				strict = false,
+			}))
+			looseApp:start()
+			t.expect(serverScribe.scribeVersion()).toBe("1.0.12")
 		end)
 
 		t.it("rejects first process configuration after a bundle exists", function()

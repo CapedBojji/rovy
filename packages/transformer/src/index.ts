@@ -5174,7 +5174,7 @@ const SCRIBE_DATA_PARAM_INFOS: ReadonlyArray<ScribeDataParamInfo> = [
 	{ name: "ScribeReceipts", prefix: "@rovy/scribe/receipts:", boundary: "server" },
 	{ name: "ScribeCooldowns", prefix: "@rovy/scribe/cooldowns:", boundary: "server" },
 	{ name: "ScribeMessaging", prefix: "@rovy/scribe/messaging:", boundary: "server" },
-	{ name: "ScribeTestRuntime", prefix: "@rovy/scribe/testing:", boundary: "both" },
+	{ name: "ScribeTestRuntime", prefix: "@rovy/scribe/testing:", boundary: "client" },
 	{ name: "ScribeUnsafe", prefix: "@rovy/scribe/unsafe:", boundary: "both" },
 ];
 

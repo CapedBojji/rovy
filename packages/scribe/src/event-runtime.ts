@@ -35,10 +35,12 @@ import type {
 import type {
 	ScribeJobHandle,
 	ScribeJobResult,
-	ScribeLogEntry,
 	ScribeSaveInfo,
 	ScribeStatus,
 } from "./types";
+import {
+	normalizeScribeLogEntry,
+} from "./diagnostics";
 
 type UnknownTable = Record<string | number, unknown>;
 type NativeCallback = (...args: ReadonlyArray<unknown>) => void;
@@ -559,7 +561,7 @@ export class ScribeEventRuntime {
 		const issueDataIds = this.routeDataIds("issue");
 		if (issueDataIds.size() > 0) {
 			this.connectSignal(module, "OnIssue", (entry) => {
-				const normalized = normalizeLogEntry(entry);
+				const normalized = normalizeScribeLogEntry(entry);
 				for (const dataId of issueDataIds) {
 					this.ingress.enqueue({
 						kind: "issue",
@@ -964,30 +966,4 @@ function readLeaderboard(
 		);
 	}
 	return table.freeze(entries);
-}
-
-function normalizeLogEntry(raw: unknown): ScribeLogEntry {
-	if (!typeIs(raw, "table")) {
-		return table.freeze({
-			at: os.time(),
-			level: "Error",
-			category: "Integrity",
-			code: "UNKNOWN",
-			message: tostring(raw),
-		});
-	}
-	const entry = raw as UnknownTable;
-	return table.freeze({
-		at: (entry.At ?? entry.at ?? os.time()) as number,
-		level: (entry.Level ?? entry.level ?? "Error") as ScribeLogEntry["level"],
-		category: (entry.Category ??
-			entry.category ??
-			"Integrity") as ScribeLogEntry["category"],
-		code: tostring(entry.Code ?? entry.code ?? "UNKNOWN"),
-		message: tostring(entry.Message ?? entry.message ?? ""),
-		context:
-			immutableIngressValue(
-				entry.Context ?? entry.context,
-			) as ScribeLogEntry["context"],
-	});
 }

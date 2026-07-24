@@ -124,15 +124,22 @@ export class ScribeWriteQueue {
 
 	enqueueCustom(
 		dataId: string,
-		player: Player,
+		player: Player | undefined,
 		label: string,
 		apply: () => string | undefined | void,
 		onFailure?: (error: string) => void,
 	): void {
-		assert(
-			this.boundary === "server",
-			"[rovy/scribe] feature writes are server-only",
-		);
+		if (this.boundary === "server") {
+			assert(
+				player !== undefined,
+				"[rovy/scribe] authoritative feature writes require a player",
+			);
+		} else {
+			assert(
+				player === undefined,
+				"[rovy/scribe] client-local feature writes cannot target a player",
+			);
+		}
 		assert(
 			!this.activeTransaction,
 			"[rovy/scribe] feature writes cannot be queued from inside writes.transaction",

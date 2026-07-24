@@ -75,7 +75,6 @@ export const SCRIBE_SERVER_DATA_PARAM_KINDS: ReadonlyArray<ScribeDataParamKind> 
 	"receipts",
 	"cooldowns",
 	"messaging",
-	"testing",
 	"unsafe",
 ];
 

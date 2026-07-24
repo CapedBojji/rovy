@@ -3,6 +3,7 @@ import type {
 	ScribeLogEntry,
 	ScribeLogLevel,
 	ScribeMetricSummary,
+	ScribeNativeLogEntry,
 	ScribeNativeModule,
 	ScribeStatus,
 } from "./types";
@@ -18,6 +19,18 @@ export interface ScribeLogFilter {
 	readonly limit?: number;
 }
 
+export type ScribeBindingLogEntry =
+	| ScribeLogEntry
+	| ScribeNativeLogEntry;
+
+export type ScribeBindingMetricSummary =
+	| ScribeMetricSummary
+	| {
+			readonly Count: number;
+			readonly Average: number;
+			readonly Max: number;
+	  };
+
 export type CompiledScribeBundleOptions = Readonly<Record<string, unknown>>;
 export type NativeScribeBundle = object;
 
@@ -28,9 +41,9 @@ export interface ScribeBinding {
 	compileTemplate(template: object): object;
 	createBundle(options: CompiledScribeBundleOptions): NativeScribeBundle;
 	status(): ScribeStatus;
-	addLogSink(sink: (entry: ScribeLogEntry) => void): void;
-	recentLogs(filter?: ScribeLogFilter): ReadonlyArray<ScribeLogEntry>;
-	metrics(): Readonly<Record<string, number | ScribeMetricSummary>>;
+	addLogSink(sink: (entry: ScribeBindingLogEntry) => void): void;
+	recentLogs(filter?: ScribeLogFilter): ReadonlyArray<ScribeBindingLogEntry>;
+	metrics(): Readonly<Record<string, number | ScribeBindingMetricSummary>>;
 }
 
 export class NativeScribeBinding implements ScribeBinding {
@@ -61,15 +74,24 @@ export class NativeScribeBinding implements ScribeBinding {
 		return this.module.GetStatus();
 	}
 
-	addLogSink(sink: (entry: ScribeLogEntry) => void): void {
+	addLogSink(sink: (entry: ScribeBindingLogEntry) => void): void {
 		this.module.AddLogSink(sink);
 	}
 
-	recentLogs(filter?: ScribeLogFilter): ReadonlyArray<ScribeLogEntry> {
-		return this.module.GetRecentLogs(filter);
+	recentLogs(filter?: ScribeLogFilter): ReadonlyArray<ScribeBindingLogEntry> {
+		return this.module.GetRecentLogs(
+			filter === undefined
+				? undefined
+				: {
+						Level: filter.level,
+						Category: filter.category,
+						Code: filter.code,
+						Limit: filter.limit,
+					},
+		);
 	}
 
-	metrics(): Readonly<Record<string, number | ScribeMetricSummary>> {
+	metrics(): Readonly<Record<string, number | ScribeBindingMetricSummary>> {
 		return this.module.GetMetrics();
 	}
 }
@@ -84,7 +106,7 @@ export interface FakeScribeBundle {
 export class FakeScribeBinding implements ScribeBinding {
 	readonly createdBundles = new Array<FakeScribeBundle>();
 	readonly configurations = new Array<Readonly<Record<string, unknown>>>();
-	private readonly sinks = new Array<(entry: ScribeLogEntry) => void>();
+	private readonly sinks = new Array<(entry: ScribeBindingLogEntry) => void>();
 	private readonly logs = new Array<ScribeLogEntry>();
 	private currentStatus: ScribeStatus = "Healthy";
 
@@ -118,7 +140,7 @@ export class FakeScribeBinding implements ScribeBinding {
 		this.currentStatus = status;
 	}
 
-	addLogSink(sink: (entry: ScribeLogEntry) => void): void {
+	addLogSink(sink: (entry: ScribeBindingLogEntry) => void): void {
 		this.sinks.push(sink);
 	}
 
@@ -127,7 +149,7 @@ export class FakeScribeBinding implements ScribeBinding {
 		for (const sink of this.sinks) sink(entry);
 	}
 
-	recentLogs(filter?: ScribeLogFilter): ReadonlyArray<ScribeLogEntry> {
+	recentLogs(filter?: ScribeLogFilter): ReadonlyArray<ScribeBindingLogEntry> {
 		const matches = this.logs.filter(
 			(entry) =>
 				(filter?.level === undefined || entry.level === filter.level) &&
@@ -144,7 +166,7 @@ export class FakeScribeBinding implements ScribeBinding {
 		return limited;
 	}
 
-	metrics(): Readonly<Record<string, number | ScribeMetricSummary>> {
+	metrics(): Readonly<Record<string, number | ScribeBindingMetricSummary>> {
 		return {
 			"fake.bundles": this.createdBundles.size(),
 		};
