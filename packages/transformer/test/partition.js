@@ -110,10 +110,23 @@ export class ServerTick {
 	const pluginOut = path.join(root, "out", "plugins", "combat");
 	fs.mkdirSync(pluginOut, { recursive: true });
 	fs.writeFileSync(path.join(pluginOut, "runtime.luau"), "return {}\n");
+	fs.mkdirSync(path.join(pluginOut, "client"), { recursive: true });
+	fs.writeFileSync(path.join(pluginOut, "client", "empty.luau"), "-- Compiled with roblox-ts\n");
+	fs.mkdirSync(path.join(pluginOut, "server"), { recursive: true });
+	fs.writeFileSync(path.join(pluginOut, "server", "types.luau"), "-- Types only\nreturn nil\n");
 	prepared.finalize();
 	assert.equal(fs.existsSync(path.join(pluginOut, "runtime.luau")), false);
+	assert.equal(
+		fs.readFileSync(path.join(pluginOut, "client", "empty.luau"), "utf8"),
+		"-- Generated empty Rovy boundary module.\nreturn {}\n",
+	);
+	assert.equal(
+		fs.readFileSync(path.join(pluginOut, "server", "types.luau"), "utf8"),
+		"-- Generated empty Rovy boundary module.\nreturn {}\n",
+	);
 	const facade = fs.readFileSync(path.join(pluginOut, "init.luau"), "utf8");
 	assert.match(facade, /RunService:IsClient/);
+	assert.match(facade, /TS\.import\(script, root\)/);
 	assert.match(facade, /if game then/);
 	assert.doesNotMatch(facade, /local RunService = game:GetService/);
 	const manifest = JSON.parse(fs.readFileSync(path.join(pluginOut, ".rovy-boundaries.json"), "utf8"));
