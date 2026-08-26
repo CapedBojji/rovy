@@ -106,7 +106,7 @@ export function preparePartitionedProject(projectDir: string, projectFile = "tsc
 	const stagingRoot = path.join(stateDir, "partitioned-src");
 	fs.rmSync(stagingRoot, { recursive: true, force: true });
 	copySourceTree(sourceRoot, stagingRoot, outDir, stateDir);
-	for (const analysis of analyses) emitPluginSources(analysis, checker, stagingRoot, sourceRoot);
+	for (const analysis of analyses) emitPluginSources(analysis, analyses, checker, stagingRoot, sourceRoot);
 
 	fs.mkdirSync(stateDir, { recursive: true });
 	const stagedNodeModules = path.join(stateDir, "node_modules");
@@ -604,6 +604,7 @@ function propagateReach(
 
 function emitPluginSources(
 	analysis: PluginAnalysis,
+	allAnalyses: ReadonlyArray<PluginAnalysis>,
 	checker: ts.TypeChecker,
 	stagingRoot: string,
 	sourceRoot: string,
@@ -619,7 +620,7 @@ function emitPluginSources(
 		const units = unitsByFile.get(file.fileName) ?? [];
 		for (const boundary of BOUNDARIES) {
 			const statements: ts.Statement[] = [];
-			statements.push(...importsForBoundary(file, units, boundary, analysis, checker));
+			statements.push(...importsForBoundary(file, units, boundary, analysis, allAnalyses, checker));
 			statements.push(...sameFileBoundaryImports(file, units, boundary, analysis));
 			for (const statement of file.statements) {
 				if (ts.isImportDeclaration(statement) || ts.isImportEqualsDeclaration(statement)) continue;
@@ -652,6 +653,7 @@ function importsForBoundary(
 	units: ReadonlyArray<DeclarationUnit>,
 	boundary: PluginBoundary,
 	analysis: PluginAnalysis,
+	allAnalyses: ReadonlyArray<PluginAnalysis>,
 	checker: ts.TypeChecker,
 ): ts.ImportDeclaration[] {
 	const selected = units.filter((unit) => unit.typeOnly || analysis.boundaryByUnit.get(unit) === boundary);
@@ -701,7 +703,7 @@ function importsForBoundary(
 			const symbol = checker.getSymbolAtLocation(clause.name);
 			if (symbol && usedAliases.has(symbol)) {
 				add(
-					rewrittenImportSpecifier(file, statement.moduleSpecifier.text, symbol, boundary, analysis, checker),
+					rewrittenImportSpecifier(file, statement.moduleSpecifier.text, symbol, boundary, analysis, allAnalyses, checker),
 					clause.name,
 					undefined,
 					clause.isTypeOnly,
@@ -713,7 +715,7 @@ function importsForBoundary(
 				const symbol = checker.getSymbolAtLocation(spec.name);
 				if (!symbol || !usedAliases.has(symbol)) continue;
 				add(
-					rewrittenImportSpecifier(file, statement.moduleSpecifier.text, symbol, boundary, analysis, checker),
+					rewrittenImportSpecifier(file, statement.moduleSpecifier.text, symbol, boundary, analysis, allAnalyses, checker),
 					undefined,
 					spec,
 					clause.isTypeOnly || spec.isTypeOnly,
@@ -881,12 +883,54 @@ function rewrittenImportSpecifier(
 	alias: ts.Symbol,
 	currentBoundary: PluginBoundary,
 	analysis: PluginAnalysis,
+	allAnalyses: ReadonlyArray<PluginAnalysis>,
 	checker: ts.TypeChecker,
 ): string {
 	if (!isInternalSpecifier(original)) return original;
 	const target = skipAlias(checker, alias);
+	const publicImport = publicPluginImport(file, original, target.name, currentBoundary, analysis, allAnalyses);
+	if (publicImport !== undefined) return publicImport;
 	const targetBoundary = analysis.boundaryBySymbol.get(target) ?? currentBoundary;
 	return rewrittenTargetSpecifier(file, original, currentBoundary, targetBoundary, analysis);
+}
+
+/**
+ * A plugin can import only another plugin's public root. Rewrite that source
+ * import to the provider's generated boundary root, preserving the side that
+ * owns each exported declaration.
+ */
+function publicPluginImport(
+	file: ts.SourceFile,
+	original: string,
+	exportedName: string,
+	currentBoundary: PluginBoundary,
+	consumer: PluginAnalysis,
+	analyses: ReadonlyArray<PluginAnalysis>,
+): string | undefined {
+	const allFiles = analyses.flatMap((analysis) => analysis.files);
+	const targetFile = resolveInternalModule(file.fileName, original, allFiles);
+	if (!targetFile) return undefined;
+	const provider = analyses.find((analysis) => analysis !== consumer && analysis.files.includes(targetFile));
+	if (!provider) return undefined;
+	const publicRoot = provider.files.find((candidate) => normalize(candidate.fileName) === normalize(path.join(provider.root, "index.ts")));
+	if (targetFile !== publicRoot) {
+		throw new Error(
+			`Rovy plugin partition failed:\n  - ${locationMessage(file, file, "cross-plugin imports must target the provider's public plugin root")}`,
+		);
+	}
+	const targetBoundary = provider.exports[exportedName];
+	if (targetBoundary === undefined) {
+		throw new Error(
+			`Rovy plugin partition failed:\n  - ${locationMessage(file, file, `${exportedName} is not exported by the provider's public plugin root`)}`,
+		);
+	}
+	if (!canReference(currentBoundary, targetBoundary)) {
+		throw new Error(
+			`Rovy plugin partition failed:\n  - ${locationMessage(file, file, `${currentBoundary} import cannot reference ${targetBoundary} public export ${exportedName}`)}`,
+		);
+	}
+	const fromRel = normalize(path.relative(consumer.root, file.fileName)).replace(/\.tsx?$/, "");
+	return relativeModule(`${consumer.relativeRoot}/${currentBoundary}/${fromRel}`, `${provider.relativeRoot}/${targetBoundary}/index`);
 }
 
 function rewrittenTargetSpecifier(

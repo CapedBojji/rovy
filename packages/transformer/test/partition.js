@@ -52,6 +52,61 @@ function writeCoreStub(root) {
 	);
 }
 
+function crossPluginFixture(consumerImport, consumerBoundary = "server") {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "rovy-cross-plugin-"));
+	const src = path.join(root, "src");
+	const contracts = path.join(src, "plugins", "contracts");
+	const consumer = path.join(src, "plugins", "consumer");
+	fs.mkdirSync(contracts, { recursive: true });
+	fs.mkdirSync(consumer, { recursive: true });
+	fs.writeFileSync(path.join(contracts, ".rovy.plugin.json"), "{}\n");
+	fs.writeFileSync(path.join(consumer, ".rovy.plugin.json"), "{}\n");
+	fs.writeFileSync(path.join(contracts, "index.ts"), 'export { PublicPower } from "./components";\n');
+	fs.writeFileSync(
+		path.join(contracts, "components.ts"),
+		['import { component, shared } from "@rovy/core";', "@shared", "@component", "export class PublicPower {}", "export class PrivatePower {}"].join("\n"),
+	);
+	fs.writeFileSync(
+		path.join(consumer, "index.ts"),
+		['import { plugin, shared } from "@rovy/core";', "@shared", "@plugin", "export class ConsumerPlugin { build() {} }"].join("\n"),
+	);
+	fs.writeFileSync(
+		path.join(consumer, "use.system.ts"),
+		[
+			'import { system, ' + consumerBoundary + ' } from "@rovy/core";',
+			`import { PublicPower } from "${consumerImport}";`,
+			"class Update {}",
+			"@" + consumerBoundary,
+			"@system({ schedule: Update })",
+			"export class UsePublicPower { run() { return PublicPower; } }",
+		].join("\n"),
+	);
+	fs.writeFileSync(
+		path.join(root, "tsconfig.json"),
+		JSON.stringify({
+			compilerOptions: { experimentalDecorators: true, module: "commonjs", moduleResolution: "node", noLib: true, rootDir: "src", outDir: "out", skipLibCheck: true },
+			include: ["src"],
+		}),
+	);
+	writeCoreStub(root);
+	return root;
+}
+
+{
+	const root = crossPluginFixture("../contracts");
+	const prepared = preparePartitionedProject(root);
+	assert(prepared, "cross-plugin fixture should be partitioned");
+	const staged = fs.readFileSync(path.join(prepared.stagingRoot, "plugins", "consumer", "server", "use.system.ts"), "utf8");
+	assert.match(staged, /from "\.\.\/\.\.\/contracts\/shared\/index"/);
+	fs.rmSync(root, { recursive: true, force: true });
+}
+
+{
+	const root = crossPluginFixture("../contracts/components");
+	assert.throws(() => preparePartitionedProject(root), /cross-plugin imports must target the provider's public plugin root/);
+	fs.rmSync(root, { recursive: true, force: true });
+}
+
 {
 	const root = fixture(`
 declare function shared(target: object): void;
