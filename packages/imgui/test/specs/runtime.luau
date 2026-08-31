@@ -393,6 +393,78 @@ return function(TS, t)
 				t.expect(snapped).toBe(4)
 			end)
 
+			t.it("aligns slider tracks with toggle tracks", function()
+				RovyUi.__reset()
+				local gui = root()
+				local node = RovyUi.new(gui)
+
+				RovyUi.start(node, function()
+					RovyUi.window("Tools", function()
+						RovyUi.toggle("Enabled", { on = true })
+						RovyUi.slider({ min = 0, max = 1, initial = 0 })
+					end)
+				end)
+
+				local toggleTrack = findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextButton"
+						and instance.Size.X.Offset == 36
+						and instance.Size.Y.Offset == 18
+				end)
+				local sliderTrack = findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextButton" and instance.Size.Y.Offset == 10
+				end)
+				t.expect(toggleTrack).toBeDefined()
+				t.expect(sliderTrack).toBeDefined()
+				t.expect(sliderTrack.Position.X.Offset).toBe(toggleTrack.Position.X.Offset)
+				t.expect(sliderTrack.Size.X.Offset).toBe(-62)
+
+				local grab = firstDirectChild(sliderTrack, function(instance)
+					return instance.ClassName == "TextButton" and instance.Size.X.Offset == 12
+				end)
+				t.expect(grab).toBeDefined()
+				t.expect(grab.Position.X.Offset).toBe(6)
+			end)
+
+			t.it("keeps selectable label text inside selected and hovered backgrounds", function()
+				RovyUi.__reset()
+				local playerGui = _G.Instance.new("PlayerGui")
+				local gui = root()
+				gui.Parent = playerGui
+				local node = RovyUi.new(gui)
+				local selected = true
+
+				local function render()
+					RovyUi.start(node, function()
+						RovyUi.window("Tools", function()
+							RovyUi.selectableLabel("Traversal", { selected = selected })
+						end)
+					end)
+				end
+
+				render()
+				local tab = findFirstDescendant(gui, function(instance)
+					return instance.ClassName == "TextButton" and instance.Text == "Traversal"
+				end)
+				t.expect(tab).toBeDefined()
+				local paddedWidth = tab.Size.X.Offset
+				local expectedTextWidth = math.ceil(string.len("Traversal") * RovyUi.getActiveStyle().textSize * 0.6)
+				t.expect(paddedWidth).toBe(expectedTextWidth + 12)
+				local padding = findChildByClass(tab, "UIPadding")
+				t.expect(padding.PaddingLeft.Offset).toBe(6)
+				t.expect(padding.PaddingRight.Offset).toBe(6)
+				t.expect(tab.BackgroundColor3).toBe(RovyUi.getActiveStyle().selectionBgColor)
+				t.expect(tab.BackgroundTransparency).toBe(0)
+
+				selected = false
+				_G.__rovyTestServices.UserInputService.MouseLocation = { X = 10, Y = 12 }
+				playerGui.__guiObjectsAtPosition = { tab }
+				tab.MouseEnter:Fire(10, 12)
+				render()
+				t.expect(tab.Size.X.Offset).toBe(paddedWidth)
+				t.expect(tab.BackgroundColor3).toBe(RovyUi.getActiveStyle().widgetHoveredBgColor)
+				t.expect(tab.BackgroundTransparency).toBe(0)
+			end)
+
 			t.it("writes pixels through EditableImageBuffer", function()
 				RovyUi.__reset()
 				local img = RovyUi.EditableImageBuffer.new(_G.Vector2.new(4, 4))

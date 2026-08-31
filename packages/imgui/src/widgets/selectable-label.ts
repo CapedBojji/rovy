@@ -1,7 +1,7 @@
 import { widget, __useInstance, __useState, useHoverTarget } from "../runtime";
 import { useStyle } from "../style";
 import { create } from "../create";
-import { udim, udim2 } from "../primitives";
+import { udim, udim2, v2 } from "../primitives";
 import { isTopGuiTarget } from "./shared";
 
 export interface SelectableLabelOptions {
@@ -11,6 +11,13 @@ export interface SelectableLabelOptions {
 export interface SelectableLabelHandle {
 	selected(): boolean;
 	clicked(): boolean;
+}
+
+const HORIZONTAL_PADDING = 6;
+
+function tryGetService(name: string): unknown {
+	const [ok, svc] = pcall(() => game.GetService(name as keyof Services));
+	return ok ? svc : undefined;
 }
 
 /** @widget */
@@ -29,13 +36,12 @@ export const selectableLabel = widget((text: string, options: SelectableLabelOpt
 			Font: Enum.Font.Code,
 			TextColor3: style.textColor,
 			TextSize: style.textSize,
-			Size: udim2(0, 0, 0, style.itemHeight),
-			AutomaticSize: Enum.AutomaticSize.X,
+			Size: udim2(0, HORIZONTAL_PADDING * 2, 0, style.itemHeight),
 			AutoButtonColor: false,
 			0: create("UICorner", { CornerRadius: udim(0, style.cornerRadius) }),
 			1: create("UIPadding", {
-				PaddingLeft: udim(0, 6),
-				PaddingRight: udim(0, 6),
+				PaddingLeft: udim(0, HORIZONTAL_PADDING),
+				PaddingRight: udim(0, HORIZONTAL_PADDING),
 			}),
 				Activated: () => {
 					if (options.disabled === true || !isTopGuiTarget(targetRef.btn)) return;
@@ -51,6 +57,11 @@ export const selectableLabel = widget((text: string, options: SelectableLabelOpt
 
 	refs.btn.Text = text;
 	refs.btn.TextSize = style.textSize;
+	const TextService = tryGetService("TextService") as TextService | undefined;
+	const textWidth = TextService !== undefined
+		? TextService.GetTextSize(text, style.textSize, Enum.Font.Code, v2(1000, style.itemHeight)).X
+		: text.size() * style.textSize * 0.6;
+	refs.btn.Size = udim2(0, math.ceil(textWidth) + HORIZONTAL_PADDING * 2, 0, style.itemHeight);
 
 	if (options.disabled === true) {
 		refs.btn.BackgroundTransparency = 1;

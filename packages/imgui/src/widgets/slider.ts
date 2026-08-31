@@ -41,6 +41,8 @@ interface SliderRefs {
 	endPointerDrag?: () => void;
 }
 
+const GRAB_WIDTH = 12;
+
 /** @widget */
 export const slider = widget((options: SliderOptions | number = {}): number => {
 	const opts = typeIs(options, "number") ? ({ max: options } as SliderOptions) : options;
@@ -86,7 +88,6 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 		const inputService = useInputService();
 		const style = useStyle();
 		const pointerDrag = usePointerDrag();
-		const grabWidth = 12;
 		const grabHeight = 16;
 		const trackHeight = 10;
 
@@ -222,8 +223,8 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 				Text: "",
 				AutoButtonColor: false,
 				AnchorPoint: v2(0, 0.5),
-				Position: udim2(0, grabWidth / 2, 0.5, 0),
-				Size: udim2(1, -grabWidth - boxOffset, 0, trackHeight),
+				Position: udim2(0, 0, 0.5, 0),
+				Size: udim2(1, -boxOffset, 0, trackHeight),
 				ClipsDescendants: false,
 				0: create("UICorner", { CornerRadius: udim(0, 3) }),
 				1: create("Frame", {
@@ -238,7 +239,7 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 					BackgroundColor3: style.sliderGrabColor,
 					BorderSizePixel: 0,
 					Text: "",
-					Size: udim2(0, grabWidth, 0, grabHeight),
+					Size: udim2(0, GRAB_WIDTH, 0, grabHeight),
 					AnchorPoint: v2(0.5, 0.5),
 					Position: udim2(0, 0, 0.5, 0),
 					AutoButtonColor: false,
@@ -375,7 +376,7 @@ export const slider = widget((options: SliderOptions | number = {}): number => {
 	refs.rangeMax = max;
 	refs.isEditing = editing;
 
-	refs.grab.Position = udim2(displayPercent, 0, 0.5, 0);
+	refs.grab.Position = udim2(displayPercent, GRAB_WIDTH / 2 - displayPercent * GRAB_WIDTH, 0.5, 0);
 	refs.fill.Size = udim2(displayPercent, 0, 1, 0);
 
 	const style = useStyle();
