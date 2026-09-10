@@ -28,6 +28,7 @@ function createFixtureDir() {
 	writeRovyUiStub(temp);
 	writeRovyRetainedUiStub(temp);
 	writeRovyVideStub(temp);
+	writeRbxtsTStub(temp);
 	return { temp, src, rojo: path.join(temp, "test.project.json") };
 }
 
@@ -107,6 +108,19 @@ function writeRovyRetainedUiStub(temp) {
 			"export namespace JSX { interface Element {} interface IntrinsicElements { [name: string]: Record<string, unknown>; } }",
 		].join("\n") + "\n",
 	);
+}
+
+// The transformer injects `@rbxts/t` into consumer files for document and
+// runtime-type-check validators, and now reports when it cannot resolve. The
+// fixtures declare documents, so the module has to exist on disk here too.
+function writeRbxtsTStub(temp) {
+	const dir = path.join(temp, "node_modules", "@rbxts", "t");
+	fs.mkdirSync(dir, { recursive: true });
+	fs.writeFileSync(
+		path.join(dir, "package.json"),
+		JSON.stringify({ name: "@rbxts/t", version: "3.2.1", types: "index.d.ts" }),
+	);
+	fs.writeFileSync(path.join(dir, "index.d.ts"), "export declare const t: Record<string, any>;\n");
 }
 
 function writeRovyVideStub(temp) {
