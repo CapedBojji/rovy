@@ -1,7 +1,5 @@
 # Datastore (`@rovy/datastore`)
 
-Status: v1 package shipped with transformer/runtime wiring.
-
 `@rovy/datastore` is Rovy's document-style persistence package. It gives game
 code typed document declarations, injected reader/writer/opener handles, and
 lifecycle events while keeping Roblox datastore calls behind a package-owned

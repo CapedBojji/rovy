@@ -44,7 +44,8 @@ commands, and a custom scheduler — a developer experience closer to
 [Bevy](https://bevyengine.org/).
 
 ```ts
-import { App, component, system, Query } from "@rovy/core";
+import { RunService } from "@rbxts/services";
+import { App, component, schedule, system, Query } from "@rovy/core";
 
 @component
 class Position {
@@ -56,6 +57,10 @@ class Velocity {
   constructor(public dx: number, public dy: number) {}
 }
 
+// Rovy ships no built-in schedules — you declare your own.
+@schedule
+class Update {}
+
 @system({ schedule: Update })
 class MoveEntities {
   run(q: Query<[Position, Velocity]>) {
@@ -66,7 +71,10 @@ class MoveEntities {
   }
 }
 
-new App().start();
+const app = new App();
+app.start();
+
+RunService.Heartbeat.Connect((dt) => app.runSchedule(Update, dt));
 ```
 
 ## Next steps
@@ -76,5 +84,8 @@ new App().start();
 - Want to write code immediately? Follow [Your First System](/guide/your-first-system).
 - Learning the model? Browse the [Concepts](/concepts/components) section.
 - Building reactive UI? Read [Rovy Vide](/packages/vide).
+- Building retained class-based UI? Read [Rovy UI](/packages/ui).
+- Need debug or tool panels? Read [Rovy ImGui](/packages/imgui).
 - Need persistence? Read [Datastore](/packages/datastore).
 - Already use native Scribe player profiles? Read [Scribe](/packages/scribe).
+- Debugging a live world? Read [World Inspector](/packages/world-inspector).

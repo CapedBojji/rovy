@@ -54,23 +54,29 @@ The public authoring story stays TypeScript-authored even though roblox-ts emits
 
 ```txt
 packages/imgui/src/
-  index.ts                public surface, re-exports, default RovyUi object
-  runtime.ts              root nodes, frames, scope, state/effect/instance helpers
-  input.ts                injectable input adapter for UI Labs/plugin viewports
-  style.ts                Style interface, defaults, style scopes
-  primitives.ts           c(), v2(), udim(), udim2()
-  create.ts               Instance creation helper
+  index.ts                 public surface, re-exports, default RovyUi object
+  runtime.ts               root nodes, frames, scope, state/effect/instance helpers
+  input.ts                 injectable input adapter for UI Labs/plugin viewports
+  contexts.ts              scoped context values, re-exported as RovyUi.contexts
+  style.ts                 Style interface, defaults, style scopes
+  primitives.ts            c(), v2(), udim(), udim2()
+  create.ts                Instance creation helper
+  createConnect.ts         event-connection helper for created instances
+  windowConstants.ts       shared window metrics and layout constants
+  imgui-labs.ts            UI Labs story integration helpers
   editable-image-buffer.ts RGBA draw buffer for EditableImage widgets
   widgets/
-    button.ts             checkbox.ts          radio-button.ts
-    toggle.ts             label.ts             heading.ts
-    separator.ts          space.ts             row.ts
-    window.ts             child-window.ts      modal.ts
-    popup.ts              portal.ts            slider.ts
-    drag-value.ts         input.ts             combo-box.ts
-    progress-bar.ts       collapsing-header.ts editable-image.ts
-    table.ts              table-row.ts         table-cell.ts
-    table-explorer.ts     demo-window.ts       curve-editor.ts
+    shared.ts             error.ts             button.ts
+    checkbox.ts           radio-button.ts      toggle.ts
+    label.ts              clickable-label.ts   selectable-label.ts
+    heading.ts            separator.ts         space.ts
+    row.ts                window.ts            child-window.ts
+    modal.ts              popup.ts             portal.ts
+    slider.ts             drag-value.ts        input.ts
+    combo-box.ts          progress-bar.ts      collapsing-header.ts
+    editable-image.ts     table.ts             table-row.ts
+    table-cell.ts         table-explorer.ts    curve-editor.ts
+    demo-window.ts
 ```
 
 ## When To Use It

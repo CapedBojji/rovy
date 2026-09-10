@@ -1,3 +1,16 @@
+# `@rovy/jecs`
+
+> **This is a re-publish of [jecs](https://github.com/Ukendio/jecs) by Ukendio,
+> vendored unmodified for [Rovy](https://github.com/CapedBojji/rovy).**
+>
+> It exists so `@rovy/core` can pin one exact jecs revision (`0.11.0`) with
+> roblox-ts typings alongside it. It is not a fork with behavior changes. If you
+> are not consuming Rovy, use upstream jecs directly.
+>
+> Original work © Ukendio, MIT licensed. Upstream README follows.
+
+---
+
 Just a stupidly fast Entity Component System
 
 -   [Entity Relationships](https://ajmmertens.medium.com/building-games-in-ecs-with-entity-relationships-657275ba2c6c) as first class citizens

@@ -55,7 +55,25 @@ class GameClock {
 }
 ```
 
-## 3. Write a system
+## 3. Declare your schedules
+
+Rovy ships **no built-in schedules** — you declare the ones your game needs with
+`@schedule`. Mark `runOnStart: true` for one-shot boot schedules.
+
+```ts
+import { schedule } from "@rovy/core";
+
+@schedule({ runOnStart: true })
+class Startup {}
+
+@schedule
+class Update {}
+```
+
+`Startup` fires once from `app.start()`. `Update` is driven by you, from a Roblox
+frame loop, in step 6.
+
+## 4. Write a system
 
 Systems are classes decorated with `@system`. The decorator carries scheduling config;
 the `run` method's parameter types declare what the system needs. The transformer reads
@@ -79,9 +97,9 @@ class MoveEntities {
 binds their instances. `Res<GameClock>` injects the resource. See
 [Systems & Injection](/concepts/systems-and-injection) for the full param table.
 
-## 4. Spawn entities at startup
+## 5. Spawn entities at startup
 
-Use the `Startup` schedule and `Commands` to create entities once at boot.
+Use the `Startup` schedule from step 3 and `Commands` to create entities once at boot.
 
 ```ts
 import { system, Commands } from "@rovy/core";
@@ -98,25 +116,33 @@ class SpawnEntities {
 `Commands` mutations are **deferred** — applied at the next flush point, not
 immediately. See [Commands](/concepts/commands).
 
-## 5. Boot the App
+## 6. Boot the App
 
 `rovy.loadPaths(...)` requires your modules so the injected registration calls run.
-`app.start()` instantiates systems, sorts them, and begins the schedule loop.
+`app.start()` instantiates systems, sorts them, and runs every schedule marked
+`runOnStart: true` — here, `Startup`.
+
+It does **not** start a frame loop. Per-frame schedules are yours to drive:
 
 ```ts
+import { RunService } from "@rbxts/services";
 import { App, rovy } from "@rovy/core";
 
 const app = new App();
 rovy.loadPaths("src/shared/components", "src/shared/systems");
 app.start();
+
+RunService.Heartbeat.Connect((dt) => app.runSchedule(Update, dt));
 ```
+
+`dt` from the frame loop is how wall-clock time enters Rovy.
 
 ::: tip
 `loadPaths` takes string paths in TypeScript authoring; the transformer maps them to
 Roblox Instance roots at build time.
 :::
 
-## 6. Filter with `With` / `Without`
+## 7. Filter with `With` / `Without`
 
 Refine a query without binding the extra component:
 

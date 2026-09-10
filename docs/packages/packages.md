@@ -5,12 +5,13 @@ Rovy ships as distinct packages, mirroring the split between runtime packages an
 | Package                 | Role                                                           | You interact with it by                                   |
 | ----------------------- | -------------------------------------------------------------- | --------------------------------------------------------- |
 | `@rovy/core`            | Decorators, macros, types, **and the packaged runtime**        | `import` it and write code                                |
+| `@rovy/jecs`            | Rovy-vendored jecs runtime that `@rovy/core` compiles against  | install it; `@rovy/core` imports it for you               |
 | `@rovy/networking`      | Net-event authoring surface and runtime handles                | `import` it when using `@netEvent`                        |
 | `@rovy/datastore`       | Persistent document declarations and runtime handles           | `import` it when using persistent documents               |
 | `@rovy/scribe`          | Scheduled typed wrapper over native Scribe player profiles     | `import` it when using a Scribe-managed profile           |
 | `@rovy/vide`            | Reactive Vide view integration for gameplay UI                 | `import` `@view`, `mountView`, and `ViewMonitor`          |
 | `@rovy/ui`              | Retained class-based Roblox UI runtime                         | `import` `@ui`, factories, `$` triggers, then `app.mount` |
-| `@rovy/imgui`              | Widget/render integration package                              | `import` widget helpers and JSDoc-tagged widget functions |
+| `@rovy/imgui`           | Immediate-mode widget/render package                           | `import` widget helpers and JSDoc-tagged widget functions |
 | `@rovy/world-inspector` | In-game ECS inspection and editing plugin                      | `import` it when embedding the debug inspector            |
 | `rovy-transformer`      | roblox-ts compiler transformer plugin                          | Listing it in `tsconfig.json`                             |
 | `rovy-build`            | build/open/watch/start orchestration and Rovy config discovery | Use it in package scripts                                 |
@@ -27,7 +28,8 @@ calls the packages consume. `rovy-build` owns the project command flow around
 `rbxtsc`, generators, Rojo, and Studio.
 
 Inside this repo, the shipped packages live in a pnpm workspace at
-`packages/core`, `packages/networking`, `packages/datastore`, `packages/scribe`,
+`packages/jecs`, `packages/core`, `packages/networking`, `packages/datastore`,
+`packages/scribe`,
 `packages/ui`, `packages/imgui`,
 `packages/vide`, `packages/world-inspector`, `packages/transformer`, and
 `packages/build`.
