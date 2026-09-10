@@ -21,3 +21,5 @@
 /test/place/include
 /test/place/.build
 /test/place/node_modules
+/test/place/.build/*.rbxl
+/test/place/.build/*.rbxlx

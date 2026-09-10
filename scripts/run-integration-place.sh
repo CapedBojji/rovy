@@ -7,7 +7,8 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/.." && pwd)"
 place_dir="$repo_root/test/place"
 build_dir="$place_dir/.build"
-place_file="$build_dir/rovy-integration.rbxl"
+place_file="$build_dir/rovy-integration-$(date +%Y%m%d-%H%M%S).rbxl"
+export PLACE_FILE="$place_file"
 
 # run-in-roblox 0.3.0 hardcodes /Applications/RobloxStudio.app/Contents/MacOS/
 # RobloxStudio and offers no override. macOS installs Studio as "Roblox
@@ -21,7 +22,7 @@ if [ "$(uname)" = "Darwin" ] && [ ! -x "/Applications/RobloxStudio.app/Contents/
   exit 2
 fi
 
-"$repo_root/scripts/build-integration-place.sh"
+"$repo_root/scripts/build-integration-place.sh" >/dev/null
 
 run_in_roblox_bin="$(command -v run-in-roblox || true)"
 if [ -z "$run_in_roblox_bin" ]; then

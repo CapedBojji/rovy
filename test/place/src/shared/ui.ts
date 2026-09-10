@@ -3,6 +3,7 @@ import type { EventReader } from "@rovy/core";
 import type { DocumentChanged, DocumentSaved } from "@rovy/datastore";
 import { Profile } from "./documents";
 import { ProfileFieldChanged } from "./events";
+import { ScribeCoinsChanged } from "./scribe-data";
 
 /**
  * Render counters live outside the components so the runner can read them
@@ -13,12 +14,14 @@ export const renderCounts = {
 	documentChanged: 0,
 	documentSaved: 0,
 	classEvent: 0,
+	scribeEvent: 0,
 };
 
 export function resetRenderCounts(): void {
 	renderCounts.documentChanged = 0;
 	renderCounts.documentSaved = 0;
 	renderCounts.classEvent = 0;
+	renderCounts.scribeEvent = 0;
 }
 
 /**
@@ -63,6 +66,27 @@ export class FieldLabel {
 		return textLabel({
 			Name: "FieldLabel",
 			Text: `fields=${changes.size()} renders=${renderCounts.classEvent}`,
+		});
+	}
+}
+
+/**
+ * A real `@scribeEvent` class bound straight into `static rerender`.
+ *
+ * `@rovy/scribe` publishes its events with `commands.send(new Ctor())` from its
+ * flush (see ScribeEventRuntime.flush), so the constructor a trigger subscribes
+ * to is the one the runtime sends. That makes this the same path a live Scribe
+ * profile change takes to the UI.
+ */
+@ui
+export class ScribeCoinsLabel {
+	static rerender = [$eventTrigger(ScribeCoinsChanged)];
+
+	render(changes: EventReader<ScribeCoinsChanged>): UiNode {
+		renderCounts.scribeEvent += 1;
+		return textLabel({
+			Name: "ScribeCoinsLabel",
+			Text: `scribe=${changes.size()} renders=${renderCounts.scribeEvent}`,
 		});
 	}
 }
