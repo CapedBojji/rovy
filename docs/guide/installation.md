@@ -14,6 +14,7 @@ development toolchain. The Rovy repo pins its tools with [mise](https://mise.jdx
 | [Rojo](https://rojo.space/)                       | sync TypeScript output into a Roblox place           |
 | [Blink](https://github.com/1Axen/blink)           | networking IDL — only needed with `@rovy/networking` |
 | [zune](https://github.com/Scythe-Technology/zune) | Luau runtime used for tests                          |
+| [run-in-roblox](https://github.com/rojo-rbx/run-in-roblox) | drives Studio for acceptance tests         |
 
 A typical `mise.toml`:
 
@@ -21,6 +22,7 @@ A typical `mise.toml`:
 [tools]
 "github:Scythe-Technology/zune" = "latest"
 "github:rojo-rbx/rojo" = "7.6.1"
+"github:rojo-rbx/run-in-roblox" = "0.3.0"
 "npm:pnpm" = "11.1.2"
 "github:1Axen/blink" = "latest"
 ```
@@ -30,12 +32,18 @@ A typical `mise.toml`:
 Rovy ships as separate packages, Flamework-style — a runtime package you import and a
 build-time transformer you list in `tsconfig.json`, and a build orchestrator for project commands.
 
-Install the core runtime, transformer, and build orchestrator:
+Install the core runtime, its jecs peer, the transformer, and the build
+orchestrator:
 
 ```sh
-npm i @rovy/core
+npm i @rovy/core @rovy/jecs
 npm i -D rovy-transformer rovy-build
 ```
+
+`@rovy/jecs` is a peer dependency of `@rovy/core` — the Rovy-vendored
+[jecs](https://github.com/Ukendio/jecs) runtime that core compiles against.
+Install it explicitly; leaving it out leaves an unmet peer and core fails to
+resolve its world implementation at runtime.
 
 Install networking only when you use net events:
 
@@ -84,6 +92,7 @@ npm i @rovy/world-inspector
 | Package                 | Role                                                           | How you use it                              |
 | ----------------------- | -------------------------------------------------------------- | ------------------------------------------- |
 | `@rovy/core`            | Decorators, macros, types, **and the packaged runtime**        | `import` it and write code                  |
+| `@rovy/jecs`            | Rovy-vendored jecs runtime `@rovy/core` compiles against        | install it; core imports it for you         |
 | `@rovy/networking`      | `@netEvent` authoring surface + runtime handles                | `import` when using net events              |
 | `@rovy/datastore`       | Persistent document declarations + reader/writer/opener handles | `import` when using datastore documents     |
 | `@rovy/scribe`          | Scheduled typed wrapper over native Scribe player profiles     | `import` when using Scribe-managed profiles |

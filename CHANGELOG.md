@@ -4,6 +4,18 @@
 
 ### Added
 
+- Added an npm-facing `README.md` to every publishable package: `@rovy/core`,
+  `@rovy/networking`, `@rovy/datastore`, `@rovy/ui`, `@rovy/imgui`,
+  `@rovy/vide`, `@rovy/world-inspector`, `rovy-transformer`, and `rovy-build`.
+  `@rovy/jecs` gained a fork notice identifying it as an unmodified vendored
+  re-publish of upstream jecs.
+- Added the `@rovy/jecs` peer dependency to the installation guide, the package
+  tables, and the root README. It was previously undocumented, so a fresh
+  install left an unmet peer.
+- Added a "Declare your schedules" step to the Your First System walkthrough and
+  linked the previously orphaned `@rovy/imgui` documentation into the site nav
+  and sidebar.
+
 - Added `@rovy/scribe`, a partitioned Rovy plugin for the verified
   `ericplane/scribe@1.0.11` runtime peer.
 - Added typed Scribe schema declarations, committed readers, buffered local and
@@ -25,6 +37,17 @@
   the Wally-installed peer, and the npm package excludes the vendor snapshot.
 - Added the package-neutral core flush-participant API used to commit external
   package work deterministically at every Rovy set boundary.
+
+### Fixed
+
+- Fixed the ECS example on the README, the docs home page, and the Your First
+  System walkthrough: all three referenced an `Update` schedule that was never
+  declared or imported, and Rovy ships no built-in schedules. The examples now
+  declare the schedule and drive it from a frame loop.
+- Corrected the claim that `app.start()` "begins the schedule loop". It runs
+  `runOnStart` schedules only; per-frame schedules are driven by the caller.
+- Refreshed the stale `@rovy/imgui` source layout listing and dropped
+  pre-release status banners from the shipped networking and datastore pages.
 
 ### Changed
 

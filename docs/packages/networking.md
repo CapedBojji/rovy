@@ -1,10 +1,10 @@
 # Networking (`@netEvent` and `@netFunction`)
 
-Status: MVP implementation in progress
-Target: Roblox-TS + Blink transport backend
-Goal: add typed cross-network events without designing full entity/component replication yet.
+`@rovy/networking` adds typed cross-network events and non-blocking
+request/response functions over a generated Blink or RemoteEvent transport.
+It intentionally does **not** provide automatic entity/component replication.
 
-This document defines the first networking API for Rovy.
+This page is the reference for that API.
 
 Package boundary: networking lives in `@rovy/networking`, separate from `@rovy/core`. It is authored as one plugin and split by `rovy-build`: codecs, metadata, and wire contracts are shared; `NetClientRuntime` / `NetClientPlugin` are client-only; `NetServerRuntime` / `NetServerPlugin` are server-only. The generated package facade loads shared code plus only the active Roblox boundary.
 
@@ -18,7 +18,7 @@ It intentionally does **not** define automatic ECS entity/component replication 
 
 ## Scope
 
-This spec covers:
+This page covers:
 
 - `@netEvent`
 - `@netFunction`
@@ -31,7 +31,7 @@ This spec covers:
 - `package.json` `rovy-build` environment/project configuration
 - compile-time and runtime boundary checks
 
-This spec does **not** cover:
+It does **not** cover:
 
 - automatic component replication
 - automatic entity replication

@@ -13,7 +13,8 @@ developer experience closer to [Bevy](https://bevyengine.org/).
 ## Example
 
 ```ts
-import { App, component, system, Query } from "@rovy/core";
+import { RunService } from "@rbxts/services";
+import { App, component, schedule, system, Query } from "@rovy/core";
 
 @component
 class Position {
@@ -25,6 +26,10 @@ class Velocity {
   constructor(public dx: number, public dy: number) {}
 }
 
+// Rovy ships no built-in schedules — you declare your own.
+@schedule
+class Update {}
+
 @system({ schedule: Update })
 class MoveEntities {
   run(q: Query<[Position, Velocity]>) {
@@ -35,7 +40,10 @@ class MoveEntities {
   }
 }
 
-new App().start();
+const app = new App();
+app.start();
+
+RunService.Heartbeat.Connect((dt) => app.runSchedule(Update, dt));
 ```
 
 ## Features
@@ -64,6 +72,7 @@ new App().start();
 | Package | Role |
 |---------|------|
 | `@rovy/core` | Decorators, macros, types, and the packaged runtime — what you import |
+| `@rovy/jecs` | Rovy-vendored jecs runtime that `@rovy/core` compiles against |
 | `@rovy/networking` | `@netEvent` authoring surface and runtime handles |
 | `@rovy/scribe` | Buffered, event-driven integration for native Scribe player data |
 | `@rovy/datastore` | Rovy-owned persistent document declarations and handles |
@@ -72,11 +81,12 @@ new App().start();
 | `@rovy/imgui` | Function-first widget/render runtime |
 | `@rovy/world-inspector` | In-game ECS inspection and editing plugin |
 | `rovy-transformer` | roblox-ts compiler transformer plugin (dev dependency) |
+| `rovy-build` | `rovy` CLI: compile, generate, build, watch, open, start (dev dependency) |
 
 ## Install
 
 ```sh
-npm i @rovy/core
+npm i @rovy/core @rovy/jecs
 npm i -D rovy-transformer rovy-build
 ```
 
@@ -85,10 +95,13 @@ Register the transformer in `tsconfig.json`:
 ```json
 {
   "compilerOptions": {
-    "plugins": [{ "transform": "rovy-transformer", "config": ".rovy.json" }]
+    "plugins": [{ "transform": "rovy-transformer" }]
   }
 }
 ```
+
+A `.rovy.json` next to `tsconfig.json` is picked up automatically; pass
+`"config": "<path>"` alongside `transform` only to point somewhere else.
 
 Full setup: [Installation guide](https://capedbojji.github.io/rovy/guide/installation).
 
@@ -98,7 +111,7 @@ the project contains `.rovy.plugin.json` monolith plugin roots.
 ## Repository layout
 
 ```
-packages/      core, networking, datastore, scribe, vide, ui, world-inspector, transformer, build
+packages/      jecs, core, networking, datastore, scribe, vide, ui, imgui, world-inspector, transformer, build
 docs/          VitePress documentation site
 ```
 
