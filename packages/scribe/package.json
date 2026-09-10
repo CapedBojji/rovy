@@ -1,6 +1,6 @@
 {
   "name": "@rovy/scribe",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Rovy integration for Scribe player data",
   "main": "out/init.luau",
   "types": "out/index.d.ts",
@@ -27,7 +27,7 @@
     "generateBlink": false
   },
   "peerDependencies": {
-    "@rovy/core": "0.0.0"
+    "@rovy/core": "^0.1.0"
   },
   "devDependencies": {
     "@rbxts/compiler-types": "3.0.0-types.0",
@@ -37,5 +37,25 @@
     "roblox-ts": "^3.0.0",
     "rovy-build": "workspace:*",
     "typescript": "^5.9.3"
-  }
+  },
+  "author": "CapedBojji",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CapedBojji/rovy.git",
+    "directory": "packages/scribe"
+  },
+  "bugs": {
+    "url": "https://github.com/CapedBojji/rovy/issues"
+  },
+  "homepage": "https://capedbojji.github.io/rovy/",
+  "keywords": [
+    "roblox",
+    "roblox-ts",
+    "ecs",
+    "rovy",
+    "scribe",
+    "datastore",
+    "persistence",
+    "player-data"
+  ]
 }

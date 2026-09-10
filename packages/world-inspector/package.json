@@ -1,6 +1,6 @@
 {
   "name": "@rovy/world-inspector",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Client-side world inspector plugin for Rovy",
   "main": "out/init.luau",
   "types": "out/index.d.ts",
@@ -18,9 +18,9 @@
     "access": "public"
   },
   "peerDependencies": {
-    "@rovy/core": "0.0.0",
-    "@rovy/networking": "0.0.0",
-    "@rovy/imgui": "0.0.0"
+    "@rovy/core": "^0.1.0",
+    "@rovy/networking": "^0.1.0",
+    "@rovy/imgui": "^0.1.0"
   },
   "devDependencies": {
     "@rbxts/compiler-types": "3.0.0-types.0",
@@ -30,5 +30,24 @@
     "@rovy/imgui": "workspace:*",
     "typescript": "^5.9.3",
     "roblox-ts": "^3.0.0"
-  }
+  },
+  "author": "CapedBojji",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CapedBojji/rovy.git",
+    "directory": "packages/world-inspector"
+  },
+  "bugs": {
+    "url": "https://github.com/CapedBojji/rovy/issues"
+  },
+  "homepage": "https://capedbojji.github.io/rovy/",
+  "keywords": [
+    "roblox",
+    "roblox-ts",
+    "ecs",
+    "rovy",
+    "debug",
+    "inspector",
+    "devtools"
+  ]
 }

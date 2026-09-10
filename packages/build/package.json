@@ -1,6 +1,6 @@
 {
   "name": "rovy-build",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Build manager and project orchestrator for Rovy games",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -22,10 +22,36 @@
     "typescript": "5.5.3"
   },
   "peerDependencies": {
-    "rovy-transformer": "0.0.0"
+    "rovy-transformer": "^0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.31",
     "rovy-transformer": "workspace:*"
+  },
+  "author": "CapedBojji",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CapedBojji/rovy.git",
+    "directory": "packages/build"
+  },
+  "bugs": {
+    "url": "https://github.com/CapedBojji/rovy/issues"
+  },
+  "homepage": "https://capedbojji.github.io/rovy/",
+  "keywords": [
+    "roblox",
+    "roblox-ts",
+    "ecs",
+    "rovy",
+    "cli",
+    "build-tool",
+    "rojo",
+    "blink"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.13"
   }
 }

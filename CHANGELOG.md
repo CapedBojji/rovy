@@ -1,8 +1,21 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 — 2026-09-10
 
 ### Added
+
+- Added `MIT` `LICENSE` files at the repository root and in every published
+  package. Each manifest already declared `"license": "MIT"` but shipped no
+  license text.
+- Added npm publishing metadata to every package: `repository` (with
+  `directory`), `homepage`, `bugs`, `author`, `keywords`, and
+  `publishConfig.access`.
+- Added `pnpm check:versions`, a publish guard asserting that every package
+  agrees on one version, that no `workspace:` range leaks into a published
+  dependency, and that `@rovy/core`'s exported `VERSION` matches its manifest.
+- Added `pnpm release:dry` and `pnpm release`, plus a CI workflow that builds,
+  tests, and verifies every package packs cleanly.
+- Added `build:world-inspector` and `test:world-inspector` root scripts.
 
 - Added an npm-facing `README.md` to every publishable package: `@rovy/core`,
   `@rovy/networking`, `@rovy/datastore`, `@rovy/ui`, `@rovy/imgui`,
@@ -40,6 +53,9 @@
 
 ### Fixed
 
+- Fixed the shared Luau test harness, which could not load a `rovy-build`
+  package facade: nodes answered `FindFirstChild` but not `IsA` or
+  `GetChildren`, so `@rovy/world-inspector` specs failed before running.
 - Fixed the ECS example on the README, the docs home page, and the Your First
   System walkthrough: all three referenced an `Update` schedule that was never
   declared or imported, and Rovy ships no built-in schedules. The examples now
@@ -49,8 +65,21 @@
 - Refreshed the stale `@rovy/imgui` source layout listing and dropped
   pre-release status banners from the shipped networking and datastore pages.
 
+### Removed
+
+- Removed committed debug scratch scripts (`inspect_scheduler.luau`,
+  `packages/ui/inspect_query_shape.luau`, `packages/ui/inspect_scheduler.luau`,
+  `packages/ui/luau_size_check.luau`) and a stray npm `package-lock.json` in
+  `packages/transformer` — this is a pnpm workspace.
+
 ### Changed
 
+- Set the first published version of every package to `0.1.0` (previously
+  `0.0.0`) and widened the inter-package `peerDependencies` from the exact
+  `0.0.0` to `^0.1.0`. `@rovy/jecs` keeps its upstream-tracking
+  `0.11.0-rovy.1`.
+- Relaxed the `@rbxts/vide` peer range on `@rovy/vide` from the exact `0.6.1`
+  to `^0.6.1`.
 - The root build, test, and local-pack commands now include `@rovy/scribe`.
 - The transformer now lowers and validates Scribe declarations, decorators,
   command call sites, schema paths, runtime boundaries, and injected services.

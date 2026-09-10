@@ -1,6 +1,7 @@
 // @rovy/core — public surface.
 
-export const VERSION = "0.0.0";
+// Keep in sync with package.json; `pnpm check:versions` enforces it.
+export const VERSION = "0.1.0";
 
 // Authoring types (erased at runtime by the transformer).
 export * from "./types";

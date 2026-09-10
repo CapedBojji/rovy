@@ -1,6 +1,6 @@
 {
   "name": "@rovy/core",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Bevy-like ECS authoring layer over jecs for roblox-ts (runtime package)",
   "main": "out/init.luau",
   "types": "out/index.d.ts",
@@ -33,5 +33,26 @@
     "@rovy/jecs": "workspace:*",
     "typescript": "^5.9.3",
     "roblox-ts": "^3.0.0"
-  }
+  },
+  "author": "CapedBojji",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CapedBojji/rovy.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/CapedBojji/rovy/issues"
+  },
+  "homepage": "https://capedbojji.github.io/rovy/",
+  "keywords": [
+    "roblox",
+    "roblox-ts",
+    "ecs",
+    "rovy",
+    "jecs",
+    "entity-component-system",
+    "bevy",
+    "gamedev",
+    "decorators"
+  ]
 }

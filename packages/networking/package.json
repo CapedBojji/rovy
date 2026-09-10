@@ -1,6 +1,6 @@
 {
   "name": "@rovy/networking",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Networking package for Rovy net events over generated transports",
   "main": "out/init.luau",
   "types": "out/index.d.ts",
@@ -25,7 +25,7 @@
     "generateBlink": false
   },
   "peerDependencies": {
-    "@rovy/core": "0.0.0"
+    "@rovy/core": "^0.1.0"
   },
   "devDependencies": {
     "@rbxts/compiler-types": "3.0.0-types.0",
@@ -34,5 +34,25 @@
     "rovy-build": "workspace:*",
     "typescript": "^5.9.3",
     "roblox-ts": "^3.0.0"
-  }
+  },
+  "author": "CapedBojji",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CapedBojji/rovy.git",
+    "directory": "packages/networking"
+  },
+  "bugs": {
+    "url": "https://github.com/CapedBojji/rovy/issues"
+  },
+  "homepage": "https://capedbojji.github.io/rovy/",
+  "keywords": [
+    "roblox",
+    "roblox-ts",
+    "ecs",
+    "rovy",
+    "networking",
+    "blink",
+    "remoteevent",
+    "multiplayer"
+  ]
 }

@@ -1,6 +1,6 @@
 {
   "name": "@rovy/datastore",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Compile-time persistent document package for Rovy",
   "main": "out/init.luau",
   "types": "out/index.d.ts",
@@ -21,7 +21,7 @@
     "@rbxts/t": "^3.2.1"
   },
   "peerDependencies": {
-    "@rovy/core": "0.0.0"
+    "@rovy/core": "^0.1.0"
   },
   "devDependencies": {
     "@rbxts/compiler-types": "3.0.0-types.0",
@@ -29,5 +29,25 @@
     "@rovy/core": "workspace:*",
     "typescript": "^5.9.3",
     "roblox-ts": "^3.0.0"
-  }
+  },
+  "author": "CapedBojji",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CapedBojji/rovy.git",
+    "directory": "packages/datastore"
+  },
+  "bugs": {
+    "url": "https://github.com/CapedBojji/rovy/issues"
+  },
+  "homepage": "https://capedbojji.github.io/rovy/",
+  "keywords": [
+    "roblox",
+    "roblox-ts",
+    "ecs",
+    "rovy",
+    "datastore",
+    "persistence",
+    "profile",
+    "save-data"
+  ]
 }

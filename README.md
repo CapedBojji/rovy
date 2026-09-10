@@ -124,7 +124,22 @@ pnpm test            # run all package tests
 pnpm docs:dev        # run the docs site locally
 ```
 
-Requires Node.js >=22.13 and pnpm 11.
+Requires Node.js >=22.13 and pnpm 11. The rest of the toolchain — zune, Rojo,
+run-in-roblox, and Blink — is pinned in `mise.toml`; run `mise install` once.
+
+## Releasing
+
+All packages share one version, except `@rovy/jecs`, which tracks the upstream
+jecs release it vendors.
+
+```sh
+pnpm check:versions  # assert versions agree and no workspace: range leaks
+pnpm release:dry     # build, then pack every package without publishing
+pnpm release         # build, then publish every package to npm
+```
+
+Bump the version in each `packages/*/package.json` and in the `VERSION`
+constant exported by `@rovy/core`; `pnpm check:versions` fails if they drift.
 
 ## License
 

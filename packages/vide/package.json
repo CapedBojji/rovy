@@ -1,6 +1,6 @@
 {
   "name": "@rovy/vide",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Vide integration package for Rovy ECS views",
   "main": "out/init.luau",
   "types": "out/index.d.ts",
@@ -18,8 +18,8 @@
     "access": "public"
   },
   "peerDependencies": {
-    "@rbxts/vide": "0.6.1",
-    "@rovy/core": "0.0.0"
+    "@rbxts/vide": "^0.6.1",
+    "@rovy/core": "^0.1.0"
   },
   "devDependencies": {
     "@rbxts/compiler-types": "3.0.0-types.0",
@@ -28,5 +28,25 @@
     "@rovy/core": "workspace:*",
     "typescript": "^5.9.3",
     "roblox-ts": "^3.0.0"
-  }
+  },
+  "author": "CapedBojji",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CapedBojji/rovy.git",
+    "directory": "packages/vide"
+  },
+  "bugs": {
+    "url": "https://github.com/CapedBojji/rovy/issues"
+  },
+  "homepage": "https://capedbojji.github.io/rovy/",
+  "keywords": [
+    "roblox",
+    "roblox-ts",
+    "ecs",
+    "rovy",
+    "ui",
+    "gui",
+    "vide",
+    "reactive"
+  ]
 }
