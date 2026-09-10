@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added transformer coverage for `sharedDocument` and `document<T, Owner>()`,
+  neither of which had any. Both shipped bugs as a result.
 - Added `test/place`, a Roblox integration place compiled by `rbxtsc` with
   `rovy-transformer`, built by Rojo, and driven inside Roblox Studio by
   `run-in-roblox`. `pnpm test:place` runs it; `pnpm build:place` compiles and
@@ -63,6 +65,20 @@
 
 ### Fixed
 
+- Fixed `sharedDocument` emitting its `key` verbatim. `SharedDocumentOptions.key`
+  is a plain string, but the runtime always calls `def.key(owner)`, so a shared
+  document with a key threw on its first open. The transformer now wraps a
+  string key.
+- Fixed `document<T, Owner>()` losing its `Owner` type argument. `__document`
+  inferred `Owner` from the very object literal it was checking, so
+  `key: (owner) => owner.id` saw `unknown` and failed `noImplicitAny`. The
+  emitted call now carries explicit type arguments.
+- Fixed `@rbxts/t` being a plain dependency of `@rovy/datastore`. Every document
+  declaration makes the transformer inject a `@rbxts/t` validator into the
+  *consumer's* file, so the module must resolve from the consumer's project; it
+  is now a peer dependency. `@rovy/core` declares it as an optional peer, since
+  `@component` and `@inspect` emit the same validators once `runtimeTypeChecks`
+  or `debug` is enabled.
 - Fixed `@rovy/datastore` not exporting the `DocumentWriter` type. The docs told
   users to import it and the type existed, but it was missing from the package's
   export list, so `import type { DocumentWriter } from "@rovy/datastore"` failed.

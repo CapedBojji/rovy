@@ -1,10 +1,10 @@
 import { system, type Commands } from "@rovy/core";
-import type { DocumentOpener, DocumentWriter } from "@rovy/datastore";
-import { OWNER, Profile } from "./documents";
+import type { DocumentOpener, DocumentReader, DocumentWriter } from "@rovy/datastore";
+import { OWNER, Profile, WorldConfig } from "./documents";
 import { ProfileFieldChanged } from "./events";
 import { Tick } from "./schedules";
 
-type Action = "open" | "addCoins" | "save" | "sendFieldChanged";
+type Action = "open" | "addCoins" | "save" | "sendFieldChanged" | "openShared";
 
 /**
  * Document handles are injected params, so writes have to happen inside a
@@ -18,6 +18,8 @@ export function queueAction(action: Action): void {
 
 export const observed = {
 	coins: -1,
+	sharedKey: "",
+	sharedSeason: "",
 };
 
 @system({ schedule: Tick })
@@ -26,6 +28,8 @@ export class DriveDocument {
 		commands: Commands,
 		opener: DocumentOpener<typeof Profile>,
 		writer: DocumentWriter<typeof Profile>,
+		sharedOpener: DocumentOpener<typeof WorldConfig>,
+		sharedReader: DocumentReader<typeof WorldConfig>,
 	): void {
 		while (queued.size() > 0) {
 			const action = queued.shift();
@@ -37,9 +41,16 @@ export class DriveDocument {
 				writer.save(OWNER);
 			} else if (action === "sendFieldChanged") {
 				commands.send(new ProfileFieldChanged("coins"));
+			} else if (action === "openShared") {
+				// Calls def.key(owner) internally: a shared document whose string
+				// key was emitted verbatim used to throw here.
+				observed.sharedKey = sharedOpener.keyOf(undefined);
+				sharedOpener.open(undefined);
 			}
 		}
 		const data = writer.get(OWNER);
 		observed.coins = data === undefined ? -1 : data.coins;
+		const shared = sharedReader.get(undefined);
+		observed.sharedSeason = shared === undefined ? "" : shared.season;
 	}
 }

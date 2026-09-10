@@ -17,18 +17,17 @@
   "publishConfig": {
     "access": "public"
   },
-  "dependencies": {
-    "@rbxts/t": "^3.2.1"
-  },
   "peerDependencies": {
+    "@rbxts/t": "^3.2.1",
     "@rovy/core": "^0.1.0"
   },
   "devDependencies": {
     "@rbxts/compiler-types": "3.0.0-types.0",
+    "@rbxts/t": "^3.2.1",
     "@rbxts/types": "^1.0.920",
     "@rovy/core": "workspace:*",
-    "typescript": "^5.9.3",
-    "roblox-ts": "^3.0.0"
+    "roblox-ts": "^3.0.0",
+    "typescript": "^5.9.3"
   },
   "author": "CapedBojji",
   "repository": {

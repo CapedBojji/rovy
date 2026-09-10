@@ -23,16 +23,18 @@
     "@rbxts/better-janitor": "^0.4.0"
   },
   "peerDependencies": {
+    "@rbxts/t": "^3.2.1",
     "@rovy/jecs": "0.11.0-rovy.1"
   },
   "devDependencies": {
     "@rbxts/compiler-types": "3.0.0-types.0",
     "@rbxts/jest": "^3.16.0-ts.1",
     "@rbxts/jest-globals": "^3.16.0-ts.1",
+    "@rbxts/t": "^3.2.1",
     "@rbxts/types": "^1.0.920",
     "@rovy/jecs": "workspace:*",
-    "typescript": "^5.9.3",
-    "roblox-ts": "^3.0.0"
+    "roblox-ts": "^3.0.0",
+    "typescript": "^5.9.3"
   },
   "author": "CapedBojji",
   "repository": {
@@ -54,5 +56,10 @@
     "bevy",
     "gamedev",
     "decorators"
-  ]
+  ],
+  "peerDependenciesMeta": {
+    "@rbxts/t": {
+      "optional": true
+    }
+  }
 }

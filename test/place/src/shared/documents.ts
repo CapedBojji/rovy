@@ -1,4 +1,4 @@
-import { document } from "@rovy/datastore";
+import { document, sharedDocument } from "@rovy/datastore";
 
 export interface ProfileData {
 	coins: number;
@@ -16,11 +16,23 @@ export interface ProfileOwner {
 export const Profile = document<ProfileData, ProfileOwner>()({
 	name: "IntegrationProfile",
 	store: "RovyIntegrationProfile",
-	// The transformer checks this against AuthorDocumentDef<T, unknown>, which
-	// drops the Owner type argument, so the cast is required today.
-	key: (owner) => (owner as ProfileOwner).slot,
+	key: (owner) => owner.slot,
 	default: () => ({ coins: 0, level: 1 }),
 	lifecycle: { autoOpen: false, autoClose: false },
 });
 
 export const OWNER: ProfileOwner = { slot: "integration" };
+
+export interface WorldConfigData {
+	season: string;
+}
+
+/** Shared documents take a plain string key, not a function. */
+export const WorldConfig = sharedDocument<WorldConfigData>()({
+	name: "IntegrationWorldConfig",
+	store: "RovyIntegrationWorldConfig",
+	key: "live",
+	default: () => ({ season: "alpha" }),
+	session: { lock: false },
+	lifecycle: { autoOpen: false, autoClose: false },
+});

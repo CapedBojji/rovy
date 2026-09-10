@@ -13,8 +13,12 @@ injection hook that lets datastore install its handles automatically at
 ## Install
 
 ```sh
-npm i @rovy/datastore
+npm i @rovy/datastore @rbxts/t
 ```
+
+`@rbxts/t` is a peer dependency. Every document declaration makes the
+transformer inject a `@rbxts/t` validator into your own file, so the module has
+to resolve from your project rather than from inside `@rovy/datastore`.
 
 Keep `@rovy/core`, `rovy-transformer`, and `rovy-build` installed as normal.
 The datastore authoring functions are transformer-backed. If the transformer
