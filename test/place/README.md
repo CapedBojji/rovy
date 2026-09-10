@@ -22,6 +22,7 @@ pnpm build:place   # compile and build the .rbxl only, no Studio
 | shared document opens with a string key | `sharedDocument` keys reach the runtime as callables |
 | hud builds a styled panel with layout children | `UICorner`/`UIPadding`/`UIListLayout` children land under the panel |
 | hud labels render live state | label text reflects the state at render time |
+| ui rerenders on a `@scribeEvent` bound in `static rerender` | a real scribe event class drives a rerender |
 | rerender patched the live Instance | reconciliation wrote back to the mounted Instance |
 
 ### The two `$eventTrigger` branches
@@ -62,6 +63,12 @@ ScreenGui "RovyHudProbe"
     TextLabel "Frames" text="rendered frames: 42" size={0, 256}, {0, 18}
     TextLabel "Hint" text="world inspector: open" size={0, 256}, {0, 18}
 ```
+
+The place maps the vendored Scribe source to
+`ReplicatedStorage.Packages.Scribe`, which is where `@rovy/scribe` looks for its
+native peer by default. Declaring a schema is enough to trigger that lookup, so
+this doubles as a check that the supported Scribe version loads and binds in a
+real DataModel.
 
 ## What it does not cover
 

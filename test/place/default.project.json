@@ -35,6 +35,10 @@
       },
       "RovyIntegration": {
         "$path": "out/shared"
+      },
+      "Packages": {
+        "$className": "Folder",
+        "Scribe": { "$path": "../../vendor/scribe/src" }
       }
     },
     "StarterPlayer": {

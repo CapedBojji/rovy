@@ -5,9 +5,15 @@ import { s, scribeData, scribeEvent, ScribeValueChanged } from "@rovy/scribe";
  * binding below is exercised against the genuine authoring surface rather than
  * a stand-in.
  *
- * The declaration only registers metadata; `ScribePlugin` is what reaches for
- * the native Scribe peer, and this place deliberately does not add it. Scribe's
- * own runtime is covered by `packages/scribe/test` and its Studio fixture.
+ * Declaring the schema is enough to make `@rovy/scribe` resolve the native
+ * peer, so the place maps the vendored Scribe module to
+ * `ReplicatedStorage.Packages.Scribe`, where the resolver looks by default.
+ * That makes this run a real check that the supported Scribe version loads and
+ * binds inside a DataModel.
+ *
+ * The place still does not add `ScribePlugin`: driving a live profile needs a
+ * joined Player and both boundaries, which `packages/scribe/test/studio` covers
+ * under a playtest.
  */
 export const PlayerData = scribeData({
 	name: "IntegrationPlayerData",
