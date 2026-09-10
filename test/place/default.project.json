@@ -17,19 +17,32 @@
             "better-janitor": {
               "$className": "Folder",
               "src": { "$path": "../../packages/core/node_modules/@rbxts/better-janitor/src" }
-            }
+            },
+            "services": { "$path": "node_modules/@rbxts/services" }
           },
           "@rovy": {
             "$className": "Folder",
             "jecs": { "$path": "node_modules/@rovy/jecs" },
             "core": { "$path": "node_modules/@rovy/core" },
             "datastore": { "$path": "node_modules/@rovy/datastore" },
-            "ui": { "$path": "node_modules/@rovy/ui" }
+            "ui": { "$path": "node_modules/@rovy/ui" },
+            "imgui": { "$path": "node_modules/@rovy/imgui" },
+            "networking": { "$path": "node_modules/@rovy/networking" },
+            "world-inspector": { "$path": "node_modules/@rovy/world-inspector" }
           }
         }
       },
       "RovyIntegration": {
-        "$path": "out"
+        "$path": "out/shared"
+      }
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "RovyVisual": {
+          "$path": "out/client"
+        }
       }
     }
   }

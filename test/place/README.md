@@ -19,6 +19,9 @@ pnpm build:place   # compile and build the .rbxl only, no Studio
 | ui rerenders on `DocumentChanged` | `$eventTrigger` on a package-owned event |
 | ui rerenders on `DocumentSaved` | a second document event kind |
 | ui rerenders on a class-constructor event | the branch `@rovy/scribe` events take |
+| shared document opens with a string key | `sharedDocument` keys reach the runtime as callables |
+| hud builds a styled panel with layout children | `UICorner`/`UIPadding`/`UIListLayout` children land under the panel |
+| hud labels render live state | label text reflects the state at render time |
 | rerender patched the live Instance | reconciliation wrote back to the mounted Instance |
 
 ### The two `$eventTrigger` branches
@@ -37,6 +40,28 @@ static rerender = [$eventTrigger<DocumentChanged<typeof Profile>>()];
 
 Both branches end as `{ kind: "event", ctor }`, so covering each once covers the
 mechanism for every package that emits Rovy events.
+
+## Looking at it
+
+`src/client/main.client.ts` runs in `StarterPlayerScripts`, so opening
+`.build/rovy-integration.rbxl` in Studio and pressing Play shows the same `Hud`
+component the headless cases assert, plus the world inspector over a few spawned
+entities.
+
+The headless run also prints the built tree, so the shape is reviewable without
+Studio:
+
+```txt
+ROVY_VISUAL_TREE
+ScreenGui "RovyHudProbe"
+  Frame "HudPanel" size={0, 280}, {0, 96}
+    UICorner "UICorner"
+    UIPadding "UIPadding"
+    UIListLayout "UIListLayout"
+    TextLabel "Title" text="Rovy UI" size={0, 256}, {0, 22}
+    TextLabel "Frames" text="rendered frames: 42" size={0, 256}, {0, 18}
+    TextLabel "Hint" text="world inspector: open" size={0, 256}, {0, 18}
+```
 
 ## What it does not cover
 

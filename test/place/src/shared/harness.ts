@@ -3,6 +3,7 @@ import { DataStorePlugin } from "@rovy/datastore";
 import { CoinsLabel, FieldLabel, SavedLabel, renderCounts, resetRenderCounts } from "./ui";
 import { DriveDocument, observed, queueAction } from "./systems";
 import { Tick } from "./schedules";
+import { Hud, hudState } from "./hud";
 
 export interface CaseResult {
 	readonly name: string;
@@ -17,6 +18,16 @@ export interface CaseResult {
 function settle(): void {
 	task.wait();
 	task.wait();
+}
+
+/** Prints the built Instance tree so the shape is reviewable from the log. */
+function describe(instance: Instance, depth: number): string {
+	const pad = string.rep("  ", depth);
+	let out = `\n${pad}${instance.ClassName} "${instance.Name}"`;
+	if (instance.IsA("TextLabel")) out += ` text="${instance.Text}"`;
+	if (instance.IsA("GuiObject")) out += ` size=${tostring(instance.Size)}`;
+	for (const child of instance.GetChildren()) out += describe(child, depth + 1);
+	return out;
 }
 
 export function runIntegrationTests(): Array<CaseResult> {
@@ -102,6 +113,42 @@ export function runIntegrationTests(): Array<CaseResult> {
 		renderCounts.classEvent > beforeClassEvent,
 		`before=${beforeClassEvent} after=${renderCounts.classEvent}`,
 	);
+
+	// The playtest client shows this same component; building it here proves
+	// the tree it produces without needing a Player or a camera.
+	hudState.frames = 42;
+	hudState.inspectorOpen = true;
+	const hudScreen = new Instance("ScreenGui");
+	hudScreen.Name = "RovyHudProbe";
+	hudScreen.Parent = game.GetService("ReplicatedStorage");
+
+	const hudApp = new App();
+	hudApp.mount(Hud, hudScreen);
+	hudApp.start();
+	settle();
+
+	const panel = hudScreen.FindFirstChild("HudPanel") as Frame | undefined;
+	const title = panel?.FindFirstChild("Title") as TextLabel | undefined;
+	const framesLabel = panel?.FindFirstChild("Frames") as TextLabel | undefined;
+	const hint = panel?.FindFirstChild("Hint") as TextLabel | undefined;
+	record(
+		"hud builds a styled panel with layout children",
+		panel !== undefined &&
+			panel.Size === UDim2.fromOffset(280, 96) &&
+			panel.FindFirstChildOfClass("UICorner") !== undefined &&
+			panel.FindFirstChildOfClass("UIListLayout") !== undefined &&
+			panel.FindFirstChildOfClass("UIPadding") !== undefined,
+		panel === undefined ? "no HudPanel" : `size=${tostring(panel.Size)} children=${panel.GetChildren().size()}`,
+	);
+	record(
+		"hud labels render live state",
+		title?.Text === "Rovy UI" &&
+			framesLabel?.Text === "rendered frames: 42" &&
+			hint?.Text === "world inspector: open",
+		`title=${title?.Text ?? "nil"} frames=${framesLabel?.Text ?? "nil"} hint=${hint?.Text ?? "nil"}`,
+	);
+	print("ROVY_VISUAL_TREE " + describe(hudScreen, 0));
+	hudScreen.Destroy();
 
 	const changedLabel = screen.FindFirstChild("CoinsLabel") as TextLabel | undefined;
 	record(

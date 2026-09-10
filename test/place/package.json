@@ -9,13 +9,17 @@
   },
   "devDependencies": {
     "@rbxts/compiler-types": "3.0.0-types.0",
+    "@rbxts/services": "^1.5.5",
     "@rbxts/t": "^3.2.1",
     "@rbxts/types": "^1.0.920",
     "@rovy/core": "workspace:*",
     "@rovy/datastore": "workspace:*",
+    "@rovy/imgui": "workspace:*",
     "@rovy/jecs": "workspace:*",
+    "@rovy/networking": "workspace:*",
     "@rovy/scribe": "workspace:*",
     "@rovy/ui": "workspace:*",
+    "@rovy/world-inspector": "workspace:*",
     "roblox-ts": "^3.0.0",
     "rovy-transformer": "workspace:*",
     "typescript": "^5.9.3"

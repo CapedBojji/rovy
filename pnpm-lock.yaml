@@ -229,6 +229,9 @@ importers:
       '@rbxts/compiler-types':
         specifier: 3.0.0-types.0
         version: 3.0.0-types.0
+      '@rbxts/services':
+        specifier: ^1.5.5
+        version: 1.6.0
       '@rbxts/t':
         specifier: ^3.2.1
         version: 3.2.1
@@ -241,15 +244,24 @@ importers:
       '@rovy/datastore':
         specifier: workspace:*
         version: link:../../packages/datastore
+      '@rovy/imgui':
+        specifier: workspace:*
+        version: link:../../packages/imgui
       '@rovy/jecs':
         specifier: workspace:*
         version: link:../../packages/jecs
+      '@rovy/networking':
+        specifier: workspace:*
+        version: link:../../packages/networking
       '@rovy/scribe':
         specifier: workspace:*
         version: link:../../packages/scribe
       '@rovy/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@rovy/world-inspector':
+        specifier: workspace:*
+        version: link:../../packages/world-inspector
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0
@@ -701,6 +713,9 @@ packages:
 
   '@rbxts/pretty-format@3.16.0-ts.1':
     resolution: {integrity: sha512-zi68DwNLjMB8F7HaeWul4gMeqy4+W3d9PYlkVRCPZBE0+f/qR/G1PKMpzmJoT3SSHSbGpZk9El9gMKDfde4n4w==}
+
+  '@rbxts/services@1.6.0':
+    resolution: {integrity: sha512-YH02E1/tGHeMXB0Mam8qPdAZa2fjQWdylEscSL4Zn0RIaQeByYImA2qUsXM3nBdhcyKHDwltzSznDKyCGfFEWA==}
 
   '@rbxts/t@3.2.1':
     resolution: {integrity: sha512-/fnf2QSx+TI3HSJ6QW2ikvGQk0mlx/63UXo60pLAKGqbxXiAuTJh88bpKpHw6aCzfFLJAwrVIcgCUOokLMPcag==}
@@ -2072,6 +2087,8 @@ snapshots:
   '@rbxts/pretty-format@3.16.0-ts.1':
     dependencies:
       '@rbxts-js/pretty-format': 3.16.0-ts.1
+
+  '@rbxts/services@1.6.0': {}
 
   '@rbxts/t@3.2.1': {}
 
