@@ -407,7 +407,7 @@ function asRootNode(root: Instance | Node | undefined): Node | undefined {
 	return rovyUi.new(root as Instance);
 }
 
-function registerRuntime(schedule?: Ctor, networkSchedule?: Ctor): void {
+function registerRuntime(owner: Ctor, schedule?: Ctor, networkSchedule?: Ctor): void {
 	rovy.__resource(WorldInspectorState, "rovy/world-inspector/WorldInspectorState");
 	rovy.__resource(WorldInspectorRecorderState, "rovy/world-inspector/WorldInspectorRecorderState");
 	rovy.__resource(WorldInspectorPeerRecorderState, "rovy/world-inspector/WorldInspectorPeerRecorderState");
@@ -468,6 +468,7 @@ function registerRuntime(schedule?: Ctor, networkSchedule?: Ctor): void {
 			id: "rovy/world-inspector/WorldInspectorClientNetworkSystem",
 			schedule: networkSchedule,
 			set: NetFlushSet,
+			plugin: owner,
 			params: [
 				{ kind: "resMut", ctor: WorldInspectorState },
 				{ kind: "resMut", ctor: WorldInspectorRecorderState },
@@ -478,6 +479,7 @@ function registerRuntime(schedule?: Ctor, networkSchedule?: Ctor): void {
 			id: "rovy/world-inspector/WorldInspectorPeerRecordingStreamSystem",
 			schedule: networkSchedule,
 			set: NetFlushSet,
+			plugin: owner,
 			params: [
 				{ kind: "world" },
 				{ kind: "resMut", ctor: WorldInspectorPeerRecorderState },
@@ -485,7 +487,7 @@ function registerRuntime(schedule?: Ctor, networkSchedule?: Ctor): void {
 				{ kind: "res", ctor: ScheduleContext },
 			],
 		});
-		registerClientObservers();
+		registerClientObservers(owner);
 	}
 }
 
@@ -499,7 +501,7 @@ export class WorldInspectorPlugin implements Plugin {
 	}
 
 	build(app: App): void {
-		registerRuntime(this.options.renderSchedule, this.options.networkSchedule);
+		registerRuntime(WorldInspectorPlugin, this.options.renderSchedule, this.options.networkSchedule);
 		if (this.options.networkSchedule !== undefined) {
 			new NetClientPlugin({
 				schedule: this.options.networkSchedule,
@@ -529,12 +531,15 @@ export class WorldInspectorServerPlugin implements Plugin {
 
 	build(app: App): void {
 		registerWorldInspectorNetEvents();
-		rovy.__resource(WorldInspectorServerState, "rovy/world-inspector/WorldInspectorServerState");
-		registerServerObservers();
+		rovy.__resource(WorldInspectorServerState, "rovy/world-inspector/WorldInspectorServerState", {
+			plugin: WorldInspectorServerPlugin,
+		});
+		registerServerObservers(WorldInspectorServerPlugin);
 		rovy.__system(WorldInspectorServerRecordingStreamSystem, {
 			id: "rovy/world-inspector/WorldInspectorServerRecordingStreamSystem",
 			schedule: this.options.schedule,
 			set: NetFlushSet,
+			plugin: WorldInspectorServerPlugin,
 			params: [
 				{ kind: "world" },
 				{ kind: "resMut", ctor: WorldInspectorServerState },
@@ -558,43 +563,51 @@ export function renderWorldInspector(world: World, state: WorldInspectorState, r
 	});
 }
 
-function registerClientObservers(): void {
+function registerClientObservers(owner: Ctor): void {
 	rovy.__observer(WorldInspectorTargetListResponseObserver, {
+		plugin: owner,
 		event: WorldInspectorTargetListResponse,
 		priority: 0,
 		params: [{ kind: "event" }, { kind: "resMut", ctor: WorldInspectorState }],
 	});
 	rovy.__observer(WorldInspectorSnapshotResponseObserver, {
+		plugin: owner,
 		event: WorldInspectorSnapshotResponse,
 		priority: 0,
 		params: [{ kind: "event" }, { kind: "resMut", ctor: WorldInspectorState }],
 	});
 	rovy.__observer(WorldInspectorEditResponseObserver, {
+		plugin: owner,
 		event: WorldInspectorEditResponse,
 		priority: 0,
 		params: [{ kind: "event" }, { kind: "resMut", ctor: WorldInspectorState }],
 	});
 	rovy.__observer(RecordingControlResponseObserver, {
+		plugin: owner,
 		event: RecordingControlResponse,
 		priority: 0,
 		params: [{ kind: "event" }, { kind: "resMut", ctor: WorldInspectorRecorderState }],
 	});
 	rovy.__observer(RecordingFrameObserver, {
+		plugin: owner,
 		event: RecordingFrame,
 		priority: 0,
 		params: [{ kind: "event" }, { kind: "resMut", ctor: WorldInspectorRecorderState }],
 	});
 	rovy.__observer(WorldInspectorPeerSnapshotRequestObserver, {
+		plugin: owner,
 		event: WorldInspectorPeerSnapshotRequest,
 		priority: 0,
 		params: [{ kind: "event" }, { kind: "world" }, { kind: "external", id: NET_CLIENT_PARAM }],
 	});
 	rovy.__observer(WorldInspectorPeerEditRequestObserver, {
+		plugin: owner,
 		event: WorldInspectorPeerEditRequest,
 		priority: 0,
 		params: [{ kind: "event" }, { kind: "world" }, { kind: "external", id: NET_CLIENT_PARAM }],
 	});
 	rovy.__observer(PeerRecordingControlRequestObserver, {
+		plugin: owner,
 		event: PeerRecordingControlRequest,
 		priority: 0,
 		params: [
@@ -606,8 +619,9 @@ function registerClientObservers(): void {
 	});
 }
 
-function registerServerObservers(): void {
+function registerServerObservers(owner: Ctor): void {
 	rovy.__observer(WorldInspectorTargetListRequestObserver, {
+		plugin: owner,
 		event: WorldInspectorTargetListRequest,
 		priority: 0,
 		params: [
@@ -618,6 +632,7 @@ function registerServerObservers(): void {
 		],
 	});
 	rovy.__observer(WorldInspectorSnapshotRequestObserver, {
+		plugin: owner,
 		event: WorldInspectorSnapshotRequest,
 		priority: 0,
 		params: [
@@ -629,6 +644,7 @@ function registerServerObservers(): void {
 		],
 	});
 	rovy.__observer(WorldInspectorEditRequestObserver, {
+		plugin: owner,
 		event: WorldInspectorEditRequest,
 		priority: 0,
 		params: [
@@ -640,6 +656,7 @@ function registerServerObservers(): void {
 		],
 	});
 	rovy.__observer(WorldInspectorPeerSnapshotResponseObserver, {
+		plugin: owner,
 		event: WorldInspectorPeerSnapshotResponse,
 		priority: 0,
 		params: [
@@ -650,6 +667,7 @@ function registerServerObservers(): void {
 		],
 	});
 	rovy.__observer(WorldInspectorPeerEditResponseObserver, {
+		plugin: owner,
 		event: WorldInspectorPeerEditResponse,
 		priority: 0,
 		params: [
@@ -660,6 +678,7 @@ function registerServerObservers(): void {
 		],
 	});
 	rovy.__observer(RecordingControlRequestObserver, {
+		plugin: owner,
 		event: RecordingControlRequest,
 		priority: 0,
 		params: [
@@ -671,6 +690,7 @@ function registerServerObservers(): void {
 		],
 	});
 	rovy.__observer(PeerRecordingControlResponseObserver, {
+		plugin: owner,
 		event: PeerRecordingControlResponse,
 		priority: 0,
 		params: [
@@ -681,6 +701,7 @@ function registerServerObservers(): void {
 		],
 	});
 	rovy.__observer(PeerRecordingFrameObserver, {
+		plugin: owner,
 		event: PeerRecordingFrame,
 		priority: 0,
 		params: [
