@@ -468,7 +468,25 @@ export function provideContext<T>(context: Context<T>, value: T): void {
 	currentFrame().contextValues.set(context as Context<unknown>, value);
 }
 
+/**
+ * `ScreenGui.ZIndexBehavior` defaults to `Global`, where a descendant only
+ * draws above an ancestor if its own ZIndex is higher. Widgets are numbered
+ * relative to the window they sit in, so under `Global` a window's body renders
+ * behind that window's own opaque background and the frame looks empty.
+ *
+ * `Sibling` is the behaviour every immediate-mode layer wants: descendants
+ * always draw above ancestors, and ZIndex only orders siblings.
+ */
+function useSiblingZIndex(rootInstance: Instance): void {
+	const screen = rootInstance.IsA("LayerCollector")
+		? rootInstance
+		: rootInstance.FindFirstAncestorWhichIsA("LayerCollector");
+	if (screen === undefined) return;
+	screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling;
+}
+
 export function newRoot(rootInstance: Instance, options: NewRootOptions = {}): Node {
+	useSiblingZIndex(rootInstance);
 	return markResourceCloneByReference(newNode(rootInstance, options));
 }
 

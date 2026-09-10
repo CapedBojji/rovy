@@ -353,8 +353,21 @@ FakeInstance.__newindex = function(self, key, value)
 		propertyEvent:Fire()
 	end
 end
+-- ScreenGui/BillboardGui/SurfaceGui are LayerCollectors; the runtime asks so it
+-- can put the root into Sibling ZIndex behaviour.
+local LAYER_COLLECTORS = {
+	ScreenGui = true,
+	BillboardGui = true,
+	SurfaceGui = true,
+	PluginGui = true,
+	DockWidgetPluginGui = true,
+}
+
 function FakeInstance:IsA(className)
-	return self.ClassName == className or className == "Instance" or (className == "GuiObject" and self.__isGui)
+	if self.ClassName == className or className == "Instance" then return true end
+	if className == "GuiObject" and self.__isGui then return true end
+	if className == "LayerCollector" then return LAYER_COLLECTORS[self.ClassName] == true end
+	return false
 end
 function FakeInstance:Destroy()
 	self.Destroyed = true
@@ -392,6 +405,14 @@ end
 function FakeInstance:FindFirstChildOfClass(className)
 	for _, child in ipairs(self:GetChildren()) do
 		if child.ClassName == className then return child end
+	end
+	return nil
+end
+function FakeInstance:FindFirstAncestorWhichIsA(className)
+	local current = self.Parent
+	while current ~= nil do
+		if type(current.IsA) == "function" and current:IsA(className) then return current end
+		current = current.Parent
 	end
 	return nil
 end

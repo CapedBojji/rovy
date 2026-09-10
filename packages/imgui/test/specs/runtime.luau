@@ -2397,5 +2397,31 @@ return function(TS, t)
 			t.expect(clicked).toBe(true)
 		end)
 
+		-- ScreenGui defaults to Global ZIndex behaviour, where a descendant only
+		-- draws above an ancestor when its own ZIndex is higher. Widgets are
+		-- numbered per window, so under Global a window body renders behind that
+		-- window's own opaque background and the frame looks empty.
+		t.it("puts the layer collector into Sibling ZIndex behaviour", function()
+			local screen = _G.Instance.new("ScreenGui")
+			screen.ZIndexBehavior = Enum.ZIndexBehavior.Global
+			RovyUi.new(screen)
+			t.expect(screen.ZIndexBehavior).toBe(Enum.ZIndexBehavior.Sibling)
+		end)
+
+		t.it("reaches the layer collector through an intermediate parent", function()
+			local screen = _G.Instance.new("ScreenGui")
+			screen.ZIndexBehavior = Enum.ZIndexBehavior.Global
+			local holder = _G.Instance.new("Frame")
+			holder.Parent = screen
+			RovyUi.new(holder)
+			t.expect(screen.ZIndexBehavior).toBe(Enum.ZIndexBehavior.Sibling)
+		end)
+
+		t.it("mounts under a root with no layer collector", function()
+			local orphan = _G.Instance.new("Frame")
+			local node = RovyUi.new(orphan)
+			t.expect(node ~= nil).toBe(true)
+		end)
+
 	end)
 end

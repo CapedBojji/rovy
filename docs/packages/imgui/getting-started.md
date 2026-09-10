@@ -94,3 +94,15 @@ const render = () => {
 ```
 
 The UI test place in this repo uses that pattern for the curve editor story.
+
+## ZIndex behaviour
+
+`RovyUi.new(root)` switches the root's `ScreenGui` (or other `LayerCollector`)
+to `Enum.ZIndexBehavior.Sibling`.
+
+Roblox defaults a `ScreenGui` to `Global`, where a descendant only draws above
+an ancestor when its own `ZIndex` is higher. Widgets are numbered relative to
+the window they sit in, so under `Global` a window's body renders behind that
+window's own opaque background and the frame looks empty apart from its title
+bar. `Sibling` is what an immediate-mode layer wants: descendants always draw
+above ancestors, and `ZIndex` only orders siblings.

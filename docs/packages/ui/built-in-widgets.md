@@ -123,3 +123,23 @@ frame({
 
 See [Events And Refs](/packages/ui/events-and-refs) for rerender cleanup and JSX
 examples.
+
+## Layout order
+
+Roblox defaults `UIListLayout.SortOrder` and `UIGridLayout.SortOrder` to
+`Name`, which lays children out alphabetically rather than in the order the
+render wrote them. Rovy numbers each rendered `GuiObject` with an incrementing
+`LayoutOrder` and points `uiListLayout` / `uiGridLayout` at it, so this renders
+top to bottom as written:
+
+```ts
+frame({}, [
+	uiListLayout(),
+	textLabel({ Name: "Title", Text: "Rovy UI" }),
+	textLabel({ Name: "Frames", Text: "0" }),
+	textLabel({ Name: "Hint", Text: "closed" }),
+]);
+```
+
+Set `LayoutOrder` on a child, or `SortOrder` on the layout, and Rovy leaves
+your value alone.

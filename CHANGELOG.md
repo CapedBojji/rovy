@@ -65,6 +65,17 @@
 
 ### Fixed
 
+- Fixed `@rovy/imgui` rendering an empty window body. `RovyUi.new(root)` now
+  puts the root `LayerCollector` into `Enum.ZIndexBehavior.Sibling`. Roblox
+  defaults a `ScreenGui` to `Global`, where a descendant only draws above an
+  ancestor with a higher `ZIndex`; imgui gives a window's chrome `ZIndex` 100
+  and leaves widget content at 1, so every window painted its own background
+  over its contents and `@rovy/world-inspector` opened as a blank frame.
+- Fixed `@rovy/ui` losing declaration order under a `UIListLayout` or
+  `UIGridLayout`. Children carried no `LayoutOrder`, and Roblox defaults
+  `SortOrder` to `Name`, so a list rendered alphabetically. Rovy now numbers
+  children by declaration order and defaults those layouts to sort by it; an
+  explicit `LayoutOrder` or `SortOrder` still wins.
 - Fixed `sharedDocument` emitting its `key` verbatim. `SharedDocumentOptions.key`
   is a plain string, but the runtime always calls `def.key(owner)`, so a shared
   document with a key threw on its first open. The transformer now wraps a
