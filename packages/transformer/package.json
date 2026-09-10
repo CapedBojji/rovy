@@ -1,6 +1,6 @@
 {
   "name": "rovy-transformer",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "roblox-ts transformer for Rovy",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,5 +20,30 @@
   },
   "devDependencies": {
     "@types/node": "^22.15.31"
+  },
+  "author": "CapedBojji",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CapedBojji/rovy.git",
+    "directory": "packages/transformer"
+  },
+  "bugs": {
+    "url": "https://github.com/CapedBojji/rovy/issues"
+  },
+  "homepage": "https://capedbojji.github.io/rovy/",
+  "keywords": [
+    "roblox",
+    "roblox-ts",
+    "ecs",
+    "rovy",
+    "typescript",
+    "transformer",
+    "compiler-plugin"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.13"
   }
 }

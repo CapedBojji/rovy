@@ -108,6 +108,38 @@ function Node.FindFirstChild(self, name: string)
 	return rawget(self, "children")[name]
 end
 
+local function isLuauModule(node): boolean
+	local file = rawget(node, "__file")
+	return file ~= nil and (file:match("%.luau$") ~= nil or file:match("%.lua$") ~= nil)
+end
+
+-- The rovy-build package facade (out/init.luau) walks its own tree with
+-- IsA/GetChildren, so nodes have to answer both to be loadable here.
+function Node.IsA(self, className: string): boolean
+	if className == "ModuleScript" then
+		return isLuauModule(self)
+	end
+	if className == "Folder" then
+		return not isLuauModule(self)
+	end
+	return className == "Instance"
+end
+
+-- `scan` registers each file twice (with and without its extension), so
+-- dedupe by path or the facade would require every module twice.
+function Node.GetChildren(self)
+	local seen: { [string]: boolean } = {}
+	local ordered = {}
+	for _, child in rawget(self, "children") do
+		local path = rawget(child, "__path")
+		if not seen[path] then
+			seen[path] = true
+			table.insert(ordered, child)
+		end
+	end
+	return ordered
+end
+
 local nodeByPath: { [string]: any } = {}
 local function indexTree(node)
 	nodeByPath[node.__path] = node

@@ -1,28 +1,32 @@
 {
-	"name": "@rovy/jecs",
-	"version": "0.11.0-rovy.1",
-	"description": "Rovy-vendored jecs runtime",
-	"main": "src/jecs.luau",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/Ukendio/jecs"
-	},
-	"keywords": [],
-	"author": "Ukendio",
-	"contributors": [
-		"Ukendio",
-		"EncodedVenom"
-	],
-	"homepage": "https://github.com/ukendio/jecs",
-	"license": "MIT",
-	"types": "src/jecs.d.ts",
-	"files": [
-		"default.project.json",
-		"src",
-		"LICENSE",
-		"README.md"
-	],
-	"publishConfig": {
-		"access": "public"
-	}
+  "name": "@rovy/jecs",
+  "version": "0.11.0-rovy.1",
+  "description": "Rovy-vendored jecs runtime",
+  "main": "src/jecs.luau",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CapedBojji/rovy.git",
+    "directory": "packages/jecs"
+  },
+  "keywords": [],
+  "author": "Ukendio",
+  "contributors": [
+    "Ukendio",
+    "EncodedVenom"
+  ],
+  "homepage": "https://capedbojji.github.io/rovy/",
+  "license": "MIT",
+  "types": "src/jecs.d.ts",
+  "files": [
+    "default.project.json",
+    "src",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "bugs": {
+    "url": "https://github.com/CapedBojji/rovy/issues"
+  }
 }
