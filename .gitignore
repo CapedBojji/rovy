@@ -23,3 +23,4 @@
 /test/place/node_modules
 /test/place/.build/*.rbxl
 /test/place/.build/*.rbxlx
+/test/place/src/shared/build-stamp.ts

@@ -4,6 +4,11 @@ import { CoinsLabel, FieldLabel, SavedLabel, ScribeCoinsLabel, renderCounts, res
 import { DriveDocument, observed, queueAction } from "./systems";
 import { Tick } from "./schedules";
 import { Hud, hudState } from "./hud";
+import { BUILD_STAMP } from "./build-stamp";
+
+/** Written by build-integration-place.sh; the runner prints it so a run
+ * against a stale Studio document fails instead of passing quietly. */
+export const HARNESS_BUILD_STAMP = BUILD_STAMP;
 
 export interface CaseResult {
 	readonly name: string;
@@ -29,9 +34,6 @@ function describe(instance: Instance, depth: number): string {
 	for (const child of instance.GetChildren()) out += describe(child, depth + 1);
 	return out;
 }
-
-/** Bumped by hand; the runner prints it so a stale build is obvious. */
-export const HARNESS_REVISION = "scribe-rerender-1";
 
 export function runIntegrationTests(): Array<CaseResult> {
 	const results = new Array<CaseResult>();
