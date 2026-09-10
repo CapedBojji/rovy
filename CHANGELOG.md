@@ -79,6 +79,13 @@
 
 ### Removed
 
+- Removed the inert `networkBoundary` option from
+  `WorldInspectorPluginOptions` and `WorldInspectorServerPluginOptions`.
+  Nothing ever read it, and there is nowhere to forward it:
+  `NetClientPluginOptions` and `NetServerPluginOptions` both
+  `Omit<..., "boundary">` because the active side is chosen by the generated
+  facade. Dropped before the first publish rather than shipping dead API.
+
 - Removed committed debug scratch scripts (`inspect_scheduler.luau`,
   `packages/ui/inspect_query_shape.luau`, `packages/ui/inspect_scheduler.luau`,
   `packages/ui/luau_size_check.luau`) and a stray npm `package-lock.json` in

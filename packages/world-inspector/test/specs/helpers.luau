@@ -392,9 +392,7 @@ return function(TS, t)
 			local serverApp = App.new()
 			serverApp:addPlugin(pkg.WorldInspectorServerPlugin.new({
 				schedule = Update,
-				transport = serverTransport,
 				networkTransport = serverTransport,
-				networkBoundary = "server",
 				access = function(ctx)
 					return ctx.action == "view" and ctx.targetKind == "server"
 				end,
@@ -405,7 +403,6 @@ return function(TS, t)
 			clientApp:addPlugin(pkg.WorldInspectorPlugin.new({
 				networkSchedule = Update,
 				networkTransport = clientTransport,
-				networkBoundary = "client",
 			}))
 			clientApp:start()
 
@@ -466,7 +463,6 @@ return function(TS, t)
 			serverApp:addPlugin(pkg.WorldInspectorServerPlugin.new({
 				schedule = Update,
 				networkTransport = serverTransport,
-				networkBoundary = "server",
 				access = function(ctx)
 					return ctx.targetKind == "server"
 				end,
@@ -478,7 +474,6 @@ return function(TS, t)
 			clientApp:addPlugin(pkg.WorldInspectorPlugin.new({
 				networkSchedule = Update,
 				networkTransport = clientTransport,
-				networkBoundary = "client",
 			}))
 			clientApp:start()
 			local state = clientApp.world:resource(pkg.WorldInspectorState)
@@ -538,7 +533,6 @@ return function(TS, t)
 				serverApp:addPlugin(pkg.WorldInspectorServerPlugin.new({
 					schedule = Update,
 					networkTransport = serverTransport,
-					networkBoundary = "server",
 					access = function(ctx)
 						return ctx.action == "view" and ctx.targetKind == "server"
 					end,
@@ -549,7 +543,6 @@ return function(TS, t)
 				clientApp:addPlugin(pkg.WorldInspectorPlugin.new({
 					networkSchedule = Update,
 					networkTransport = clientTransport,
-					networkBoundary = "client",
 				}))
 				clientApp:start()
 				local recorder = clientApp.world:resource(pkg.WorldInspectorRecorderState)
@@ -614,7 +607,6 @@ return function(TS, t)
 				serverApp:addPlugin(pkg.WorldInspectorServerPlugin.new({
 					schedule = Update,
 					networkTransport = serverTransport,
-					networkBoundary = "server",
 					access = function(ctx)
 						return ctx.action == "view" and ctx.targetKind == "player"
 					end,
@@ -625,7 +617,6 @@ return function(TS, t)
 				clientApp:addPlugin(pkg.WorldInspectorPlugin.new({
 					networkSchedule = Update,
 					networkTransport = clientTransport,
-					networkBoundary = "client",
 				}))
 				clientApp:start()
 				local recorder = clientApp.world:resource(pkg.WorldInspectorRecorderState)
@@ -672,7 +663,6 @@ return function(TS, t)
 				serverApp:addPlugin(pkg.WorldInspectorServerPlugin.new({
 					schedule = Update,
 					networkTransport = serverTransport,
-					networkBoundary = "server",
 					access = function()
 						return false
 					end,
@@ -683,7 +673,6 @@ return function(TS, t)
 				clientApp:addPlugin(pkg.WorldInspectorPlugin.new({
 					networkSchedule = Update,
 					networkTransport = clientTransport,
-					networkBoundary = "client",
 				}))
 				clientApp:start()
 				local recorder = clientApp.world:resource(pkg.WorldInspectorRecorderState)
