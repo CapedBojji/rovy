@@ -375,6 +375,8 @@ export class TransformState {
 		return identifier;
 	}
 
+	private tResolutionChecked = false;
+
 	addTImport(file: ts.SourceFile): ts.Identifier {
 		for (const statement of file.statements) {
 			if (!ts.isImportDeclaration(statement)) continue;
@@ -396,10 +398,37 @@ export class TransformState {
 
 		let identifier = this.pendingTImports.get(file.fileName);
 		if (!identifier) {
+			this.assertTResolvable(file);
 			identifier = ts.factory.createUniqueName("__t", ts.GeneratedIdentifierFlags.Optimistic);
 			this.pendingTImports.set(file.fileName, identifier);
 		}
 		return identifier;
+	}
+
+	/**
+	 * Validators are injected into the *consumer's* file, so `@rbxts/t` has to
+	 * resolve from their project. Without this, the only signal is TS2307 on an
+	 * import line they never wrote.
+	 */
+	private assertTResolvable(file: ts.SourceFile): void {
+		if (this.tResolutionChecked) return;
+		this.tResolutionChecked = true;
+		const getOptions = this.program.getCompilerOptions;
+		if (getOptions === undefined) return;
+		let resolved: ts.ResolvedModuleFull | undefined;
+		try {
+			resolved = ts.resolveModuleName("@rbxts/t", file.fileName, getOptions.call(this.program), ts.sys).resolvedModule;
+		} catch {
+			// Never fail a build over the diagnostic's own lookup.
+			return;
+		}
+		if (resolved !== undefined) return;
+		this.diagnostic(
+			file,
+			"this file needs '@rbxts/t', which the transformer injects to validate documents and " +
+				"runtime type checks, but it does not resolve from this project. Install it alongside " +
+				"the Rovy package that needs it: npm i @rbxts/t",
+		);
 	}
 
 	withPendingImports(file: ts.SourceFile, statements: ReadonlyArray<ts.Statement>): ts.Statement[] {
