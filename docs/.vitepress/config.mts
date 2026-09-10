@@ -10,6 +10,10 @@ export default defineConfig({
   vite: {
     server: {
       host: true,
+      // Vite does not read PORT on its own. Honoring it lets a supervising
+      // process (a preview harness, a container, CI) hand the dev server a
+      // free port instead of fighting over the 5173 default.
+      port: process.env.PORT ? Number(process.env.PORT) : undefined,
       allowedHosts: [".trycloudflare.com"],
     },
   },

@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "docs:dev",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "docs/node_modules/vitepress/bin/vitepress.js",
+        "dev",
+        "docs"
+      ],
+      "port": 5173,
+      "autoPort": true
+    }
+  ]
+}
