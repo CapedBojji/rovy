@@ -4,6 +4,16 @@
 
 ### Added
 
+- Added `test/place`, a Roblox integration place compiled by `rbxtsc` with
+  `rovy-transformer`, built by Rojo, and driven inside Roblox Studio by
+  `run-in-roblox`. `pnpm test:place` runs it; `pnpm build:place` compiles and
+  builds the `.rbxl` without Studio and runs in CI.
+- Added `$eventTrigger<E>()`, a type-argument form for events that have no class
+  to name. `@rovy/datastore` keys its document events off a
+  transformer-generated document id, so
+  `$eventTrigger<DocumentChanged<typeof Profile>>()` now resolves the same
+  constructor the matching `EventReader` param resolves.
+
 - Added `MIT` `LICENSE` files at the repository root and in every published
   package. Each manifest already declared `"license": "MIT"` but shipped no
   license text.
@@ -53,6 +63,14 @@
 
 ### Fixed
 
+- Fixed `@rovy/datastore` not exporting the `DocumentWriter` type. The docs told
+  users to import it and the type existed, but it was missing from the package's
+  export list, so `import type { DocumentWriter } from "@rovy/datastore"` failed.
+- Fixed the `@rovy/ui` Luau test harness, which could not load a sibling package
+  (no node_modules link to follow), could not load a `rovy-build` package facade
+  (nodes answered `FindFirstChild` but not `IsA`/`GetChildren`), and left
+  `RunService:IsClient()`/`IsServer()` undefined so boundary providers fell back
+  to "unknown".
 - Fixed `@rovy/world-inspector` leaking its boundary-specific registrations
   into every other `App` in the same Luau state. The systems, observers, and
   resource registered inside `WorldInspectorPlugin.build` and
@@ -78,6 +96,10 @@
   pre-release status banners from the shipped networking and datastore pages.
 
 ### Removed
+
+- Removed `test/roblox/run-tests.luau`, a TestEZ bootstrap that could never run:
+  it required a `RovyRobloxTests` folder that no project produced, and TestEZ was
+  not a dependency of any package. `test/place` replaces it.
 
 - Removed the inert `networkBoundary` option from
   `WorldInspectorPluginOptions` and `WorldInspectorServerPluginOptions`.

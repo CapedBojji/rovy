@@ -17,3 +17,7 @@
 **/**/.rovy-build
 **/**/sourcemap.json
 /packages/scribe/test/studio/.build
+/test/place/out
+/test/place/include
+/test/place/.build
+/test/place/node_modules

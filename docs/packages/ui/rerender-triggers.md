@@ -200,6 +200,29 @@ Event triggers use two checks:
 Use event triggers for short-lived feeds, notifications, counters, and UI that
 reacts to buffered events.
 
+### Events owned by a package
+
+Some events have no class to name. `@rovy/datastore` keys its document events off
+a transformer-generated document id, so `DocumentChanged<D>` is a type, not a
+constructor. Name the event *type* instead and the transformer resolves the same
+constructor it resolves for the matching `EventReader` param:
+
+```ts
+import type { DocumentChanged } from "@rovy/datastore";
+
+@ui
+class CoinsLabel {
+	static rerender = [$eventTrigger<DocumentChanged<typeof Profile>>()];
+
+	render(changed: EventReader<DocumentChanged<typeof Profile>>) {
+		return textLabel({ Text: `${changed.size()} changes` });
+	}
+}
+```
+
+`@rovy/scribe` declares its events as ordinary `@scribeEvent` classes, so those
+keep the plain `$eventTrigger(SomeScribeEvent)` form.
+
 ## Relation triggers
 
 ```ts

@@ -43,5 +43,11 @@ jobs:
       - name: Test
         run: pnpm run test
 
+      # The integration place cannot run here — run-in-roblox needs a real
+      # Roblox Studio install, which GitHub runners do not have. Compiling it
+      # and building the .rbxl still catches transformer and Rojo regressions.
+      - name: Build the integration place
+        run: pnpm run build:place
+
       - name: Verify every package packs cleanly
         run: pnpm publish -r --dry-run --no-git-checks

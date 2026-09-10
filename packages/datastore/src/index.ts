@@ -31,6 +31,7 @@ export type {
 	DocumentStatus,
 	DocumentUpdateOptions,
 	DocumentUpdateResult,
+	DocumentWriter,
 	KeyedDocument,
 	PlayerDocument,
 	PlayerDocumentOptions,
