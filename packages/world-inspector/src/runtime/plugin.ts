@@ -12,7 +12,6 @@ import {
 	type NetEventContext,
 	type NetServer,
 	type NetTransport,
-	type RuntimeBoundary,
 } from "@rovy/networking";
 import { rovyUi, type Node } from "@rovy/imgui";
 import {
@@ -65,8 +64,6 @@ export interface WorldInspectorPluginOptions {
 	readonly renderSchedule?: Ctor;
 	readonly networkSchedule?: Ctor;
 	readonly networkTransport?: NetTransport;
-	/** @deprecated WorldInspectorPlugin always uses the client network boundary. */
-	readonly networkBoundary?: RuntimeBoundary;
 }
 
 export interface WorldInspectorAccessContext {
@@ -80,8 +77,6 @@ export interface WorldInspectorServerPluginOptions {
 	readonly schedule: Ctor;
 	readonly access?: (ctx: WorldInspectorAccessContext) => boolean;
 	readonly networkTransport?: NetTransport;
-	/** @deprecated WorldInspectorServerPlugin always uses the server network boundary. */
-	readonly networkBoundary?: RuntimeBoundary;
 }
 
 class ShowWorldInspectorObserver {
