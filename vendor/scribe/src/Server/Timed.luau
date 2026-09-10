@@ -1,23 +1,56 @@
 --!strict
--- TTL and cooldowns. Absolute expiry timestamps (os.time) live under
--- _Scribe.Timed (server-only), evaluated lazily on read so they survive
--- rejoins; a 1 Hz sweep auto-clears lapsed fields back to their template
--- default, firing Changed and replicating.
+-- TTL and cooldowns. Absolute expiry timestamps live under _Scribe.Timed
+-- (server-only), evaluated lazily on read so they survive rejoins; a 1 Hz sweep
+-- clears lapsed fields back to their template default, firing Changed.
 
 local Internal = script.Parent.Parent.Internal
 local Util = require(Internal.Util)
+local Node = require(Internal.Node)
 local Template = require(Internal.Template)
 local Log = require(Internal.Log)
+local Clock = require(Internal.Clock)
+local Profile = require(Internal.Profile)
+local Sched = require(Internal.Sched)
+local Rng = require(Internal.Rng)
 
 local Timed = {}
 
 -- Shared with Template, which rejects a root field using this prefix so a template
 -- field can never alias a cooldown slot in the flat _Scribe.Timed dict.
 local COOLDOWN_PREFIX = Template.COOLDOWN_PREFIX
+local ONLINE_PREFIX = Template.ONLINE_COOLDOWN_PREFIX
 local SWEEP_INTERVAL = 1
--- Finite ceiling (~126 years) so SetTimed(value, math.huge) is a safe way to say
--- "effectively permanent": expiries are written RAW into the persisted _Scribe.Timed
--- store, and an infinite expiry would break the DataStore JSON round trip.
+
+-- Keys under this prefix are Scribe's, not the game's. Scribe's own once-guards share
+-- the flat cooldown dict a game's cooldowns live in, so the namespace is reserved in both
+-- directions: the sweep does not announce a lapsed claim through OnCooldownEnded, and the
+-- public entry points refuse the prefix loudly, because Data.ClearCooldown on a purchase
+-- idempotency claim is exactly what lets a retry apply the same purchase twice.
+local RESERVED_KEY_PREFIX = "@"
+
+--- Is `key` in Scribe's reserved claim namespace?
+local function isReserved(key: string): boolean
+	return string.sub(key, 1, #RESERVED_KEY_PREFIX) == RESERVED_KEY_PREFIX
+end
+
+--- Guard for the public cooldown API. Internal callers (Claim/IsClaimed) skip it:
+--- they are the ones that own the reserved namespace.
+local function checkPublicKey(key: string, what: string)
+	if not Util.isUtf8(key) then
+		error(`Scribe: {what} key contains invalid UTF-8 bytes (would corrupt the profile save)`, 3)
+	end
+	if isReserved(key) then
+		error(
+			`Scribe: {what} key "{key}" starts with "{RESERVED_KEY_PREFIX}", which is reserved for Scribe's own `
+				.. "idempotency claims; pick another prefix",
+			3
+		)
+	end
+end
+
+-- Finite ceiling (~126 years) so SetTimed(value, math.huge) means "effectively
+-- permanent": expiries are written raw into the persisted _Scribe.Timed store, and an
+-- infinite one would break the DataStore JSON round trip.
 local MAX_TIMED_SECONDS = 4e9
 
 -- Whole seconds, floored to at least 1 and capped finite.
@@ -30,6 +63,11 @@ function Timed.new(ctx: any)
 	local compiled: Template.Compiled = ctx.Compiled
 
 	local function timedStore(entry: any): { [string]: number }?
+		-- While a save is in flight the profile carries a converted copy (see BeforeSave)
+		-- and the live deadlines move here, so no reader ever sees the persisted form.
+		if entry.TimedLive then
+			return entry.TimedLive
+		end
 		local live = entry.LiveData
 		local reserved = if live then live[Template.RESERVED_ROOT] else nil
 		if type(reserved) ~= "table" then
@@ -41,23 +79,26 @@ function Timed.new(ctx: any)
 		return reserved.Timed
 	end
 
-	-- Write an internal expiry (or clear it, with value == nil) directly into the
-	-- ServerOnly _Scribe.Timed dict. This deliberately bypasses the accessor tree:
-	-- the store is a FLAT dict keyed by each field's full pathKey, and a NESTED
-	-- Scribe.Timed field's pathKey embeds the \31 path separator, which the
-	-- accessor's dictionary-key guard rejects (Node.luau). The store is ServerOnly
-	-- and lives in profile.Data, so a raw write persists on the next save; flag
-	-- Dirty so that save happens promptly rather than only on the autosave tick.
+	-- Write an internal expiry, or clear it with value == nil, straight into the ServerOnly
+	-- _Scribe.Timed dict. It bypasses the accessor tree on purpose: a nested Scribe.Timed
+	-- field's pathKey embeds the \31 separator, which Node's dictionary-key guard rejects.
+	-- The store lives in profile.Data, so a raw write persists on the next save; Dirty only
+	-- makes that save prompt rather than the next autosave tick.
 	local function setTimed(entry: any, pathKey: string, value: number?)
 		local store = timedStore(entry)
 		if not store then
 			return
 		end
-		-- If a transaction is open, record the pre-write expiry so a rollback reverts
-		-- it in lockstep with the field's value (which rolls back via the accessor).
-		-- Without this the value would revert but the timer would not, or a cooldown
-		-- armed inside an aborted transaction would persist. No-op outside a txn.
 		local tree = entry.Tree
+		-- Cross-tree check first: refuse while a transaction is open on another player.
+		-- RecordRawWrite below can only roll back for the tree that owns the transaction,
+		-- so on any other tree it is a no-op and the write would outlive the rollback.
+		-- Level 4: AssertSameTreeWrite (1) -> setTimed (2) -> the Timed entry point (3) ->
+		-- its public caller (4).
+		Node.AssertSameTreeWrite(tree, `{Template.RESERVED_ROOT}.Timed.{pathKey}`, 4)
+		-- Record the pre-write expiry so a rollback reverts it in lockstep with the
+		-- field's value; without it the value reverts but the timer does not, and a
+		-- cooldown armed inside an aborted transaction persists. No-op outside a txn.
 		if tree then
 			tree:RecordRawWrite(store, pathKey)
 		end
@@ -73,12 +114,10 @@ function Timed.new(ctx: any)
 		for _, segment in segments do
 			accessor = accessor[segment]
 		end
-		-- Only treat node.Default as the field default when Resolve FULLY consumed the
-		-- path (the field still has a static schema). If a template version removed the
-		-- field, Resolve stops at a surviving ancestor whose Default is that whole
-		-- container -- writing THAT into the removed field's path would fabricate a
-		-- phantom sub-table. A dynamic (non-static) key has no template default either.
-		local node, dynStart = Template.Resolve(compiled, segments)
+		-- node.Default is only the field's default when Resolve fully consumed the path.
+		-- For a field a newer template removed, Resolve stops at a surviving ancestor whose
+		-- Default is that whole container, which would fabricate a phantom sub-table.
+		local node, dynStart = Template.Resolve(compiled, segments :: { string | number })
 		if dynStart <= #segments then
 			return accessor, nil
 		end
@@ -93,28 +132,28 @@ function Timed.new(ctx: any)
 					error("Scribe: SetTimed seconds must be a positive number", 3)
 				end
 				accessor.Set(value, replicate)
-				local pathKey = rawget(accessor, "_key") :: string
-				setTimed(entry, pathKey, os.time() + clampSeconds(seconds))
+				local pathKey = Node.PathKeyOf(accessor)
+				setTimed(entry, pathKey, Clock.Now() + clampSeconds(seconds))
 			end,
 			ExtendTimed = function(accessor: any, seconds: number, replicate: boolean?)
 				if type(seconds) ~= "number" or seconds <= 0 then
 					error("Scribe: ExtendTimed seconds must be a positive number", 3)
 				end
-				local pathKey = rawget(accessor, "_key") :: string
+				local pathKey = Node.PathKeyOf(accessor)
 				local store = timedStore(entry)
-				local now = os.time()
+				local now = Clock.Now()
 				local current = if store then store[pathKey] else nil
-				-- Stack onto a running timer; if expired/inactive, behave like
-				-- SetTimed from now (the value itself is left untouched).
+				-- Stack onto a running timer; if expired, behave like SetTimed from
+				-- now, leaving the value itself untouched.
 				local base = if current and current > now then current else now
 				setTimed(entry, pathKey, base + clampSeconds(seconds))
 				local _ = replicate
 			end,
 			Active = function(accessor: any): (boolean, number?)
-				local pathKey = rawget(accessor, "_key") :: string
+				local pathKey = Node.PathKeyOf(accessor)
 				local store = timedStore(entry)
 				local expiry = if store then store[pathKey] else nil
-				local now = os.time()
+				local now = Clock.Now()
 				if expiry and now < expiry then
 					return true, expiry - now
 				end
@@ -123,31 +162,115 @@ function Timed.new(ctx: any)
 		}
 	end
 
-	-- Keyed cooldowns: checks and — when off cooldown — ARMS it. Call this only
-	-- at the grant/claim moment; use PeekCooldown for display checks.
-	function self.OnCooldown(entry: any, key: string, seconds: number): (boolean, number)
-		-- Zero/negative seconds means "no cooldown": report off-cooldown WITHOUT
-		-- arming. (clampSeconds floors to 1, which would otherwise silently turn a
-		-- computed 0 into a real 1-second gate.)
+	-- A once-guard: has this key been claimed, and is the claim still live? Separate from
+	-- OnCooldown, which re-arms on every use, because checking a claim must not re-arm it.
+	function self.IsClaimed(entry: any, key: string): boolean
+		local store = timedStore(entry)
+		if not store then
+			return false
+		end
+		local deadline = store[COOLDOWN_PREFIX .. key]
+		return type(deadline) == "number" and deadline > Clock.Now()
+	end
+
+	--- Drop the nearest-to-expiring claims under `prefix` until at most `cap - 1` remain,
+	--- so the caller's own claim lands inside the cap. Returns how many were dropped and
+	--- how many are live afterwards. Nothing else bounds the count: with a seven-day TTL
+	--- every keyed purchase a player makes in a week rides in every save and is walked by
+	--- the 1 Hz sweep. Nearest-to-expiring goes first, its retry window being closest to
+	--- over. Still an eviction, so the caller logs it: a retry under a dropped claim applies.
+	function self.PruneClaims(entry: any, prefix: string, cap: number): (number, number)
+		local store = timedStore(entry)
+		if not store then
+			return 0, 0
+		end
+		local full = COOLDOWN_PREFIX .. prefix
+		local live: { { Key: string, At: number } } = {}
+		for pathKey, expiry in store do
+			if type(expiry) == "number" and string.sub(pathKey, 1, #full) == full then
+				table.insert(live, { Key = pathKey, At = expiry })
+			end
+		end
+		-- Shrink to the current cap rather than only trimming by one, so a profile
+		-- carrying more than a cap lowered between deploys comes back under it.
+		local target = math.max(0, math.floor(cap) - 1)
+		if #live <= target then
+			return 0, #live
+		end
+		table.sort(live, function(a: { Key: string, At: number }, b: { Key: string, At: number })
+			-- Ties broken on the key so eviction is deterministic: two claims taken in
+			-- the same second are otherwise ordered by table layout.
+			if a.At == b.At then
+				return a.Key < b.Key
+			end
+			return a.At < b.At
+		end)
+		local dropped = #live - target
+		for i = 1, dropped do
+			-- Through setTimed, so an open transaction rolls the eviction back with the
+			-- claim it made room for; a rolled-back purchase must not still cost another
+			-- claim its protection.
+			setTimed(entry, live[i].Key, nil)
+		end
+		return dropped, target
+	end
+
+	-- Record that `key` happened, for `seconds`. Re-claiming a live claim does not push
+	-- its deadline out, so a retrying caller cannot keep one alive indefinitely.
+	function self.Claim(entry: any, key: string, seconds: number)
+		if not Util.isUtf8(key) then
+			error("Scribe: claim key contains invalid UTF-8 bytes (would corrupt the profile save)", 2)
+		end
+		local store = timedStore(entry)
+		if not store then
+			return
+		end
+		local pathKey = COOLDOWN_PREFIX .. key
+		local existing = store[pathKey]
+		local now = Clock.Now()
+		if type(existing) == "number" and existing > now then
+			return
+		end
+		-- clampSeconds for the finite ceiling: math.floor(inf) is inf, so a PurchaseClaimTTL
+		-- of math.huge writes an unserializable expiry that the profile's guards read as
+		-- unpersistable, refusing offline receipts forever.
+		setTimed(entry, pathKey, now + clampSeconds(seconds))
+	end
+	-- Keyed cooldowns: checks and, when off cooldown, arms it. Call it at the grant
+	-- moment only; PeekCooldown is the read-only check.
+	function self.OnCooldown(entry: any, key: string, seconds: number, options: any?): (boolean, number)
+		-- Zero or negative seconds means "no cooldown": clampSeconds floors to 1 and would
+		-- turn a computed 0 into a real one-second gate.
 		if type(seconds) ~= "number" or seconds <= 0 then
 			return false, 0
 		end
-		-- The cooldown key becomes a persisted table key in the raw _Scribe.Timed
-		-- dict, bypassing Node.validateWrite, so an invalid-UTF-8 key would fail the
-		-- whole profile save (error 104). Reject it loudly at the call site, matching
-		-- the accessor write guard and the other raw-write boundaries.
-		if not Util.isUtf8(key) then
-			error("Scribe: cooldown key contains invalid UTF-8 bytes (would corrupt the profile save)", 2)
-		end
-		local pathKey = COOLDOWN_PREFIX .. key
+		-- The key becomes a persisted table key in the raw _Scribe.Timed dict, bypassing
+		-- Node.validateWrite, so invalid UTF-8 would fail the whole profile save (error
+		-- 104). Rejected loudly here, along with Scribe's reserved claim namespace.
+		checkPublicKey(key, "cooldown")
+		local includeOffline = if options and options.IncludeOfflineTime ~= nil
+			then options.IncludeOfflineTime == true
+			else true
+		local pathKey = (if includeOffline then COOLDOWN_PREFIX else ONLINE_PREFIX) .. key
+		local otherKey = (if includeOffline then ONLINE_PREFIX else COOLDOWN_PREFIX) .. key
 		local store = timedStore(entry)
 		if not store then
 			return false, 0
 		end
-		local now = os.time()
-		local expiry = store[pathKey]
-		if expiry and now < expiry then
-			return true, expiry - now
+		local now = Clock.Now()
+		-- Both slots hold an absolute deadline in memory; only the copy the DataStore gets
+		-- carries the online one as remaining seconds. Check both, not just this call's
+		-- mode: a key holds one cooldown, so flipping the flag mid-cooldown still reports it.
+		for _, prefix in { COOLDOWN_PREFIX, ONLINE_PREFIX } do
+			local running = store[prefix .. key]
+			if running and now < running then
+				return true, running - now
+			end
+		end
+		-- Flipping the flag must not strand the old slot, which would hand the player a
+		-- second, independent cooldown of the other kind.
+		if store[otherKey] ~= nil then
+			setTimed(entry, otherKey, nil)
 		end
 		setTimed(entry, pathKey, now + clampSeconds(seconds))
 		return false, 0
@@ -155,40 +278,41 @@ function Timed.new(ctx: any)
 
 	-- Read-only cooldown check: never arms. Returns (onCooldown, remaining).
 	function self.PeekCooldown(entry: any, key: string): (boolean, number)
-		if not Util.isUtf8(key) then
-			error("Scribe: cooldown key contains invalid UTF-8 bytes", 2)
-		end
+		checkPublicKey(key, "cooldown")
 		local store = timedStore(entry)
 		if not store then
 			return false, 0
 		end
-		local expiry = store[COOLDOWN_PREFIX .. key]
-		local now = os.time()
-		if expiry and now < expiry then
-			return true, expiry - now
+		local now = Clock.Now()
+		for _, prefix in { COOLDOWN_PREFIX, ONLINE_PREFIX } do
+			local expiry = store[prefix .. key]
+			if expiry and now < expiry then
+				return true, expiry - now
+			end
 		end
 		return false, 0
 	end
 
 	-- Clear a cooldown (support/testing resets).
 	function self.ClearCooldown(entry: any, key: string)
-		if not Util.isUtf8(key) then
-			error("Scribe: cooldown key contains invalid UTF-8 bytes", 2)
-		end
+		-- The reserved check matters most here; see RESERVED_KEY_PREFIX.
+		checkPublicKey(key, "cooldown")
 		if timedStore(entry) then
 			setTimed(entry, COOLDOWN_PREFIX .. key, nil)
+			setTimed(entry, ONLINE_PREFIX .. key, nil)
 		end
 	end
 
-	-- Clear lapsed entries; timed fields reset to their template default,
-	-- which fires Changed and replicates — client Observe covers "booster
-	-- ended" with no separate expiry event.
-	local function sweepEntry(entry: any)
+	-- Clear lapsed entries. Timed fields reset to their template default, which fires
+	-- Changed and replicates, so a client Observe covers expiry with no separate event.
+	-- `notify` gates OnCooldownEnded; the load sweep passes false, since those lapsed while
+	-- the player was away and no listener is attached yet.
+	local function sweepEntry(entry: any, notify: boolean?)
 		local store = timedStore(entry)
 		if not store or not entry.Tree or entry.Tree.Dead then
 			return
 		end
-		local now = os.time()
+		local now = Clock.Now()
 		local lapsed: { { Key: string, Expiry: number } }? = nil
 		for pathKey, expiry in store do
 			if type(expiry) == "number" and now >= expiry then
@@ -202,14 +326,14 @@ function Timed.new(ctx: any)
 		for _, item in lapsed :: { { Key: string, Expiry: number } } do
 			local pathKey = item.Key
 			-- Re-check before processing: a Changed listener fired while resetting an
-			-- EARLIER lapsed field may have re-armed (SetTimed) or cleared this one.
-			-- Processing the stale precollected entry would wipe that fresh expiry and
-			-- reset the field, silently destroying the listener's write.
+			-- earlier lapsed field may have re-armed or cleared this one, and the stale
+			-- precollected entry would wipe that fresh expiry.
 			if store[pathKey] ~= item.Expiry then
 				continue
 			end
 			setTimed(entry, pathKey, nil)
-			if string.sub(pathKey, 1, #COOLDOWN_PREFIX) ~= COOLDOWN_PREFIX then
+			local isOnline = string.sub(pathKey, 1, #ONLINE_PREFIX) == ONLINE_PREFIX
+			if not isOnline and string.sub(pathKey, 1, #COOLDOWN_PREFIX) ~= COOLDOWN_PREFIX then
 				local ok, err = pcall(function()
 					local accessor, node = fieldAccessorFromKey(entry, pathKey)
 					accessor.Set(if node then Util.deepClone(node.Default) else nil)
@@ -217,32 +341,161 @@ function Timed.new(ctx: any)
 				if not ok then
 					Log.Warn("Integrity", "TIMED_SWEEP_FAIL", tostring(err), { Player = entry.Player })
 				end
+			elseif notify then
+				-- A cooldown holds no value, so clearing it fires no Changed. This
+				-- signal is the only expiry notification cooldowns get.
+				local prefixLength = if isOnline then #ONLINE_PREFIX else #COOLDOWN_PREFIX
+				local bareKey = string.sub(pathKey, prefixLength + 1)
+				-- Game cooldowns only: Scribe's idempotency claims share this dict, and
+				-- announcing one puts a key the game never set through its handler.
+				if not isReserved(bareKey) then
+					ctx.Signals.OnCooldownEnded:Fire(entry.Player, bareKey)
+				end
 			end
 		end
 	end
 
+	local function toDeadline(entry: any, remainingByKey: { [string]: number })
+		local store = timedStore(entry)
+		if not store then
+			return
+		end
+		local now = Clock.Now()
+		for pathKey, remaining in remainingByKey do
+			store[pathKey] = now + remaining
+		end
+	end
+
+	-- Online-only cooldowns are deadlines in memory and remaining seconds on disk, so every
+	-- read works as it does for a wall-clock one. Converting on every save rather than only
+	-- on leave makes a crash safe: whatever the DataStore caught is already a remaining, so
+	-- the worst case is a cooldown that resumes slightly long. The conversion goes into a
+	-- copy the profile carries for the save, while the live deadlines move to
+	-- entry.TimedLive; converting the shared table in place would make a live cooldown read
+	-- as a 1970 deadline for the whole round trip, and the sweep would delete it.
+	function self.BeforeSave(entry: any): { [string]: number }?
+		local store = timedStore(entry)
+		if not store then
+			return nil
+		end
+		local now = Clock.Now()
+		local persisted: { [string]: number } = {}
+		for pathKey, value in store do
+			if string.sub(pathKey, 1, #ONLINE_PREFIX) == ONLINE_PREFIX and type(value) == "number" then
+				-- Whole seconds only: a fractional value roughly quadruples the JSON for
+				-- this entry, which feeds the profile-size and wipe-guard checks.
+				persisted[pathKey] = math.max(0, math.floor(value - now))
+			else
+				persisted[pathKey] = value
+			end
+		end
+		entry.TimedLive = store
+		-- ProfileStore task.spawns every save and holds no per-profile lock, so an autosave
+		-- tick can start while a Data.Flush is in flight; count the open windows.
+		entry.TimedSaves = (entry.TimedSaves or 0) + 1
+		local reserved = entry.LiveData and entry.LiveData[Template.RESERVED_ROOT]
+		if type(reserved) == "table" then
+			reserved.Timed = persisted
+		end
+		return store
+	end
+
+	function self.AfterSave(entry: any, held: { [string]: number }?)
+		if held == nil then
+			return
+		end
+		-- Only the last save out closes the window. Restoring while another is still in
+		-- flight would point the profile back at the live deadlines, and that save would
+		-- serialize them as remaining seconds: a rejoin then turns 1.78e9 "remaining" into
+		-- a deadline decades away, re-minted by every later save.
+		--
+		-- A failed save never fires OnAfterSave, so the window stays open for the session.
+		-- That is inert, and ProfileStore cannot say which call failed anyway.
+		local remaining = (entry.TimedSaves or 1) - 1
+		entry.TimedSaves = math.max(0, remaining)
+		if remaining > 0 then
+			return
+		end
+		entry.TimedLive = nil
+		local reserved = entry.LiveData and entry.LiveData[Template.RESERVED_ROOT]
+		if type(reserved) == "table" then
+			reserved.Timed = held
+		end
+	end
+
+	-- Clear one field's expiry in the live store. DebugHook's ClearTimed needs the flat
+	-- dict directly, since a nested field's pathKey embeds \31 and the accessor tree
+	-- rejects it; routing it here keeps it off the throwaway copy a save is holding.
+	function self.ClearField(entry: any, pathKey: string)
+		setTimed(entry, pathKey, nil)
+	end
+
+	-- On load the stored value is a remaining, so turn it back into a deadline before
+	-- anything reads it.
+	local function restoreDeadlines(entry: any)
+		local store = timedStore(entry)
+		if not store then
+			return
+		end
+		local remaining: { [string]: number } = {}
+		for pathKey, value in store do
+			if string.sub(pathKey, 1, #ONLINE_PREFIX) == ONLINE_PREFIX and type(value) == "number" then
+				remaining[pathKey] = value
+			end
+		end
+		toDeadline(entry, remaining)
+	end
+
 	function self.OnLoad(entry: any)
+		restoreDeadlines(entry)
 		sweepEntry(entry)
+	end
+
+	-- One pass of the periodic sweep, including the OnCooldownEnded signal. Named so
+	-- the 1 Hz loop below and the tests drive the same code path.
+	function self.Sweep(entry: any)
+		sweepEntry(entry, true)
 	end
 
 	function self.OnUnload(_entry: any) end
 
-	-- Called by Server.build once the full ctx is assembled, so the sweep
-	-- never runs against a half-constructed context.
+	local stopped = false
+	local sweepThread: thread? = nil
+	-- Called by Server.build once the full ctx is assembled, so the sweep never runs
+	-- against a half-constructed context.
 	function self.Start()
-		task.spawn(function()
-			while true do
-				task.wait(SWEEP_INTERVAL)
+		sweepThread = Sched.Spawn(function()
+			-- Its own long-lived thread, so what it allocates is attributable. Scribe's own
+			-- background work only: an accessor write runs on the game's calling thread and
+			-- stays under the game's category.
+			Profile.MemoryCategory("Scribe")
+			while not stopped do
+				-- Jittered so every server in the place does not sweep on one tick.
+				Clock.Wait(Rng.Jitter(SWEEP_INTERVAL))
 				local persistence = ctx.Persistence
 				if persistence then
 					for _, entry in persistence.Entries do
 						if entry.State == "Ready" then
-							sweepEntry(entry)
+							self.Sweep(entry)
 						end
 					end
 				end
 			end
 		end)
+	end
+
+	-- Release the sweep so the bundle can be discarded. The flag alone leaves the thread
+	-- parked in task.wait for up to SWEEP_INTERVAL, so many bundles in one process (a
+	-- multi-server simulation, or the test harnesses) would pile up.
+	function self.Stop()
+		if stopped then
+			return
+		end
+		stopped = true
+		if sweepThread ~= nil then
+			pcall(task.cancel, sweepThread)
+			sweepThread = nil
+		end
 	end
 
 	return self

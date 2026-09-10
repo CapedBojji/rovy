@@ -3,8 +3,8 @@
 `Server/Commands.luau` is copied without modification from:
 
 - Repository: `https://github.com/ericplane/Scribe`
-- Version: `v1.0.11`
-- Commit: `4253d303f3ea9e70b362d9e1e498b805ac3a8d01`
+- Version: `v2.3.0`
+- Commit: `e3309e9debdce2d3571406c48ded89f728404795`
 - Source path: `src/Server/Commands.luau`
 
 The fixture is test-only and proves that Rovy's asynchronous command bridge can

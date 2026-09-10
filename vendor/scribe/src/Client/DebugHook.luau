@@ -1,16 +1,12 @@
 --!strict
--- Client-side Studio debug hook: a READ-ONLY view of what this client
--- actually received — the replicated mirror, every applied op from boot
--- (including the Init snapshot), and the adopted service status. The Scribe
--- Studio plugin instance running in the client DataModel attaches to it when
--- Studio is switched to the client view.
+-- Client-side Studio debug hook: a read-only view of what this client actually received,
+-- meaning the replicated mirror, every applied op from boot (the Init snapshot included)
+-- and the adopted service status. Studio play sessions only (gated in Client init), and
+-- the surface has no mutating command.
 --
--- Exists ONLY in Studio play sessions (gated in Client init). No writes,
--- ever: the surface has no mutating command.
---
--- Transport mirrors the server hook: one BindableFunction (request/response)
--- and one BindableEvent (stream digests) under ReplicatedStorage (created
--- client-side, so it never exists on the server or replicates anywhere).
+-- Transport mirrors the server hook: one BindableFunction (request/response) and one
+-- BindableEvent (stream digests) under ReplicatedStorage, created client-side so they
+-- never exist on the server or replicate anywhere.
 
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -26,8 +22,7 @@ local Log = require(Internal.Log)
 
 local ClientDebugHook = {}
 
--- Versioned independently of the server hook protocol: the two attach
--- separately and evolve at their own pace. Range handshake from day one.
+-- Versioned independently of the server hook: the two attach separately.
 ClientDebugHook.PROTOCOL_VERSION = 1
 ClientDebugHook.CONTAINER_NAME = "_ScribeClientDebugHook"
 
@@ -146,14 +141,14 @@ function ClientDebugHook.Attach(deps: any)
 		pending[stream] = bucket
 	end
 
-	-- Record every applied op (Init snapshot included) BEFORE it mutates the
+	-- Record every applied op (Init snapshot included) before it mutates the
 	-- mirror, so Old is the true pre-op value.
 	local origApply = deps.Tree.ApplyOp
 	deps.Tree.ApplyOp = function(treeSelf: any, op: any)
 		local ok, err = pcall(function()
-			-- Old per op kind, matching the server hook's record shape: the
-			-- removed ELEMENT for Remove, nil for Insert, the pre-write value
-			-- (full contents for Clear) otherwise.
+			-- Old per op kind, matching the server hook's record shape: the removed
+			-- element for Remove, nil for Insert, the pre-write value otherwise
+			-- (full contents for Clear).
 			local old: any = nil
 			if op.Kind == "Remove" then
 				local arr = readPath(deps.Mirror, op.Path)
@@ -245,7 +240,7 @@ function ClientDebugHook.Attach(deps: any)
 		}
 	end
 
-	-- Command handlers (READ-ONLY — no mutating command exists) ---------------
+	-- Command handlers, read-only ---------------------------------------------
 
 	local handlers: { [string]: (args: any) -> any } = {}
 
@@ -261,13 +256,13 @@ function ClientDebugHook.Attach(deps: any)
 				Ok = false,
 				Error = `protocol mismatch: client hook speaks v{ClientDebugHook.PROTOCOL_VERSION}, plugin speaks v{minSupported}-v{major}`
 					.. if major < ClientDebugHook.PROTOCOL_VERSION
-						then " — update the Scribe Studio plugin"
-						else " — update the Scribe package in this game",
+						then "; update the Scribe Studio plugin"
+						else "; update the Scribe package in this game",
 				ProtocolVersion = ClientDebugHook.PROTOCOL_VERSION,
 			}
 		end
-		-- A handshake means a new plugin instance: reset subscriptions so its
-		-- first SetSubscriptions replays the boot ring.
+		-- A handshake means a new plugin instance: reset subscriptions so the boot ring
+		-- replays on the first SetSubscriptions.
 		for stream in subscriptions do
 			subscriptions[stream] = false
 		end
@@ -306,9 +301,8 @@ function ClientDebugHook.Attach(deps: any)
 			end
 		end
 		if subscriptions.Ops and not had.Ops and ringCount > 0 then
-			-- Replay everything applied since boot; records carry HookSeq for
-			-- plugin-side dedupe and Replay=true so the plugin keeps them out
-			-- of its live tree mirror.
+			-- Replay everything applied since boot; records carry HookSeq for dedupe
+			-- and Replay=true so the plugin keeps them out of its live tree mirror.
 			pending.Ops = ringSnapshotForReplay()
 			flushStream("Ops")
 		end
@@ -336,7 +330,7 @@ function ClientDebugHook.Attach(deps: any)
 		for id = 0, compiled.NodeCount - 1 do
 			local node = compiled.ById[id]
 			if node then
-				table.insert(nodes, {
+				local record: any = {
 					Id = node.Id,
 					Path = table.clone(node.Path),
 					Kind = node.Kind,
@@ -349,7 +343,24 @@ function ClientDebugHook.Attach(deps: any)
 					MaxLength = node.MaxLength,
 					Members = if node.Members then table.clone(node.Members) else nil,
 					HasChildren = node.Children ~= nil,
-				})
+				}
+				-- Same additive shape the server hook sends: without it the client view
+				-- renders derived fields as ordinary editable ones. Compute is a function
+				-- and never crosses the wire.
+				local derived = node.Derived
+				if derived then
+					local inputs = table.create(#derived.InputPaths)
+					for i, inputPath in derived.InputPaths do
+						inputs[i] = table.concat(inputPath, ".")
+					end
+					record.Derived = {
+						Inputs = inputs,
+						Transmit = derived.Transmit,
+						OfflineComputable = derived.OfflineComputable,
+						Label = derived.Label,
+					}
+				end
+				table.insert(nodes, record)
 			end
 		end
 		return { Ok = true, Hash = compiled.Hash, NodeCount = compiled.NodeCount, Nodes = nodes }

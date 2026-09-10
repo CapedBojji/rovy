@@ -4,10 +4,16 @@
 
 | Scribe peer | Status | Evidence |
 | --- | --- | --- |
-| `ericplane/scribe@1.0.11`, tag `v1.0.11`, commit `4253d303f3ea9e70b362d9e1e498b805ac3a8d01` | Supported | Pinned command-dispatch integration, fake-binding suites, and a two-boundary/two-bundle native Roblox Studio gate |
+| `ericplane/scribe@2.3.0`, tag `v2.3.0`, commit `e3309e9debdce2d3571406c48ded89f728404795` | Supported | Pinned command-dispatch integration, fake-binding suites, and a two-boundary/two-bundle native Roblox Studio gate |
 | Any other version | Unverified | Rejected by default; `strict: false` is an explicit opt-in with no compatibility promise |
 
-The package exports `SCRIBE_SUPPORTED_VERSION` as the literal `"1.0.11"`.
+The package exports `SCRIBE_SUPPORTED_VERSION` as the literal `"2.3.0"`.
+
+Scribe 2.x bundles its own patched ProfileStore, so a game no longer installs
+`lm-loleris/profilestore` alongside it — remove that dependency when upgrading.
+The replication protocol also moved from 1 to 6, so a server and a client built
+from different Scribe versions refuse each other and log `PROTOCOL_MISMATCH`;
+deploy both halves together.
 `ScribePlugin`, `ScribeClientPlugin`, and `ScribeServerPlugin` compare the native
 module's `Version` before constructing any bundle. The default is fail-closed:
 

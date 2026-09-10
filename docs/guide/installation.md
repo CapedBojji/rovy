@@ -77,8 +77,11 @@ The runtime peer remains a Wally dependency:
 
 ```toml
 [dependencies]
-Scribe = "ericplane/scribe@1.0.11"
+Scribe = "ericplane/scribe@2.3.0"
 ```
+
+Scribe 2.x bundles its own patched ProfileStore, so do not add
+`lm-loleris/profilestore` yourself.
 
 Install Vide only when you author reactive game UI with Vide:
 

@@ -1,15 +1,8 @@
 --!strict
--- Scribe — persistent, fully-typed, automatically-replicated player data for
--- Roblox Luau, built on ProfileStore.
---
--- One shared module declares the template and options and returns
--- { Server, Client }:
---
---   local Scribe = require(ReplicatedStorage.Packages.Scribe)
---   return Scribe({ Template = template, Transport = "Default" })
---
--- Requires the new Luau type solver for the typed accessor tree; the library
--- runs correctly without it (use `.Raw` as the untyped escape hatch).
+-- Scribe: persistent, fully-typed, automatically-replicated player data for Roblox
+-- Luau, built on ProfileStore. One shared module declares the template and options and
+-- returns { Server, Client }. The typed accessor tree needs the new Luau type solver;
+-- without it the library still runs correctly (use `.Raw` as the untyped escape hatch).
 
 local RunService = game:GetService("RunService")
 
@@ -21,6 +14,12 @@ local Log = require(script.Internal.Log)
 local Metrics = require(script.Internal.Metrics)
 local Health = require(script.Internal.Health)
 local Config = require(script.Internal.Config)
+local Budget = require(script.Internal.Budget)
+-- Named BigMath because `Scribe.Big` is the declarator; this is the arithmetic.
+local BigMath = require(script.Internal.Big)
+-- Types only. Both are leaf modules with no services, so this is safe on the client.
+local Exchange = require(script.Internal.Exchange)
+local ExchangeLegType = require(script.Internal.ExchangeLeg)
 
 export type ScribeTransport = Types.ScribeTransport
 export type Op = Types.Op
@@ -30,7 +29,23 @@ export type LogLevel = Types.LogLevel
 export type LogCategory = Types.LogCategory
 export type Status = Types.Status
 export type SaveInfo = Types.SaveInfo
+export type BudgetSnapshot = Budget.Snapshot
+export type ExchangeLeg = ExchangeLegType.Leg
+export type OpenExchange = Exchange.OpenExchange
+export type OpenLeg = Exchange.OpenLeg
+--- One entry of the `Exchangeable` allowlist. See the Exchange guide for the rules.
+export type ExchangeableSpec = {
+	Path: { string },
+	Kind: "Key" | "Qty" | "Stack",
+	Count: string?,
+	Identity: { string }?,
+	Ignore: { string }?,
+}
 export type LifecycleReason = Types.LifecycleReason
+export type RequestReason = Types.RequestReason
+export type PurchaseReason = Types.PurchaseReason
+export type GiftReason = Types.GiftReason
+export type ProductState = Types.ProductState
 export type LeaderboardEntry = Types.LeaderboardEntry
 export type PassConfig = Types.PassConfig
 export type PurchaseFilter = Types.PurchaseFilter
@@ -39,9 +54,8 @@ export type EconomyConfig = Types.EconomyConfig
 export type EconomyCurrencyConfig = Types.EconomyCurrencyConfig
 export type EconomyFieldSpec = Types.EconomyFieldSpec
 export type EconomyLogFn = Types.EconomyLogFn
--- LeaderboardConfig<T>, ProductConfig<T>, and PurchaseSpec<T> are defined
--- after the type functions below; they derive Stat/Cost paths and the Grant
--- accessor type from the template.
+-- LeaderboardConfig<T>, ProductConfig<T> and PurchaseSpec<T> are defined after the
+-- type functions below, which they need to derive their paths from the template.
 
 --------------------------------------------------------------------------------
 -- The type function: walks the template type at type-check time and produces
@@ -80,24 +94,264 @@ export type function ValueType(T)
 		return t
 	end
 
-	-- Recursion budget. A self-referential template type (a record whose indexer
-	-- element type reaches back to the record, e.g. `{ Id: string, Kids: { Node } }`)
-	-- would otherwise recurse forever and blow the type-function stack, which
-	-- degrades the whole accessor tree to an error type and silently disables
-	-- checking for the entire template. Matches StatPathsType's depth cap below.
-	-- One past Util.MAX_VALUE_DEPTH (a leaf at path depth N sits at build depth N,
-	-- and the deepest runtime-writable leaf has a 25-segment path), so this can
-	-- never bind before the runtime does: a legal template is always fully typed,
-	-- and only a cyclic type (which no write could satisfy either) is cut off.
+	-- Recursion budget: a self-referential template type would blow the type-function
+	-- stack, degrading the whole accessor tree to an error type. One past
+	-- Util.MAX_VALUE_DEPTH, so it can never bind before the runtime does and only a
+	-- cyclic type is cut off. Matches StatPathsType's cap below.
 	local MAX_DEPTH = 25
+	local MAX_CHILD_UNION = 12
 
+	-- One shared Scribe.Big type for the whole template. Luau resolves `<` and `<=`
+	-- by metatable identity rather than by shape, so a fresh type per field leaves
+	-- two big fields in the same template incomparable.
+	local bigType: type? = nil
+	local function bigValueType(): type
+		if bigType ~= nil then
+			return bigType
+		end
+		-- The shape Get returns; arithmetic resolves through the metatable.
+		local bigProps: { [type]: type } = {}
+		bigProps[ts.singleton("M")] = ts.number
+		bigProps[ts.singleton("E")] = ts.number
+		bigProps[ts.singleton("Short")] = ts.newfunction(
+			{ head = { ts.any, ts.unionof(ts.number, ts.singleton(nil)) } },
+			{ head = { ts.string } }
+		)
+		bigProps[ts.singleton("ToNumber")] = ts.newfunction({ head = { ts.any } }, { head = { ts.number } })
+		bigProps[ts.singleton("Log10")] = ts.newfunction({ head = { ts.any } }, { head = { ts.number } })
+
+		-- The metamethods must be typed over this table with its metatable, so the table
+		-- is built first and the metatable attached after. Typed over a metatable-less
+		-- copy they describe a different type from the one Get returns, and every
+		-- operator becomes an error. Operands widen to the union those methods accept,
+		-- because BIG_MT resolves both sides through Big.from.
+		local big = ts.newtable(bigProps, nil, nil)
+		-- Pow returns the big type itself, so it cannot go in bigProps: ts.newtable
+		-- snapshots that table. setproperty on the live type object instead.
+		big:setproperty(ts.singleton("Pow"), ts.newfunction({ head = { big, ts.number } }, { head = { big } }))
+		local operand = ts.unionof(big, ts.number, ts.string)
+		local arith = ts.newfunction({ head = { operand, operand } }, { head = { big } })
+		local cmp = ts.newfunction({ head = { operand, operand } }, { head = { ts.boolean } })
+		local mtProps: { [type]: type } = {}
+		mtProps[ts.singleton("__add")] = arith
+		mtProps[ts.singleton("__sub")] = arith
+		mtProps[ts.singleton("__mul")] = arith
+		mtProps[ts.singleton("__div")] = arith
+		mtProps[ts.singleton("__unm")] = ts.newfunction({ head = { big } }, { head = { big } })
+		mtProps[ts.singleton("__lt")] = cmp
+		mtProps[ts.singleton("__le")] = cmp
+		-- __eq only ever runs with two tables, so it stays narrow.
+		mtProps[ts.singleton("__eq")] = ts.newfunction({ head = { big, big } }, { head = { ts.boolean } })
+		mtProps[ts.singleton("__tostring")] = ts.newfunction({ head = { big } }, { head = { ts.string } })
+		big:setmetatable(ts.newtable(mtProps, nil, nil))
+		bigType = big
+		return big
+	end
+
+	-- Big, Flags and SetOf carry their label in the metatable rather than in a field,
+	-- so each declarator's own type is already the read shape. See BigValue.
+	local function hasMarker(t: type, name: string): boolean
+		local mt = t:metatable()
+		return mt ~= nil and mt:readproperty(ts.singleton(name)) ~= nil
+	end
+
+	local function isBigMarker(t: type): boolean
+		return hasMarker(t, "__scribeBig")
+	end
+
+	-- Timed and ServerOnly read back as a bare T, which may not be a table, so unlike
+	-- the branded declarators their label has to be an ordinary field and a
+	-- whole-subtree read strips it here. This only ever removes a wrapper, which is
+	-- what keeps it cheap enough to run over every node.
+	local unwrapCache: { [type]: type } = {}
+	local function unwrapWrappers(t: type, depth: number): type
+		if depth > MAX_DEPTH or not t:is("table") then
+			return t
+		end
+		local cached = unwrapCache[t]
+		if cached ~= nil then
+			return cached
+		end
+		local function memo(result: type): type
+			unwrapCache[t] = result
+			return result
+		end
+		local timed = t:readproperty(ts.singleton("__scribeTimed"))
+		if timed ~= nil then
+			return memo(unwrapWrappers(widen(timed), depth + 1))
+		end
+		local serverOnly = t:readproperty(ts.singleton("__scribeServerOnly"))
+		if serverOnly ~= nil then
+			return memo(unwrapWrappers(widen(serverOnly), depth + 1))
+		end
+		local derived = t:readproperty(ts.singleton("__scribeDerived"))
+		if derived ~= nil then
+			return memo(unwrapWrappers(widen(derived), depth + 1))
+		end
+		-- A marker cannot hide under one of the branded declarators: their metatable
+		-- brand means the shape below them is already the read shape.
+		if hasMarker(t, "__scribeBig") or hasMarker(t, "__scribeFlags") or hasMarker(t, "__scribeSet") then
+			return memo(t)
+		end
+		local props: { [type]: type } = {}
+		local rebuilt = false
+		for key, prop in t:properties() do
+			local childType = prop.read or prop.write
+			if childType ~= nil then
+				local mapped = unwrapWrappers(childType, depth + 1)
+				props[key] = mapped
+				if mapped ~= childType then
+					rebuilt = true
+				end
+			end
+		end
+		local spec: { index: type, readresult: type, writeresult: type }? = nil
+		local indexer = t:indexer()
+		if indexer ~= nil then
+			local mapped = unwrapWrappers(indexer.readresult, depth + 1)
+			spec = { index = indexer.index, readresult = mapped, writeresult = mapped }
+			if mapped ~= indexer.readresult then
+				rebuilt = true
+			end
+		end
+		if not rebuilt then
+			return memo(t)
+		end
+		return memo(ts.newtable(props, spec, nil))
+	end
+
+	-- A canonical key for a subtree, so two identical subtrees are built once. A template
+	-- repeats declarators heavily and Luau interns none of them.
+	--
+	-- Returns nil for anything it cannot describe exactly, and nil means do not cache.
+	-- tostring() is not the key: it truncates past roughly 25 fields, so two records
+	-- sharing a long prefix would collide. Only `table` and `singleton` are probed,
+	-- because an unknown tag fails the whole type function.
+	local opaqueIds: { [type]: string } = {}
+	local opaqueCount = 0
+	local signatureOf: (type, number, { [type]: boolean }) -> string?
+	signatureOf = function(t: type, depth: number, seen: { [type]: boolean }): string?
+		-- A cut-short walk or a cycle cannot be keyed.
+		if depth > MAX_DEPTH + 2 or seen[t] then
+			return nil
+		end
+		if t:is("singleton") then
+			local value = t:value()
+			return `s<{type(value)}:{tostring(value)}>`
+		end
+		if t:is("table") then
+			seen[t] = true
+			local function sub(child: type?): string?
+				if child == nil then
+					return "-"
+				end
+				return signatureOf(child, depth + 1, seen)
+			end
+			local parts: { string } = {}
+			for key, prop in t:properties() do
+				-- Signed separately: a field can differ in only one.
+				local keySig, readSig, writeSig = sub(key), sub(prop.read), sub(prop.write)
+				if keySig == nil or readSig == nil or writeSig == nil then
+					seen[t] = nil
+					return nil
+				end
+				table.insert(parts, `{keySig}={readSig}|{writeSig}`)
+			end
+			-- Sorted, because property iteration order is not guaranteed.
+			table.sort(parts)
+			local indexerSig = "-"
+			local indexer = t:indexer()
+			if indexer ~= nil then
+				local i, r, w = sub(indexer.index), sub(indexer.readresult), sub(indexer.writeresult)
+				if i == nil or r == nil or w == nil then
+					seen[t] = nil
+					return nil
+				end
+				indexerSig = `{i}=>{r}|{w}`
+			end
+			-- The metatable carries the declarator brands, which pick the accessor.
+			local metaSig = "-"
+			local mt = t:metatable()
+			if mt ~= nil then
+				local m = sub(mt)
+				if m == nil then
+					seen[t] = nil
+					return nil
+				end
+				metaSig = m
+			end
+			seen[t] = nil
+			return `t<{table.concat(parts, ",")};i:{indexerSig};m:{metaSig}>`
+		end
+		-- Not a table, so its rendering is its structure and is short enough not to
+		-- truncate.
+		local rendered = tostring(t)
+		if #rendered <= 64 then
+			return `p<{rendered}>`
+		end
+		-- Anything longer falls back to identity: exact, but never shared.
+		local id = opaqueIds[t]
+		if id == nil then
+			opaqueCount += 1
+			id = `o<{opaqueCount}>`
+			opaqueIds[t] = id
+		end
+		return id
+	end
+
+	local buildUncached: (type, boolean, number) -> type
+	local buildCache: { [number]: { [string]: type } } = {}
 	local function build(rawType: type, isRoot: boolean, depth: number): type
+		-- Roots are never cached: isRoot changes what is emitted.
+		if isRoot then
+			return buildUncached(rawType, isRoot, depth)
+		end
+		local key = signatureOf(rawType, 0, {})
+		if key == nil then
+			return buildUncached(rawType, isRoot, depth)
+		end
+		-- Keyed by depth too, because MAX_DEPTH truncates.
+		local atDepth = buildCache[depth]
+		if atDepth == nil then
+			atDepth = {}
+			buildCache[depth] = atDepth
+		end
+		local hit = atDepth[key]
+		if hit ~= nil then
+			return hit
+		end
+		local built = buildUncached(rawType, isRoot, depth)
+		atDepth[key] = built
+		return built
+	end
+	buildUncached = function(rawType: type, isRoot: boolean, depth: number): type
 		if depth > MAX_DEPTH then
 			return anyType
 		end
 		local t = widen(rawType)
 
-		-- Scribe.Timed fields carry a { __scribeTimed: V } marker type.
+		-- The Scribe.ServerOnly marker has to come off first: every declarator check below
+		-- reads a marker off `t`, so with the wrapper on, ServerOnly(SetOf/Big/Flags/Timed)
+		-- matches none of them and the node loses its declarator surface. A second unwrap
+		-- after the SetOf block handles the inverse nesting, e.g. Timed(ServerOnly(false)).
+		if t:is("table") then
+			local inner = t:readproperty(ts.singleton("__scribeServerOnly"))
+			if inner ~= nil then
+				t = widen(inner)
+			end
+		end
+
+		-- A Scribe.Derived node reads as V and never writes, so this only records the
+		-- flag; the mutator block below is skipped as it is for the root accessor.
+		local isDerived = false
+		if t:is("table") then
+			local inner = t:readproperty(ts.singleton("__scribeDerived"))
+			if inner ~= nil then
+				isDerived = true
+				t = widen(inner)
+			end
+		end
+
 		local isTimed = false
 		if t:is("table") then
 			local inner = t:readproperty(ts.singleton("__scribeTimed"))
@@ -107,22 +361,82 @@ export type function ValueType(T)
 			end
 		end
 
-		local props: { [type]: type } = {}
-		local indexerSpec: { index: type, readresult: type, writeresult: type }? = nil
+		-- Without the marker a flags field is just { string } and would pick up the
+		-- array surface, none of which it supports. `t` is already the { string } a
+		-- read returns; the label is on the metatable.
+		local isFlags = t:is("table") and hasMarker(t, "__scribeFlags")
 
-		local valueType = t
-		local function add(name: string, ty: type)
-			props[ts.singleton(name)] = ty
+		-- A big's value is an object with arithmetic metamethods rather than a number,
+		-- so it gets its own method surface and none of the table one.
+		local isBig = false
+		if t:is("table") and isBigMarker(t) then
+			isBig = true
+			t = bigValueType()
 		end
 
-		-- Static children and container methods first, so the common node
-		-- methods below take precedence on name collisions (documented: method
-		-- names are reserved words on containers).
-		if t:is("table") and not isTimed then
+		-- Without the marker a set is just { T } and would pick up Insert plus
+		-- index-based Remove, neither of which a set has. `t` is already the members.
+		local isSet = t:is("table") and hasMarker(t, "__scribeSet")
+
+		-- Second ServerOnly unwrap, for a marker nested inside another declarator
+		-- rather than wrapped around one. The server reads these normally;
+		-- StripServerOnly is what drops them from the client type.
+		if t:is("table") then
+			local inner = t:readproperty(ts.singleton("__scribeServerOnly"))
+			if inner ~= nil then
+				t = widen(inner)
+			end
+		end
+
+		-- Scribe.MapOf carries its key type as a singleton, the only way to tell a sparse
+		-- {[number]: V} map from an array: at the type level those are the same indexer.
+		-- Last, so a map wrapped in Scribe.ServerOnly is still seen as a map. `t` stays the
+		-- whole map; only the element is pulled back out, for the key events and Remove.
+		local mapKey: type? = nil
+		local mapValue: type? = nil
+		local mapElement: type? = nil
+		if t:is("table") and hasMarker(t, "__scribeMapKey") then
+			local indexer = t:indexer()
+			if indexer ~= nil then
+				mapKey = indexer.index
+				mapValue = indexer.readresult
+				mapElement = widen(indexer.readresult)
+			end
+		end
+
+		-- Insertion ordered, because the properties are applied one at a time below and a
+		-- later entry must overwrite an earlier one of the same name. A map keyed by type
+		-- cannot do that: two ts.singleton("Remove") calls are distinct objects.
+		local props: { { key: type, ty: type } } = {}
+		local indexerSpec: { index: type, readresult: type, writeresult: type }? = nil
+
+		-- Strips a nested Timed / ServerOnly label, the one thing a read should not show.
+		local valueType = unwrapWrappers(t, depth)
+		local function add(name: string, ty: type)
+			table.insert(props, { key = ts.singleton(name), ty = ty })
+		end
+
+		-- Static children and container methods first, so the common node methods below win
+		-- on name collisions. Maps are excluded: their own block builds the same surface
+		-- with the declared key type, and two ts.singleton("Remove") calls are distinct
+		-- keys, so letting a map through here duplicates rather than overrides.
+		if t:is("table") and mapKey == nil and not isTimed and not isFlags and not isSet and not isBig then
 			for key, prop in t:properties() do
 				local childType = prop.read or prop.write
 				if childType ~= nil then
-					props[key] = build(childType, false, depth + 1)
+					table.insert(props, { key = key, ty = build(childType, false, depth + 1) })
+				end
+			end
+
+			-- OnChildChanged reports an existing child's value moving, once per write
+			-- and never coalesced, unlike Changed.
+			local childKeys: { type } = {}
+			local childValues: { type } = {}
+			for key, prop in t:properties() do
+				local childType = prop.read or prop.write
+				if childType ~= nil then
+					table.insert(childKeys, key)
+					table.insert(childValues, widen(childType))
 				end
 			end
 
@@ -130,9 +444,8 @@ export type function ValueType(T)
 			if indexer ~= nil then
 				local elementType = widen(indexer.readresult)
 				if indexer.index:is("number") then
-					-- Array node. The indexer makes `arr[i]` an accessor node, matching
-					-- the runtime (Node.accessorIndex already resolves numeric keys); a
-					-- Scribe.ArrayOf element field is only reachable this way.
+					-- Array node: the indexer makes `arr[i]` an accessor node, which is
+					-- the only way to reach a Scribe.ArrayOf element field.
 					local elemNode = build(indexer.readresult, false, depth + 1)
 					indexerSpec = {
 						index = indexer.index,
@@ -161,34 +474,110 @@ export type function ValueType(T)
 				end
 				add("Clear", fn({ optBool }, {}))
 				add("Count", fn({}, { ts.number }))
+				-- A dynamic container's children are homogeneous, so the key and value
+				-- types here are exact rather than a union over declared fields.
+				table.insert(childKeys, indexer.index)
+				table.insert(childValues, widen(indexer.readresult))
 			end
+
+			if #childKeys > 0 then
+				-- (key, new, old), matching Changed's new-first order. Both values are
+				-- optional: an added key has no old, a removed key has no new. On a
+				-- heterogeneous static table they widen to a union Luau will not narrow from
+				-- the key, which is accepted; that node kind has exact per-field listeners.
+				-- Past MAX_CHILD_UNION the pair is widened; a growing union is what exceeds the budget.
+				local childKey = if #childKeys > MAX_CHILD_UNION then ts.string else ts.unionof(table.unpack(childKeys))
+				local childValue = if #childValues > MAX_CHILD_UNION
+					then optional(anyType)
+					else optional(ts.unionof(table.unpack(childValues)))
+				add("OnChildChanged", fn({ fn({ childKey, childValue, childValue }, {}) }, { disconnectType }))
+			end
+		end
+
+		if mapKey ~= nil then
+			-- A map's children are accessor nodes keyed by the declared type; the key
+			-- events and Remove carry the element rather than the whole map.
+			local element = mapElement :: type
+			local childNode = build(mapValue :: type, false, depth + 1)
+			indexerSpec = { index = mapKey, readresult = childNode, writeresult = childNode }
+			add("Remove", fn({ mapKey, optBool }, { optional(element) }))
+			add("OnKeyAdded", fn({ fn({ mapKey, element }, {}) }, { disconnectType }))
+			add("OnKeyRemoved", fn({ fn({ mapKey, element }, {}) }, { disconnectType }))
+			add("OnChildChanged", fn({ fn({ mapKey, optional(element), optional(element) }, {}) }, { disconnectType }))
+			add("Clear", fn({ optBool }, {}))
+			add("Count", fn({}, { ts.number }))
 		end
 
 		-- Common node methods.
 		add("Get", fn({}, { valueType }))
-		-- The root accessor (empty path) cannot be Set/Updated at runtime — those
-		-- calls always throw ("cannot write to \"\""). Omit them from the root
-		-- type so the typed API matches runtime and can't silently disable
-		-- module-level checking with a template-typed argument.
-		if not isRoot then
-			add("Set", fn({ valueType, optBool }, { valueType }))
-			add("Update", fn({ fn({ valueType }, { valueType }), optBool }, { valueType }))
+		-- The root accessor cannot be Set or Updated at runtime, so those are left off the
+		-- root type. A big field declares its own wider Set and Update below; adding them
+		-- here too would duplicate rather than override, as the singletons are distinct keys.
+		if not isRoot and not isBig and not isDerived then
+			-- Writes take the unbranded shape: a caller writing a plain table literal
+			-- has no way to produce a map's metatable brand. Reads still hand back the
+			-- branded type, which assigns freely to the plain shape.
+			local writeType = if mapKey ~= nil and mapElement ~= nil
+				then ts.newtable(nil, { index = mapKey, readresult = mapElement, writeresult = mapElement }, nil)
+				else valueType
+			add("Set", fn({ writeType, optBool }, { valueType }))
+			add("Update", fn({ fn({ valueType }, { writeType }), optBool }, { valueType }))
 		end
 		add("Clone", fn({}, { valueType }))
 		add("Default", fn({}, { valueType }))
-		add(
-			"Changed",
-			fn({ fn({ valueType, valueType, optional(ts.unionof(ts.string, ts.number)) }, {}) }, { disconnectType })
-		)
+		-- (new, old) on every node. On a container it reports state, coalesced to one
+		-- fire per batch or received frame; which child moved is OnChildChanged's job.
+		add("Changed", fn({ fn({ valueType, valueType }, {}) }, { disconnectType }))
 		add("Observe", fn({ fn({ valueType }, {}) }, { disconnectType }))
 
 		if t:is("number") then
-			add("Increment", fn({ ts.number, anyType }, { ts.number }))
-			add("Decrement", fn({ ts.number, anyType }, { ts.number }))
+			-- Min/Max read the declared bounds, so they stay on a derived field; the
+			-- two mutators do not.
+			if not isDerived then
+				add("Increment", fn({ ts.number, anyType }, { ts.number }))
+				add("Decrement", fn({ ts.number, anyType }, { ts.number }))
+			end
 			add("Min", fn({}, { optNumber }))
 			add("Max", fn({}, { optNumber }))
-		elseif t:is("boolean") then
+		elseif t:is("boolean") and not isDerived then
 			add("Toggle", fn({ optBool }, { ts.boolean }))
+		end
+
+		if isBig then
+			-- Every entry point, Set included, takes a number, a numeric string, or
+			-- another big value, so the operand type is the same union everywhere.
+			local operand = ts.unionof(ts.number, ts.string, valueType)
+			add("Set", fn({ operand, optBool }, { valueType }))
+			add("Update", fn({ fn({ valueType }, { operand }), optBool }, { valueType }))
+			add("Increment", fn({ operand, anyType }, { valueType }))
+			add("Decrement", fn({ operand, anyType }, { valueType }))
+			add("Multiply", fn({ operand, optBool }, { valueType }))
+			add("Divide", fn({ operand, optBool }, { valueType }))
+			-- A big bound past the double range is only expressible as a numeric string,
+			-- so these return the same union the declarator accepts.
+			local optBound = optional(ts.unionof(ts.number, ts.string))
+			add("Min", fn({}, { optBound }))
+			add("Max", fn({}, { optBound }))
+		end
+
+		if isSet then
+			-- Membership surface. Get/Set still take the whole { T }.
+			local setIndexer = t:indexer()
+			local element = if setIndexer ~= nil then widen(setIndexer.readresult) else anyType
+			add("Add", fn({ element, optBool }, { ts.boolean }))
+			add("Remove", fn({ element, optBool }, { ts.boolean }))
+			add("Has", fn({ element }, { ts.boolean }))
+			add("Count", fn({}, { ts.number }))
+			add("Clear", fn({ optBool }, {}))
+		end
+
+		if isFlags then
+			-- Named-member surface. Get/Set still take the whole { string } set.
+			add("Enable", fn({ ts.string, optBool }, {}))
+			add("Disable", fn({ ts.string, optBool }, {}))
+			add("Has", fn({ ts.string }, { ts.boolean }))
+			add("Toggle", fn({ ts.string, optBool }, { ts.boolean }))
+			add("Clear", fn({ optBool }, {}))
 		end
 
 		if isTimed then
@@ -197,20 +586,42 @@ export type function ValueType(T)
 			add("Active", fn({}, { ts.boolean, optNumber }))
 		end
 
-		return ts.newtable(props, indexerSpec, nil)
+		-- Read-only, not read/write. An accessor is never assigned to, and a read/write
+		-- property makes comparing two accessor trees invariant: the solver has to prove
+		-- each side is exactly the other, which is what exceeds its budget at Scribe().
+		local out = ts.newtable(nil, indexerSpec, nil)
+		for _, entry in props do
+			out:setreadproperty(entry.key, entry.ty)
+		end
+		return out
 	end
 
 	return build(T, true, 0)
 end
 
--- Union of every static numeric leaf path in the template, dot-joined
--- ("Coins", "Stats.Wins"), giving autocomplete and compile-time validation
--- for leaderboard `Stat` and `Purchase` cost paths. Dynamic (dictionary or
--- array) segments cannot be enumerated at type level — cast those paths to
--- `any`. Falls back to plain `string` when the template has no numeric leaf.
+-- Union of every static rankable leaf path in the template, dot-joined ("Coins",
+-- "Stats.Wins"), for leaderboard `Stat` and purchase cost paths. Dynamic segments cannot
+-- be enumerated at type level, so those paths must be cast to `any`; falls back to plain
+-- `string` when the template has no such leaf. `IncludeBig` is true for leaderboards and
+-- false for cost paths, which must be plain numbers.
 -- selene: allow(undefined_variable)
-export type function StatPathsType(T)
+export type function StatPathsType(T, IncludeBig)
 	local ts = types
+	local MAX_STAT_PATHS = 32
+	local includeBig = IncludeBig ~= nil and IncludeBig:is("singleton") and IncludeBig:value() == true
+
+	local function hasMarker(t: type, name: string): boolean
+		local mt = t:metatable()
+		return mt ~= nil and mt:readproperty(ts.singleton(name)) ~= nil
+	end
+
+	local function isBigMarker(t: type): boolean
+		return hasMarker(t, "__scribeBig")
+	end
+
+	local function isMapMarker(t: type): boolean
+		return hasMarker(t, "__scribeMapKey")
+	end
 
 	local paths: { type } = {}
 
@@ -237,6 +648,37 @@ export type function StatPathsType(T)
 			if inner ~= nil then
 				t = widen(inner)
 			end
+		end
+		if t:is("table") then
+			-- Same for Scribe.ServerOnly: the server is what reads leaderboard
+			-- stats, so a server-only number is still a valid stat path.
+			local serverOnly = t:readproperty(ts.singleton("__scribeServerOnly"))
+			if serverOnly ~= nil then
+				t = widen(serverOnly)
+			end
+		end
+		if t:is("table") then
+			-- And Scribe.Derived: a board reads its stat through the accessor tree,
+			-- which computes derived fields, so a derived number is a valid stat.
+			local derived = t:readproperty(ts.singleton("__scribeDerived"))
+			if derived ~= nil then
+				t = widen(derived)
+			end
+		end
+		if t:is("table") and isMapMarker(t) then
+			-- A map's entries live under dynamic keys, which cannot be enumerated at type
+			-- level. Recursing would offer the unaddressable "Field.__scribeMapValue".
+			return
+		end
+		if t:is("table") and isBigMarker(t) then
+			-- Always terminal: a big's type is its real shape, so recursing would expose the
+			-- object's own M and E and offer "Coins.M" as a stat path. When a big counts, the
+			-- field itself is the path, or a template whose only rankable field is big
+			-- produces an empty union and collapses the gate to `string`.
+			if includeBig and prefix ~= "" then
+				table.insert(paths, ts.singleton(prefix))
+			end
+			return
 		end
 		if t:is("number") then
 			if prefix ~= "" then
@@ -265,12 +707,57 @@ export type function StatPathsType(T)
 	if #paths == 1 then
 		return paths[1]
 	end
+	if #paths > MAX_STAT_PATHS then
+		-- A union this size is what the solver cannot afford.
+		return ts.string
+	end
 	return ts.unionof(table.unpack(paths))
 end
 
--- Grant callbacks receive the typed accessor tree when a template type is
--- supplied, and stay `any` for the untyped default so un-annotated configs
--- never produce false errors.
+-- T with every Scribe.ServerOnly subtree removed, at any depth, so the client type
+-- cannot name a field that reads nil there. Applied to the raw template before
+-- ValueType, which unwraps the marker and loses the information.
+-- selene: allow(undefined_variable)
+type function StripServerOnly(T)
+	local ts = types
+	local MARKER = ts.singleton("__scribeServerOnly")
+	-- Matches ValueType's budget: a cyclic template must not blow the stack.
+	local MAX_DEPTH = 25
+
+	local function isServerOnly(t: type): boolean
+		return t:is("table") and t:readproperty(MARKER) ~= nil
+	end
+
+	local function strip(t: type, depth: number): type
+		if depth > MAX_DEPTH or not t:is("table") then
+			return t
+		end
+		local out = ts.copy(t)
+		for key, prop in t:properties() do
+			local childType = prop.read or prop.write
+			if childType ~= nil then
+				if isServerOnly(childType) then
+					out:setproperty(key, nil) -- the whole subtree leaves the client type
+				else
+					out:setproperty(key, strip(childType, depth + 1))
+				end
+			end
+		end
+		-- Element shapes live behind the indexer, not in properties: without this a
+		-- ServerOnly field inside an ArrayOf or DictOf entry stays in the client type.
+		local indexer = t:indexer()
+		if indexer ~= nil then
+			local element = strip(indexer.readresult, depth + 1)
+			out:setindexer(indexer.index, element)
+		end
+		return out
+	end
+
+	return strip(T, 0)
+end
+
+-- Grant callbacks receive the typed accessor tree when a template type is supplied,
+-- and stay `any` for the untyped default so un-annotated configs stay clean.
 -- selene: allow(undefined_variable)
 export type function GrantDataType(T)
 	if T:is("any") or T:is("unknown") then
@@ -279,10 +766,9 @@ export type function GrantDataType(T)
 	return ValueType(T)
 end
 
--- The client `Data` is the accessor tree root plus the client API. Built
--- as a type function (rather than `ValueType<T> & { ... }`) because
--- intersection normalization over a large accessor tree exceeds the solver's
--- complexity budget at the Scribe() call site.
+-- The client `Data` is the accessor tree root plus the client API. A type function
+-- rather than `ValueType<T> & { ... }`, because normalizing an intersection over a
+-- large accessor tree exceeds the solver's budget at the Scribe() call site.
 -- selene: allow(undefined_variable)
 export type function ClientDataType(T)
 	local ts = types
@@ -302,7 +788,19 @@ export type function ClientDataType(T)
 	entryProps[ts.singleton("Rank")] = ts.number
 	entryProps[ts.singleton("UserId")] = ts.number
 	entryProps[ts.singleton("Name")] = ts.string
-	entryProps[ts.singleton("Score")] = ts.number
+	-- `number | BigScore`, not `number`: a Scribe.Big board hands back the big itself,
+	-- and the board's kind is a runtime property of the name passed in, so the type
+	-- cannot pick one and the caller narrows.
+	local bigScoreProps: { [type]: type } = {}
+	bigScoreProps[ts.singleton("M")] = ts.number
+	bigScoreProps[ts.singleton("E")] = ts.number
+	bigScoreProps[ts.singleton("Short")] = ts.newfunction(
+		{ head = { ts.any, ts.unionof(ts.number, ts.singleton(nil)) } },
+		{ head = { ts.string } }
+	)
+	bigScoreProps[ts.singleton("ToNumber")] = ts.newfunction({ head = { ts.any } }, { head = { ts.number } })
+	bigScoreProps[ts.singleton("Log10")] = ts.newfunction({ head = { ts.any } }, { head = { ts.number } })
+	entryProps[ts.singleton("Score")] = ts.unionof(ts.number, ts.newtable(bigScoreProps, nil, nil))
 	local leaderboardEntry = ts.newtable(entryProps, nil, nil)
 	local entryArray =
 		ts.newtable(nil, { index = ts.number, readresult = leaderboardEntry, writeresult = leaderboardEntry }, nil)
@@ -317,14 +815,18 @@ export type function ClientDataType(T)
 	saveInfoProps[ts.singleton("Size")] = optional(ts.number)
 	local saveInfo = ts.newtable(saveInfoProps, nil, nil)
 
-	local out = ts.copy(ValueType(T))
+	local out = ts.copy(ValueType(StripServerOnly(T)))
 	local function add(name: string, ty: type)
 		out:setproperty(ts.singleton(name), ty)
 	end
 
 	add("IsReady", fn({}, { ts.boolean }))
+	add("Stop", fn({}, {}))
 	add("WaitForData", fn({ optional(ts.number) }, { ts.boolean }))
 	add("Request", ts.newfunction({ head = { ts.string }, tail = ts.any }, { tail = ts.any }))
+	-- RequestOnce(name, key, ...): the key is a required second string, so a plain
+	-- Request argument list fails to type-check rather than silently becoming a key.
+	add("RequestOnce", ts.newfunction({ head = { ts.string, ts.string }, tail = ts.any }, { tail = ts.any }))
 	add("GetLeaderboard", fn({ ts.string, optional(ts.number) }, { entryArray }))
 	add("GetMyRank", fn({ ts.string }, { optional(ts.number) }))
 	add("OnLeaderboard", ts.any)
@@ -346,20 +848,30 @@ export type function ClientDataType(T)
 	purchaseFilterProps[ts.singleton("Limit")] = optional(ts.number)
 	local purchaseFilter = optional(ts.newtable(purchaseFilterProps, nil, nil))
 	add("GetPurchases", fn({ purchaseFilter }, { anyArray }))
+	local stringArray = ts.newtable(nil, { index = ts.number, readresult = ts.string, writeresult = ts.string }, nil)
+	add("GetProductInfo", fn({ ts.string }, { optional(anyTable) }))
+	add("GetPrice", fn({ ts.string }, { optional(ts.number) }))
+	add("GetProductInfoAsync", fn({ ts.string, optional(ts.number) }, { optional(anyTable) }))
+	add("GetPriceAsync", fn({ ts.string, optional(ts.number) }, { optional(ts.number) }))
+	add("ObserveProductInfo", fn({ ts.string, fn({ optional(anyTable) }, {}) }, { fn({}, {}) }))
+	add("GetProductState", fn({ ts.string }, { ts.string }))
+	add("ObserveProductState", fn({ ts.string, fn({ ts.string }, {}) }, { fn({}, {}) }))
+	add("PrefetchProductInfo", fn({ optional(stringArray) }, {}))
+	add("RefreshProductInfo", fn({ optional(ts.string) }, {}))
 	add("Mock", fn({ optional(anyTable), optional(anyTable) }, {}))
 	add(
 		"MockCommand",
 		ts.newfunction({ head = { ts.string, ts.newfunction({ tail = ts.any }, { tail = ts.any }) } }, { head = {} })
 	)
 	add("Raw", ts.any)
+	add("ServerStore", ts.any)
 
 	return out
 end
 
--- The server `Data` API. P is the Player class type, passed in as a type
--- argument because class types are not constructible inside type functions.
--- Built as a type function for the same complexity-budget reason as
--- ClientDataType.
+-- The server `Data` API. P is the Player class type, passed in as a type argument
+-- because class types are not constructible inside a type function. A type function
+-- for the same complexity-budget reason as ClientDataType.
 -- selene: allow(undefined_variable)
 export type function ServerDataType(T, P)
 	local ts = types
@@ -384,7 +896,18 @@ export type function ServerDataType(T, P)
 	entryProps[ts.singleton("Rank")] = ts.number
 	entryProps[ts.singleton("UserId")] = ts.number
 	entryProps[ts.singleton("Name")] = ts.string
-	entryProps[ts.singleton("Score")] = ts.number
+	-- `number | BigScore`: a Scribe.Big board hands back the big itself, as in
+	-- ClientDataType above.
+	local bigScoreProps: { [type]: type } = {}
+	bigScoreProps[ts.singleton("M")] = ts.number
+	bigScoreProps[ts.singleton("E")] = ts.number
+	bigScoreProps[ts.singleton("Short")] = ts.newfunction(
+		{ head = { ts.any, ts.unionof(ts.number, ts.singleton(nil)) } },
+		{ head = { ts.string } }
+	)
+	bigScoreProps[ts.singleton("ToNumber")] = ts.newfunction({ head = { ts.any } }, { head = { ts.number } })
+	bigScoreProps[ts.singleton("Log10")] = ts.newfunction({ head = { ts.any } }, { head = { ts.number } })
+	entryProps[ts.singleton("Score")] = ts.unionof(ts.number, ts.newtable(bigScoreProps, nil, nil))
 	local leaderboardEntry = ts.newtable(entryProps, nil, nil)
 	local entryArray =
 		ts.newtable(nil, { index = ts.number, readresult = leaderboardEntry, writeresult = leaderboardEntry }, nil)
@@ -406,7 +929,12 @@ export type function ServerDataType(T, P)
 
 	local flushOptsProps: { [type]: type } = {}
 	flushOptsProps[ts.singleton("Force")] = optional(ts.boolean)
+	flushOptsProps[ts.singleton("Timeout")] = optional(ts.number)
 	local flushOpts = optional(ts.newtable(flushOptsProps, nil, nil))
+
+	local restoreOptsProps: { [type]: type } = {}
+	restoreOptsProps[ts.singleton("RollBackReserved")] = optional(ts.boolean)
+	local restoreOpts = optional(ts.newtable(restoreOptsProps, nil, nil))
 
 	-- Keep in sync with Types.LifecycleReason. Spelled out here because a type
 	-- function cannot reference an exported type alias.
@@ -416,6 +944,7 @@ export type function ServerDataType(T, P)
 		ts.singleton("session-ended"),
 		ts.singleton("player-left"),
 		ts.singleton("shutdown"),
+		ts.singleton("still-loading"),
 		ts.singleton("timeout")
 	)
 
@@ -425,7 +954,7 @@ export type function ServerDataType(T, P)
 	end
 
 	add("Get", fn({ P }, { node }))
-	add("WaitForData", fn({ P }, { optional(node), optional(reasonUnion) }))
+	add("WaitForData", fn({ P, optional(ts.number) }, { optional(node), optional(reasonUnion) }))
 	add(
 		"GetState",
 		fn({ P }, { ts.unionof(ts.singleton("Loading"), ts.singleton("Ready"), ts.singleton("SessionEnded")) })
@@ -440,13 +969,16 @@ export type function ServerDataType(T, P)
 	add("UpdateOffline", fn({ ts.number, fn({ anyTable }, {}) }, boolAndReason))
 	add("ListVersions", fn({ ts.number, optional(ts.number) }, { versionArray }))
 	add("GetVersion", fn({ ts.number, ts.string }, { optAnyTable }))
-	add("RestoreVersion", fn({ ts.number, ts.string }, boolAndReason))
+	add("RestoreVersion", fn({ ts.number, ts.string, restoreOpts }, boolAndReason))
 
-	-- Command(name, spec?, handler): the spec shape and the handler's `player`
-	-- param are typed; per-arg types can't be recovered (the Args literals widen).
-	local commandArgs = ts.newtable(nil, { index = ts.number, readresult = ts.string, writeresult = ts.string }, nil)
+	-- Command(name, spec?, handler): the spec shape and the handler's `player` param are
+	-- typed; per-arg types cannot be recovered, since the Args literals widen. Args
+	-- elements are `any` rather than `string` because Commands.Register also accepts
+	-- declarators and shape tables, and validates the entries itself at register time.
+	local commandArgs = ts.newtable(nil, { index = ts.number, readresult = ts.any, writeresult = ts.any }, nil)
 	local commandSpecProps: { [type]: type } = {}
 	commandSpecProps[ts.singleton("Args")] = optional(commandArgs)
+	commandSpecProps[ts.singleton("Idempotent")] = optional(ts.boolean)
 	local commandSpec = ts.newtable(commandSpecProps, nil, nil)
 	local commandHandler = ts.newfunction({ head = { P }, tail = ts.any }, { tail = ts.any })
 	add("Command", fn({ ts.string, ts.unionof(commandSpec, commandHandler), optional(commandHandler) }, {}))
@@ -455,6 +987,8 @@ export type function ServerDataType(T, P)
 	add("GetMyRank", fn({ P, ts.string }, { optional(ts.number) }))
 
 	add("PromptGift", fn({ P, ts.string, ts.number }, boolAndReason))
+	add("PromptPurchase", fn({ P, ts.string }, boolAndReason))
+	add("GetProductState", fn({ P, ts.string }, { ts.string }))
 	add("GetGiftCredits", fn({ P }, { stringToNumber }))
 	add("HandleReceipt", fn({ ts.any }, { ts.any }))
 	add("TryHandleReceipt", fn({ ts.any }, { optional(ts.any) }))
@@ -468,7 +1002,9 @@ export type function ServerDataType(T, P)
 	-- Purchase spec: Cost.Path is the template's numeric-leaf path union and
 	-- Grant receives the typed accessor tree.
 	local costProps: { [type]: type } = {}
-	costProps[ts.singleton("Path")] = StatPathsType(T)
+	-- false: a cost path must be a plain number balance. Monetization refuses a
+	-- non-number at runtime, so this rejects a Scribe.Big path at author time.
+	costProps[ts.singleton("Path")] = StatPathsType(T, ts.singleton(false))
 	costProps[ts.singleton("Amount")] = ts.number
 	local purchaseProps: { [type]: type } = {}
 	purchaseProps[ts.singleton("Cost")] = ts.newtable(costProps, nil, nil)
@@ -478,6 +1014,40 @@ export type function ServerDataType(T, P)
 	purchaseProps[ts.singleton("Meta")] = optAnyTable
 	add("Purchase", fn({ P, ts.newtable(purchaseProps, nil, nil) }, boolAndReason))
 	add("RecordPurchase", fn({ P, anyTable }, {}))
+	-- OpenLeg and OpenExchange are rebuilt here: a type function cannot reach an alias.
+	local openLegProps: { [type]: type } = {}
+	local pathSegment = ts.unionof(ts.string, ts.number)
+	openLegProps[ts.singleton("Path")] =
+		ts.newtable(nil, { index = ts.number, readresult = pathSegment, writeresult = pathSegment }, nil)
+	openLegProps[ts.singleton("Kind")] = ts.string
+	openLegProps[ts.singleton("Key")] = optional(ts.any)
+	openLegProps[ts.singleton("Amount")] = optional(ts.number)
+	local openLeg = ts.newtable(openLegProps, nil, nil)
+	local openLegArray = ts.newtable(nil, { index = ts.number, readresult = openLeg, writeresult = openLeg }, nil)
+	local openProps: { [type]: type } = {}
+	openProps[ts.singleton("Id")] = ts.string
+	openProps[ts.singleton("State")] =
+		ts.unionof(ts.singleton("Claimed"), ts.unionof(ts.singleton("Staked"), ts.singleton("Delivering")))
+	openProps[ts.singleton("Partner")] = optional(ts.number)
+	openProps[ts.singleton("Staked")] = openLegArray
+	openProps[ts.singleton("Owed")] = openLegArray
+	openProps[ts.singleton("Since")] = optional(ts.number)
+	local openExchange = ts.newtable(openProps, nil, nil)
+	local openArray =
+		ts.newtable(nil, { index = ts.number, readresult = openExchange, writeresult = openExchange }, nil)
+	local exchangeProps: { [type]: type } = {}
+	exchangeProps[ts.singleton("Attempt")] = fn(
+		{ P, anyArray, P, anyArray },
+		{ optional(ts.string), optional(ts.string) }
+	)
+	exchangeProps[ts.singleton("Open")] = fn({ P }, { openArray })
+	exchangeProps[ts.singleton("Discard")] = fn({ ts.string }, boolAndReason)
+	exchangeProps[ts.singleton("Settle")] = fn({ ts.string, ts.string }, boolAndReason)
+	exchangeProps[ts.singleton("Redirect")] = fn({ ts.string, ts.number, ts.string }, boolAndReason)
+	add("Exchange", ts.newtable(exchangeProps, nil, nil))
+
+	-- Returned by Scribe.Server.
+	add("Stop", fn({}, {}))
 	local purchaseFilterProps: { [type]: type } = {}
 	purchaseFilterProps[ts.singleton("Kind")] = optional(ts.unionof(ts.singleton("Robux"), ts.singleton("InGame")))
 	purchaseFilterProps[ts.singleton("Category")] = optional(ts.string)
@@ -487,7 +1057,10 @@ export type function ServerDataType(T, P)
 	local purchaseFilter = optional(ts.newtable(purchaseFilterProps, nil, nil))
 	add("GetPurchases", fn({ P, purchaseFilter }, { anyArray }))
 
-	add("OnCooldown", fn({ P, ts.string, ts.number }, { ts.boolean, ts.number }))
+	local cooldownOptsProps: { [type]: type } = {}
+	cooldownOptsProps[ts.singleton("IncludeOfflineTime")] = optional(ts.boolean)
+	local cooldownOpts = optional(ts.newtable(cooldownOptsProps, nil, nil))
+	add("OnCooldown", fn({ P, ts.string, ts.number, cooldownOpts }, { ts.boolean, ts.number }))
 	add("PeekCooldown", fn({ P, ts.string }, { ts.boolean, ts.number }))
 	add("ClearCooldown", fn({ P, ts.string }, {}))
 
@@ -496,6 +1069,8 @@ export type function ServerDataType(T, P)
 
 	add("OnSave", ts.any)
 	add("SessionEnded", ts.any)
+	add("OnCooldownEnded", ts.any)
+	add("OnLeaderboard", ts.any)
 	add("OnAnomaly", ts.any)
 	add("OnGiftReceived", ts.any)
 	add("OnGiftCredit", ts.any)
@@ -503,6 +1078,10 @@ export type function ServerDataType(T, P)
 	add("SendMessage", fn({ ts.number, ts.any }, { ts.boolean }))
 	add("ProfileStore", ts.any)
 	add("Raw", ts.any)
+	-- Typed `any` for now, like Raw: the store template is not a parameter of this type
+	-- function, so its accessors cannot be spelled here. Declared so a strict script can
+	-- reach it at all.
+	add("ServerStore", ts.any)
 
 	return ts.newtable(props, { index = P, readresult = node, writeresult = node }, nil)
 end
@@ -512,34 +1091,82 @@ end
 --------------------------------------------------------------------------------
 
 export type Timed<T> = { __scribeTimed: T }
+-- What a Scribe.Flags field reads back: the enabled member names. The label sits in
+-- the metatable so a whole-table read shows the members rather than the label.
+export type Flags = typeof(setmetatable({} :: { string }, {} :: { __scribeFlags: true }))
+-- A set reads back as its members. Label in the metatable, as above.
+export type SetOf<T> = typeof(setmetatable({} :: { T }, {} :: { __scribeSet: true }))
+export type ServerOnly<T> = { __scribeServerOnly: T }
+-- A derived field reads back as its output type, which may be a scalar, so the label
+-- is an ordinary field stripped by unwrapWrappers rather than a metatable entry.
+export type Derived<T> = { __scribeDerived: T }
 
 export type NumberMeta = { Min: number?, Max: number? }
+-- Scribe.Number only. `Precision` opts into a narrower wire form; Min and Max alone
+-- select nothing. Kept off NumberMeta because a bounded Int already packs from its
+-- own bounds, so Precision has nothing to say there.
+export type FloatMeta = { Min: number?, Max: number?, Precision: (number | "f32")? }
+-- Scribe.Big only. A bound past 1.8e308 must be written as a numeric string, because
+-- a larger literal is already math.huge and the template validator rejects it.
+export type BigMeta = { Min: (number | string)?, Max: (number | string)? }
 export type StringMeta = { MaxLength: number? }
--- Container declarator options. Deliberately NOT generic in the element type: an
--- element-typed field here (a seed default, say) would let Luau infer the element
--- type from the option instead of from `shape`, silently redefining the field.
-export type ArrayOpts = { MaxItems: number? }
+-- Scribe.CFrame only. The same knob as FloatMeta's Precision pointing the other way,
+-- since a CFrame defaults to the lossy form. "exact" is the only value: a CFrame has no
+-- intermediate widths to name.
+export type CFrameMeta = { Precision: "exact"? }
+-- Container declarator options. Not generic in the element type on purpose: an
+-- element-typed option would let Luau infer the element type from it rather than
+-- from `shape`, silently redefining the field.
+export type ArrayOpts = { MaxItems: number?, Evict: ("Front" | "Back")? }
+export type SetOpts = { MaxItems: number? }
+export type CooldownOptions = { IncludeOfflineTime: boolean? }
+export type MapKeyType = "integer" | "string"
+-- What a Scribe.Big field reads back, which is also what the declarator returns.
+-- `__scribeBig` lives in the metatable rather than in the fields: a label field travels
+-- into every read, so `Get().Wealth.__scribeBig` would typecheck while being nil.
+type BigFields = {
+	M: number,
+	E: number,
+	Short: (self: any, decimals: number?) -> string,
+	ToNumber: (self: any) -> number,
+	-- Pow returns another big, typed `any` rather than BigValue: spelling the recursion
+	-- here tips bundles in test/TypeCheck.luau past the solver's complexity budget. The
+	-- accessor tree gets the real self-referential type from ValueType above.
+	Pow: (self: any, n: number) -> any,
+	Log10: (self: any) -> number,
+}
+type BigMt = { __scribeBig: true }
+export type BigValue = typeof(setmetatable({} :: BigFields, {} :: BigMt))
+-- What a Scribe.MapOf field reads back: the whole map. The declared key is a
+-- singleton that has to become a real indexer key type, hence the type function; the
+-- label and the key ride the metatable, as with Big, Flags and SetOf.
+-- selene: allow(undefined_variable)
+type function MapShape(K, V)
+	local ts = types
+	local key = if K:is("singleton") and K:value() == "integer" then ts.number else ts.string
+	local out = ts.newtable(nil, { index = key, readresult = V, writeresult = V }, nil)
+	local mt: { [type]: type } = {}
+	mt[ts.singleton("__scribeMapKey")] = K
+	out:setmetatable(ts.newtable(mt, nil, nil))
+	return out
+end
+export type MapOf<K, V> = MapShape<K, V>
 export type DictOpts = { MaxKeys: number?, MaxKeyLength: number? }
 
--- Template-aware config types. Annotate a config local with these to get
--- autocomplete and compile-time validation: `Stat`/`Cost.Path` become the
--- template's numeric leaf-path union and `Grant` receives the typed
--- accessor tree.
----
---   type T = typeof(template)
---   local boards: { [string]: Scribe.LeaderboardConfig<T> } = {
---       TopCoins = { Stat = "Coins" }, -- "Coins" | "Stats.Kills" | ...
---   }
----
--- (The annotation is required for strict checking: when the same table
--- literal both declares the template and uses these fields, Luau widens the
--- string literals before the template type is known.) Without a type
--- argument they default to the loose untyped shape.
+-- Template-aware config types. Annotate a config local with one and `Stat` / `Cost.Path`
+-- become the template's numeric leaf-path union while `Grant` receives the typed accessor
+-- tree. The annotation is required: in the same table literal that declares the template,
+-- Luau widens the string literals before the template type is known.
 export type LeaderboardConfig<T = any> = {
-	Stat: StatPathsType<T>,
+	Stat: StatPathsType<T, true>,
 	Limit: number?,
 	Scale: number?,
+	-- Scribe.Big stats only: significant figures the ranking key carries, 1 to 15
+	-- (default 12). Every extra figure costs a factor of ten of exponent range,
+	-- because the two halves share one integer under 2^53.
+	SigFigs: number?,
 	Replicate: boolean?, -- default false: server-only (Data.GetLeaderboard on the server); true streams the board to clients
+	RefreshInterval: number?, -- approximate seconds between reads of this board (default 60, floor 60, jittered)
 	StoreName: string?, -- override the OrderedDataStore name (default "LB_<board>")
 }
 
@@ -551,22 +1178,24 @@ export type ProductConfig<T = any> = {
 }
 
 export type PurchaseSpec<T = any> = {
-	Cost: { Path: StatPathsType<T>, Amount: number },
+	Cost: { Path: StatPathsType<T, false>, Amount: number },
 	Category: string?,
 	ItemId: string,
 	Grant: ((data: GrantDataType<T>) -> ())?,
 	Meta: { [string]: any }?,
 }
 
--- Loose, read-only option shapes. These deliberately do NOT depend on T:
--- inside the Scribe({ ... }) literal the template type is still being
--- inferred, so strict (type-function) fields would widen and reject valid
--- configs. Read-only props keep annotated strict tables assignable.
+-- Loose, read-only option shapes. They deliberately do not depend on T: inside the
+-- Scribe({ ... }) literal the template type is still being inferred, so strict fields
+-- would widen and reject valid configs. Read-only props keep annotated strict tables
+-- assignable.
 type LeaderboardConfigLoose = {
 	read Stat: string,
 	read Limit: number?,
 	read Scale: number?,
+	read SigFigs: number?,
 	read Replicate: boolean?,
+	read RefreshInterval: number?,
 }
 
 type ProductConfigLoose = {
@@ -576,10 +1205,9 @@ type ProductConfigLoose = {
 	read Grants: string?,
 }
 
--- Economy is loose for the same reason: inside the Scribe({ ... }) literal a
--- Resolve lambda's parameter would generalize and a strict `(Player) -> {…}`
--- field would reject it. Callers wanting strict checking annotate a config
--- local with the exported `Scribe.EconomyConfig` instead.
+-- Economy is loose for the same reason: a Resolve lambda's parameter would
+-- generalize inside the literal and a strict field would reject it. Annotate a
+-- config local with the exported `Scribe.EconomyConfig` for strict checking.
 type EconomyCurrencyConfigLoose = {
 	read Label: string?,
 	read Fields: { Types.EconomyFieldSpec }?,
@@ -593,16 +1221,44 @@ type EconomyConfigLoose = {
 	read LogEconomyEvent: Types.EconomyLogFn?,
 }
 
+--- Passed to ImportLegacyData and OnPlayerInit for pacing legacy-store reads.
+export type MigrationContext = {
+	--- Yields until `count` requests are spare, or `timeout` passes. Returns whether
+	--- they were granted, and an optional release to call once they have been issued.
+	AwaitBudget: (requestType: string, count: number?, timeout: number?) -> (boolean, () -> ()),
+}
+
 export type ScribeOptions<T> = {
 	Template: T,
+	-- Roots owned by the server rather than a player: match state, wave number, boss
+	-- health. Never persisted, replicated to everyone, one per server.
+	ServerStore: { [string]: any }?,
 	Transport: (Types.ScribeTransport | "Default")?,
 
 	Migrations: { [number]: (data: { [string]: any }) -> () }?,
-	OnPlayerInit: ((player: Player, rawData: { [string]: any }, isNewProfile: boolean) -> ())?,
+	UserOwnsGamePassAsync: ((userId: number, passId: number) -> boolean)?, -- advanced/test seam
+	GetProductInfoAsync: ((assetId: number, infoType: any) -> { [string]: any }?)?, -- advanced/test seam
+	GetPolicyInfoAsync: ((player: Player) -> { [string]: any }?)?, -- advanced/test seam
+	DevMode: boolean?, -- advanced/test seam: overrides the RunService:IsStudio() default
+	IsRunning: boolean?, -- advanced/test seam: overrides the RunService:IsRunning() default (false builds the edit-mode client half)
+	MigrationShadow: boolean?, -- audit aid: re-runs migrations against raw pre-Reconcile data and warns on divergence (re-executes your migration bodies)
+	-- Adopt data from another library, once, before Scribe has ever saved for this player.
+	-- The third argument paces reads on the DataStore budget.
+	ImportLegacyData: ((player: Player, userId: number, migration: MigrationContext) -> { [string]: any }?)?,
+	MigrationConcurrency: number?, -- imports allowed to run at once; defaults to 2
+	-- The fourth argument is the same MigrationContext: ImportLegacyData only fires for a
+	-- player who has never saved, so a game already on Scribe finishes moving here.
+	OnPlayerInit: ((
+		player: Player,
+		rawData: { [string]: any },
+		isNewProfile: boolean,
+		migration: MigrationContext
+	) -> ())?,
+	OnPlayerLeaving: ((player: Player, data: any, reason: LifecycleReason) -> ())?,
 
 	-- persistence
 	ProfileStoreIndex: string, -- REQUIRED: the DataStore name (each game must name its own store)
-	ProfileKeyPrefix: string, -- REQUIRED: prefix for per-player keys (e.g. "PLAYER_")
+	ProfileKeyPrefix: string, -- REQUIRED: prefix for per-player keys (e.g. "PLAYER_"); "" means bare user-id keys
 	SaveInterval: number?, -- seconds between autosaves per profile (default 300, floor 15)
 	ProfileStore: any?, -- explicit ProfileStore module (module table or ModuleScript)
 	Mode: ("Live" | "Mock" | "NoSave")?, -- persistence mode (default "Live"); overrides the legacy flags below
@@ -615,10 +1271,21 @@ export type ScribeOptions<T> = {
 	DontSave: boolean?,
 	ResetData: boolean?,
 	LoadFailurePolicy: ("Kick" | "Wait")?,
+	LoadTimeout: number?,
 	VersionAheadPolicy: ("Kick" | "Allow")?, -- default "Kick": fail closed when data is from a newer deploy
 	KickOnSessionEnd: boolean?,
 	LoadFailureMessage: string?,
+	-- Per-cause overrides for the kick text. Each falls back to LoadFailureMessage when
+	-- that is set, and to its own wording otherwise, so naming one never flattens the rest.
+	LegacyImportFailureMessage: string?,
+	MigrationFailureMessage: string?,
+	VersionAheadMessage: string?,
+	SchemaFailureMessage: string?,
+	RateLimitedMessage: string?,
 	SessionEndMessage: string?,
+	-- Per-cause overrides for the session-end kick, falling back to SessionEndMessage.
+	SessionStolenMessage: string?,
+	SessionInterruptedMessage: string?,
 
 	-- services
 	Leaderboards: { read [string]: LeaderboardConfigLoose }?,
@@ -626,6 +1293,9 @@ export type ScribeOptions<T> = {
 	Passes: { [string]: PassConfig }?,
 	Perks: { string }?,
 	OwnReceipts: boolean?,
+
+	-- exchanging
+	Exchangeable: { [string]: ExchangeableSpec }?,
 	PurchaseLog: {
 		RobuxCap: number?,
 		InGameCap: number?,
@@ -638,6 +1308,10 @@ export type ScribeOptions<T> = {
 	GiftCooldown: number?,
 	GiftMaxPending: number?,
 	GiftIntentTTL: number?,
+	PurchaseIdTTL: number?,
+	MaxProcessedPurchaseIds: number?,
+	PurchaseClaimTTL: number?,
+	MaxPurchaseClaims: number?,
 	AllowDuplicateGifts: boolean?,
 	NoGiftIntentPolicy: ("GrantOrCredit" | "Hold")?,
 
@@ -648,15 +1322,21 @@ export type ScribeOptions<T> = {
 	CommandRateLimit: number?,
 	RequestTimeout: number?,
 	MaxInboundBytes: number?,
+	MaxInboundRetainedBytes: number?,
+	MaxOutboundBytes: number?,
+	MaxInboundFrameRate: number?,
 	TransportChannel: string?,
 
 	-- integrity
 	BoundsPolicy: ("Clamp" | "Reject")?,
 	WipeGuardPolicy: ("Warn" | "Block")?,
+	SchemaPolicy: ("Warn" | "Reject")?, -- check stored data against the template at load; off when absent
+	BudgetPolicy: "Defer"?, -- pace the leaderboard background loops on the DataStore request budget; off when absent
 	WipeGuardShrinkRatio: number?,
 
 	-- diagnostics
 	LogLevel: ("Debug" | "Info" | "Warn" | "Error" | "Fatal")?,
+	LogRingSize: number?, -- entries Log.GetRecent retains (default 512)
 	StatusThresholds: { FailWindow: number?, FailCount: number?, RecoverStreak: number? }?,
 	Banner: boolean?, -- default true: print one "Scribe vX.Y.Z ... ready" line on load
 }
@@ -664,6 +1344,12 @@ export type ScribeOptions<T> = {
 export type ServerData<T> = ServerDataType<T, Player>
 
 export type ClientData<T> = ClientDataType<T>
+
+-- One player's typed accessor tree: the type of `Data[player]`, `Data.Get(player)` and
+-- the client's `Data.Get()`. A plain alias because a type function cannot be invoked
+-- across a module boundary: `Scribe.ValueType<T>` silently resolves to `any` rather than
+-- erroring, so this is the only way a consumer can name the type.
+export type PlayerData<T> = ValueType<T>
 
 export type Bundle<T> = {
 	Server: ServerData<T>,
@@ -673,6 +1359,7 @@ export type Bundle<T> = {
 --[=[
 	@within Scribe
 	@interface Bundle
+	@tag Setup
 	.Server Server -- the server-side data API (use on the server)
 	.Client Client -- the client-side data API (use on the client)
 	What `Scribe(options)` returns. The same shared module is required on both
@@ -682,28 +1369,573 @@ export type Bundle<T> = {
 --[=[
 	@within Scribe
 	@interface ScribeOptions
-	.Template T -- your data shape, built from plain values and declarators (required)
-	.ProfileStoreIndex string -- the DataStore name (required, no default)
-	.ProfileKeyPrefix string -- per-player key prefix, e.g. "PLAYER_" (required)
-	.Transport ("Default" | ScribeTransport)? -- replication channel; "Default" uses two RemoteEvents
-	.SaveInterval number? -- seconds between autosaves per profile (default 300, floor 15)
-	.Migrations { [number]: (data) -> () }? -- versioned, fail-closed data reshapers
-	.OnPlayerInit ((player, rawData, isNewProfile) -> ())? -- runs after load, before Ready; isNewProfile is true on a brand-new/reset profile
-	.Leaderboards { [string]: LeaderboardConfig }? -- all-time OrderedDataStore boards
-	.Products { [string]: ProductConfig }? -- developer products (receipts, grants, gifting)
-	.Passes { [string]: PassConfig }? -- game passes
-	.Perks { string }? -- perk keys grantable via GrantPerk / gifting
-	.Economy EconomyConfig? -- per-currency economy analytics (LogEconomyEvent custom fields)
-	.LoadFailurePolicy ("Kick" | "Wait")? -- on load failure (default "Kick")
-	.VersionAheadPolicy ("Kick" | "Allow")? -- data from a newer deploy (default "Kick", fail closed)
-	.BoundsPolicy ("Clamp" | "Reject")? -- out-of-range numeric writes (default "Clamp")
-	.WipeGuardPolicy ("Warn" | "Block")? -- suspected data wipe (default "Warn")
-	.LogLevel ("Debug" | "Info" | "Warn" | "Error" | "Fatal")? -- minimum log level
-	.Banner boolean? -- print a one-line load banner (default true)
-	The options table passed to `Scribe(options)`. Only `Template`,
-	`ProfileStoreIndex`, and `ProfileKeyPrefix` are required; every other field
-	has a sensible default. (Additional gifting, rate-limit, and diagnostics
-	knobs exist: see the Options reference guide.)
+	@tag Setup
+	.Template T -- your data shape, built from plain values and declarators
+	.ProfileStoreIndex string -- the DataStore name, which has no default
+	.ProfileKeyPrefix string -- per-player key prefix such as "PLAYER_"; "" means bare user-id keys
+	The table you hand `Scribe(options)`. Only the three fields above are
+	required, and every other option has a working default, so the smallest real
+	configuration is three lines long.
+
+	Roughly fifty further options cover persistence, monetization, gifting,
+	limits, integrity and diagnostics. Each is listed with its default, its
+	accepted values and what happens when it is wrong in the
+	[Configuration reference](../configuration.md), which is the source of truth
+	for all of them. This entry deliberately does not restate that page.
+]=]
+
+--------------------------------------------------------------------------------
+-- Exported type reference
+--
+-- Doc blocks for the exported types, gathered here rather than beside the declarations:
+-- @interface/@type blocks are keyed by name, and half of these types are re-exported
+-- from Types.luau with nothing here to sit beside. A new exported type needs a block or
+-- it renders nowhere.
+--------------------------------------------------------------------------------
+
+--[=[
+	@type Timed<T> { __scribeTimed: T }
+	@tag Declarators
+	What [Scribe.Timed] returns, and the type a cooldown field carries in your
+	template. You never build one of these yourself. Emberfall declares
+	`LastDaily = Scribe.Timed(86400)`, arms it with [Value.SetTimed], and asks
+	about it with [Server.OnCooldown] and [Server.PeekCooldown]. See
+	[Timers & Cooldowns](../time.md).
+]=]
+
+--[=[
+	@type Flags { string }
+	@tag Declarators
+	What a [Scribe.Flags] field reads back: the member names currently enabled,
+	not the full set of declared members. Emberfall's
+	`Settings = Scribe.Flags({ "Music", "Sfx", "Tips" })` reads back as
+	`{ "Music", "Tips" }` for a player who turned Sfx off. Flip one member with
+	[Value.Enable], [Value.Disable] or [Value.Toggle], and test one with
+	[Value.Has].
+]=]
+
+--[=[
+	@type SetOf<T> { T }
+	@tag Declarators
+	What a [Scribe.SetOf] field reads back: its members, deduplicated and in
+	sorted order, so two profiles holding the same members hold the same table.
+	A set has no positions, so you change it with [Value.Add] and [Value.Remove]
+	rather than by index, and both return `false` when they would be a no-op.
+	See [Containers](../containers.md).
+]=]
+
+--[=[
+	@type ServerOnly<T> { __scribeServerOnly: T }
+	@tag Declarators
+	Wraps a field so it never leaves the server. A [Scribe.ServerOnly] field is
+	absent from the replicated tree entirely, so no part of it reaches the wire
+	even inside a whole-subtree read, and a client cannot ask for it. Use it for
+	anything an exploiter must not see, such as Emberfall's anti-cheat counters.
+	See [Replication & Visibility](../visibility.md).
+]=]
+
+--[=[
+	@type Derived<T> { __scribeDerived: T }
+	@tag Declarators
+	What [Scribe.Derived] returns. A derived field is computed from other fields
+	rather than stored, so it is read-only and [Value.Set] on one throws.
+	Emberfall's `Level` derives from `Xp`, recomputes whenever Xp changes, and
+	replicates like any other field. See [Derived Fields](../derived.md).
+]=]
+
+--[=[
+	@type MapOf<K,V> { [K]: V }
+	@tag Declarators
+	What a [Scribe.MapOf] field reads back: the whole map, keyed by the type you
+	declared. Unlike a dictionary the key set is open, so Emberfall's
+	`Friends = Scribe.MapOf("integer", { ... })` accepts any user id. Add and
+	remove keys with [Value.Set] and [Value.Remove], and watch them with
+	[Value.OnKeyAdded] and [Value.OnKeyRemoved].
+]=]
+
+--[=[
+	@type MapKeyType "integer" | "string"
+	@tag Declarators
+	The key type you name in the first argument to [Scribe.MapOf]. It is a
+	declaration rather than a hint. A DataStore serializes every object key to a
+	string, so an integer map would come back holding `"123"` where it stored
+	`123`; the declared type is what lets Scribe convert the keys back
+	unambiguously on load.
+]=]
+
+--[=[
+	@type BigValue
+	@tag Declarators
+	What a [Scribe.Big] field reads back, and what its arithmetic returns. It is
+	an object rather than a number, so `data.Get().Wealth` hands you something
+	carrying `.M`, `.E` and a handful of methods. Its surface has its own page:
+	see [BigValue](bigvalue.md) and [Big Numbers](../big-numbers.md).
+]=]
+
+--[=[
+	@interface FloatMeta
+	.Min number? -- lowest accepted value; a write below it clamps or rejects per BoundsPolicy
+	.Max number? -- highest accepted value
+	.Precision (number | "f32")? -- opt in to a narrower wire form; omit to keep the full f64
+	@tag Declarator options
+	The options table for [Scribe.Number]. `Precision` is the only thing that
+	narrows the field on the wire, and declaring Min and Max alone does not imply
+	it. [Scribe.Int] takes Min and Max but refuses Precision, because a bounded
+	integer already packs from its own bounds and there would be nothing left for
+	Precision to say.
+]=]
+
+--[=[
+	@interface BigMeta
+	.Min (number | string)? -- lowest accepted value
+	.Max (number | string)? -- highest accepted value
+	@tag Declarator options
+	The options table for [Scribe.Big]. A bound past 1.8e308 has to be written as
+	a numeric string, because a larger Lua literal is already `math.huge` and the
+	template validator rejects that. Emberfall caps prestige currency with
+	`Scribe.Big(0, { Max = "1e400" })`.
+]=]
+
+--[=[
+	@interface CFrameMeta
+	.Precision "exact"? -- store and send the full-fidelity CFrame instead of the packed one
+	@tag Declarator options
+	The options table for [Scribe.CFrame]. A CFrame packs lossily by default,
+	which is what you want for a saved checkpoint or camera. `"exact"` is the only
+	other value, because a CFrame has no intermediate widths to offer the way a
+	float does.
+]=]
+
+--[=[
+	@interface ArrayOpts
+	.MaxItems number? -- cap on length; growth past it is refused unless Evict is set
+	.Evict ("Front" | "Back")? -- turn the cap into a rolling window, dropping from that end
+	@tag Declarator options
+	The options table for [Scribe.ArrayOf], and the only container options that
+	include Evict. Without MaxItems the array grows unbounded, which is how a
+	profile quietly outgrows its DataStore budget. Emberfall keeps a rolling
+	combat log with `Scribe.ArrayOf(Scribe.String(""), { MaxItems = 50, Evict = "Front" })`.
+	See [Containers](../containers.md).
+]=]
+
+--[=[
+	@interface SetOpts
+	.MaxItems number? -- cap on membership; growth past it is refused
+	@tag Declarator options
+	The options table for [Scribe.SetOf]. The cap always refuses rather than
+	evicting, and Evict itself is rejected as an unknown option here, because a
+	set has no oldest member to drop.
+]=]
+
+--[=[
+	@interface DictOpts
+	.MaxKeys number? -- cap on how many keys the container may hold
+	.MaxKeyLength number? -- cap on the byte length of any one key, string keys only
+	@tag Declarator options
+	The options table for [Scribe.DictOf] and [Scribe.MapOf]. Both caps matter
+	because keys are attacker-controlled the moment a client command can name
+	one, and an unbounded key set is the quickest way past a profile's size
+	limit. MaxKeyLength counts bytes rather than characters, and an integer
+	[Scribe.MapOf] refuses it outright, where it would read as a cap that does
+	nothing.
+]=]
+
+--[=[
+	@interface PurchaseSpec
+	.Cost { Path: string, Amount: number } -- the numeric field to debit, and by how much
+	.ItemId string -- what is being bought; recorded on the log entry
+	.Category string? -- a grouping label of your choosing, for filtering later
+	.Grant ((data) -> ())? -- runs inside the same transaction as the debit
+	.Meta { [string]: any }? -- extra fields stored with the log entry
+	.IdempotencyKey string? -- max 64 bytes; two calls carrying the same key apply once
+	@tag Monetization
+	The table you hand [Server.Purchase] for a soft-currency purchase. The debit
+	and the Grant either both happen or neither does, so a Grant that throws
+	leaves the balance exactly where it was. A refused purchase claims nothing,
+	which is why retrying after one still works even with a key.
+	See [Monetization](../monetization.md).
+]=]
+
+--[=[
+	@interface PurchaseFilter
+	.Kind ("Robux" | "InGame")? -- Robux receipts, soft-currency purchases, or both when omitted
+	.Category string? -- match the Category recorded on the purchase
+	.ItemId string? -- match a single item id
+	.Since number? -- only entries at or after this Unix timestamp, in seconds
+	.Limit number? -- the most recent N matches
+	@tag Monetization
+	The optional filter you pass [Server.GetPurchases] or [Client.GetPurchases].
+	The fields combine with AND, so omitting all of them returns the whole
+	retained log, which is itself capped. See [Monetization](../monetization.md).
+]=]
+
+--[=[
+	@interface EconomyMeta
+	.Flow ("Source" | "Sink")? -- default: Increment is a Source, Decrement is a Sink
+	.TransactionType (Enum.AnalyticsEconomyTransactionType | string)? -- default "Gameplay"
+	.ItemSku string? -- what was bought or awarded
+	.Currency string? -- override the logged currency label; defaults to the field's name
+	.Fields { [string]: any }? -- values for the custom fields you declared in Economy
+	@tag Monetization
+	The tag you pass [Value.Increment] or [Value.Decrement] to have Scribe emit a
+	Roblox economy event alongside the write. Every field is optional and an
+	untagged Increment emits nothing, so you opt in per call rather than per
+	field. `Source` and `Item` are still accepted as aliases of TransactionType
+	and ItemSku. See [Economy Analytics](../economy.md).
+]=]
+
+--[=[
+	@interface LeaderboardEntry
+	.Rank number -- 1 for the top entry
+	.UserId number -- the player's user id
+	.Name string -- the username recorded when the score was written
+	.Score (number | BigScore) -- a big board hands back the big itself, not the packed key
+	@tag Leaderboards
+	One row of the array [Server.GetLeaderboard] and [Client.GetLeaderboard]
+	return. `Name` is a snapshot rather than a live lookup, so a player who has
+	since changed their username shows the old one until their score is written
+	again. See [Leaderboards](../leaderboards.md).
+]=]
+
+--[=[
+	@interface ExchangeLeg
+	.Path { string } -- the exchangeable path, a top-level field or container
+	.Kind ("Key" | "Qty" | "Stack") -- whole entry, an amount, or part of a stacked entry
+	.Key any? -- Key and Stack: the container key, set member or array value
+	.Amount number? -- Qty and Stack: how much to move
+	@tag Exchange
+	One item in a basket handed to [Server.Exchange.Attempt], naming what that player
+	GIVES. Every `Path` must be declared in the `Exchangeable` option, and a leg is
+	checked against that list by path AND by kind before any value moves. See
+	[Exchange](../exchange.md).
+]=]
+
+--[=[
+	@interface OpenLeg
+	.Path { string } -- the path the value came from, or is going to
+	.Kind string -- "Key", "Qty" or "Stack"
+	.Key any? -- the container key, where the leg has one
+	.Amount number? -- how much, for a Qty or Stack leg
+	@tag Exchange
+	One leg of what a player has staked or is owed, as reported by
+	[Server.Exchange.Open]. Freshly built on every call and aliases nothing in Scribe's
+	ledger, so it is safe to keep or mutate.
+]=]
+
+--[=[
+	@interface OpenExchange
+	.Id string -- the exchange id, which the operator verbs take
+	.State ("Claimed" | "Staked" | "Delivering") -- how far this exchange got
+	.Partner number? -- the counterparty's UserId
+	.Staked { OpenLeg } -- what this player handed over
+	.Owed { OpenLeg } -- what this player is owed
+	.Since number? -- Unix timestamp the exchange reached its current state
+	@tag Exchange
+	One open exchange, as reported by [Server.Exchange.Open]. Escrow takes value out of
+	the balance on purpose and resolution is not time bounded, so `Staked` and `Owed`
+	are how a game shows a player where their items went rather than leaving them
+	looking at a hole. See [Exchange](../exchange.md).
+]=]
+
+--[=[
+	@interface SaveInfo
+	.Dirty boolean -- true when there are writes that have not reached the DataStore
+	.LastSaveAt number? -- Unix timestamp of the last successful save, in seconds; nil before the first
+	.LastResult ("Ok" | "Fail")? -- how the last save attempt ended
+	.Size number? -- approximate bytes written by the last successful save
+	@tag Diagnostics
+	What [Server.GetSaveInfo] and [Client.GetSaveInfo] return. `Size` is the field
+	worth watching: a profile creeping toward the DataStore limit shows up here
+	long before a save actually starts failing. See
+	[Diagnostics](../diagnostics.md).
+]=]
+
+--[=[
+	@interface BudgetSnapshot
+	.Available boolean -- false when the engine could not be asked at all
+	.Reason string? -- why not, when Available is false
+	.Budgets { [string]: number } -- remaining requests, keyed by DataStoreRequestType name
+	.At number -- Unix timestamp when the snapshot was taken, in seconds
+	@tag Diagnostics
+	What [Scribe.GetBudgetSnapshot] returns. It is resolved per call and never
+	cached, and a server with no DataStoreService at all, such as a simulated
+	one, reports Available false rather than raising. See
+	[Diagnostics](../diagnostics.md).
+]=]
+
+--[=[
+	@interface LogEntry
+	.At number -- Unix timestamp when the entry was recorded, in seconds
+	.Level LogLevel -- Debug through Fatal
+	.Category LogCategory -- which subsystem emitted it
+	.Code LogCode -- the stable identifier you branch on
+	.Message string -- human-readable text, not stable across versions
+	.Context { [string]: any }? -- structured detail; the keys vary by Code
+	@tag Diagnostics
+	One record from [Scribe.GetRecentLogs], and the single argument every sink
+	registered with [Scribe.AddLogSink] receives. Branch on `Code`, never on
+	`Message`. See [Diagnostics](../diagnostics.md).
+]=]
+
+--[=[
+	@type LogLevel "Debug" | "Info" | "Warn" | "Error" | "Fatal"
+	@tag Diagnostics
+	How severe a [LogEntry] is. The `LogLevel` option sets the floor, and
+	anything below it is never recorded at all, so raising it is the cheapest way
+	to quieten a noisy production log. See
+	[Configuration](../configuration.md#diagnostics).
+]=]
+
+--[=[
+	@type LogCategory "Persistence" | "Replication" | "Transport" | "Commands" | "Leaderboards" | "Monetization" | "Gifting" | "Integrity" | "Lifecycle" | "Derived"
+	@tag Diagnostics
+	Which subsystem emitted a [LogEntry]. A sink added with [Scribe.AddLogSink]
+	usually filters on this rather than on individual codes, so you can route
+	Persistence somewhere loud and Replication somewhere quiet.
+]=]
+
+--[=[
+	@type LogCode
+	@tag Diagnostics
+	The stable identifier on a [LogEntry], such as `PROFILE_LOAD_FAILED`. There
+	are over 150 of them, and every one is listed with its meaning, its severity
+	and what to do about it in the [Log Code Reference](../log-codes.md). This is
+	the field to branch on. `Message` is prose and is free to change between
+	versions.
+]=]
+
+--[=[
+	@type LifecycleReason "load-failed" | "migration-failed" | "session-ended" | "player-left" | "shutdown" | "still-loading" | "timeout"
+	@tag Reasons
+	Why a data session ended, or why waiting for data produced no tree. There is
+	one value per state so you can branch exhaustively. It is the second return
+	of [Server.WaitForData], the argument [Server.SessionEnded] fires with, and
+	the reason [Server.GetState] stores. The names are also on [Scribe.Reason] if
+	you would rather not spell the strings. See
+	[Session Lifecycle](../lifecycle.md).
+]=]
+
+--[=[
+	@type RequestReason "rate-limited" | "not-ready" | "unknown-command" | "bad-args" | "bad-idempotency-key" | "error" | "reply-encode-failed" | "timeout" | "send-failed" | "edit-mode" | "mock-error"
+	@tag Reasons
+	Why Scribe itself refused a [Client.Request]. The last four are produced on
+	the client and never reach the server. A handler that throws yields "error",
+	and its traceback goes to the COMMAND_ERROR log rather than to the client, so
+	an exploiter learns nothing from a crash. The names are also on
+	[Scribe.RequestReason]. See [Commands & Requests](../commands.md).
+]=]
+
+--[=[
+	@type PurchaseReason "player data not loaded" | "invalid Cost spec" | "invalid Cost amount" | "invalid cost path" | "cost path is not a spendable number" | "insufficient funds" | "paid-random-restricted" | "policy-pending"
+	@tag Reasons
+	The fixed refusals of [Server.Purchase]. They are not exhaustive over the
+	second return: a Grant that throws passes its own error text through instead.
+	Test for `"insufficient funds"` specifically rather than assuming any other
+	string is one of these. The names are also on [Scribe.PurchaseReason].
+]=]
+
+--[=[
+	@type GiftReason
+	@tag Reasons
+	The fixed refusals of [Server.PromptGift]. Each one is a finished sentence you
+	can show a player unaltered: `"buyer data not loaded"`,
+	`"invalid recipient"`, `"cannot gift yourself"`, `"gift cooldown"`,
+	`"too many pending gifts"`, `"recipient already owns this"`,
+	`"data services are experiencing issues; try again later"`,
+	`"could not reserve gift credit; try again later"`,
+	`"could not deliver gift; try again later"`,
+	`"gift delivery could not be confirmed; do not send it again"`,
+	`"could not record gift intent; try again later"`,
+	`"a gift of this item is already pending; try again shortly"`,
+	`"paid-random-restricted"` and `"policy-pending"`. Two further
+	refusals interpolate a value and so cannot be members. The names are also on
+	[Scribe.GiftReason]. See [Gifting](../gifting.md).
+
+	The last two delivery refusals are not interchangeable. `DeliveryFailed` means
+	the gift provably did not go out and a spent credit has been handed back, so a
+	retry is the right advice. `DeliveryUnconfirmed` means the delivery write may
+	have landed with only its answer lost: the credit stays spent on purpose, and a
+	retry would send a SECOND gift under an id the recipient cannot dedupe. Show
+	them as different outcomes.
+]=]
+
+--[=[
+	@interface MigrationContext
+	@tag Setup
+	.AwaitBudget (requestType: string, count: number?, timeout: number?) -> (boolean, () -> ()) -- pace a legacy read on the DataStore request budget
+	The third argument to `ImportLegacyData` and the fourth to `OnPlayerInit`, for
+	pacing reads of the stores you are migrating away from.
+
+	`AwaitBudget` yields until `count` requests of that type are spare or `timeout`
+	passes (default 120 seconds), then returns whether they were granted plus a
+	release. Waiters are served first come, first served, per request type, and a
+	queued one shows as `"ImportThrottled"` on [Server.GetState].
+
+	Release once you stop asking, not when a read succeeds: the request counts either
+	way. Retry on a fresh grant, never release before the call returns, and when in
+	doubt do nothing. See [Migrating to Scribe](../migrating.md).
+]=]
+
+--[=[
+	@interface ProductConfig
+	@tag Monetization
+	.Id number -- the developer product id
+	.Category string? -- purchase-log category, for [Server.GetPurchases]
+	.Grant ((data) -> ())? -- applies the purchase; runs inside a transaction, so it must not yield
+	.Grants string? -- name of a perk to set instead of, or as well as, running Grant
+	.PaidRandom boolean? -- a paid random item, refused on every purchase path for a player whose policy restricts them
+	One entry in the `Products` table. See [Monetization](../monetization.md).
+]=]
+
+--[=[
+	@interface PassConfig
+	@tag Monetization
+	.Id number -- the game pass id
+	.Category string? -- purchase-log category, for [Server.GetPurchases]
+	One entry in the `Passes` table. The pass name is its own ownership key, so
+	[Server.Owns] answers for it with no extra declaration.
+]=]
+
+--[=[
+	@interface LeaderboardConfig
+	@tag Leaderboards
+	.Stat string -- dotted path to the field being ranked
+	.Limit number? -- entries to keep (default 100)
+	.Scale number? -- multiplier applied before the score is stored as an integer
+	.SigFigs number? -- Scribe.Big stats only: ranking-key significant figures, 1 to 15 (default 12)
+	.Replicate boolean? -- default false (server-only); true streams the board to clients
+	.RefreshInterval number? -- approximate seconds between reads (default 60, floor 60, jittered)
+	.StoreName string? -- override the OrderedDataStore name (default "LB_<board>")
+	One entry in the `Leaderboards` table. See [Leaderboards](../leaderboards.md).
+]=]
+
+--[=[
+	@interface ExchangeableSpec
+	@tag Exchange
+	.Path { string } -- the container or balance a leg may move
+	.Kind "Key" | "Qty" | "Stack" -- whole entry, an amount off a balance, or part of a stack
+	.Count string? -- Stack only: the field holding the count
+	.Identity { string }? -- fields that decide whether two stack entries are the same item
+	.Ignore { string }? -- fields excluded from that identity check
+	One entry in the `Exchangeable` allowlist. Nothing moves through
+	[Server.Exchange] unless a spec permits it. See [Exchange](../exchange.md).
+]=]
+
+--[=[
+	@interface ScribeTransport
+	@tag Setup
+	.Name string -- shown in transport diagnostics
+	.MaxFrameBytes number? -- largest buffer this channel wants in one call; only ever lowers the budget
+	.SendToClient (self, player: Player, bytes: buffer) -> () -- server to one client
+	.SendToAllClients ((self, bytes: buffer) -> ())? -- optional broadcast fast path
+	.ListenServer (self, callback: (player: Player, bytes: buffer) -> ()) -> () -- server inbound
+	.SendToServer (self, bytes: buffer) -> () -- client to server
+	.ListenClient (self, callback: (bytes: buffer) -> ()) -> () -- client inbound
+	.Release ((self) -> ())? -- optional; Client.Stop calls it to disconnect what ListenClient connected
+	A replacement for Scribe's built-in RemoteEvent channel, passed as `Transport`.
+	See [Custom transports](../transports.md).
+]=]
+
+--[=[
+	@interface EconomyConfig
+	@tag Diagnostics
+	.Resolve ((player: Player) -> { [string]: any })? -- ambient values shared across every currency
+	.Prefix boolean? -- format custom-field values as "Team - Red" (default true)
+	.Currencies { [string]: EconomyCurrencyConfig }? -- per-currency overrides
+	.LogEconomyEvent EconomyLogFn? -- advanced/test seam; defaults to AnalyticsService
+	The `Economy` option. Declares how a tagged [Value.Increment] reaches Roblox's
+	economy dashboard. See [Economy Analytics](../economy.md).
+]=]
+
+--[=[
+	@interface EconomyCurrencyConfig
+	@tag Diagnostics
+	.Label string? -- logged currency name (default: the field's name)
+	.Fields { EconomyFieldSpec }? -- up to three dimensions, mapped to CustomField01/02/03 in order
+	.Resolve ((player: Player) -> { [string]: any })? -- ambient values for this currency, merged over the global Resolve
+	One entry in [EconomyConfig]'s `Currencies` table.
+]=]
+
+--[=[
+	@type EconomyFieldSpec string | { Name: string, Prefix: boolean? }
+	@tag Diagnostics
+	One custom-field dimension in [EconomyCurrencyConfig]. A bare string names the
+	field; the table form also turns the "Label - Value" prefix off for that field.
+]=]
+
+--[=[
+	@type EconomyLogFn (userId: number, flowType, currency: string, amount: number, endBalance: number, transactionType: string, itemSku: string?, fields: { [string]: any }?) -> ()
+	@tag Diagnostics
+	The seam [EconomyConfig] uses to reach `AnalyticsService:LogEconomyEvent`.
+	Replace it in tests; leave it alone in a live game.
+]=]
+
+--[=[
+	@type Status "Healthy" | "Degraded" | "Outage"
+	@tag Diagnostics
+	Scribe's view of whether DataStores are answering, from [Scribe.GetStatus],
+	[Client.GetServiceStatus] and [Scribe.OnStatusChanged].
+]=]
+
+--[=[
+	@type CooldownOptions { IncludeOfflineTime: boolean? }
+	@tag Declarator options
+	The optional second argument to [Server.OnCooldown]. Set
+	`IncludeOfflineTime = false` for a cooldown that only ticks while the player is
+	in the server.
+]=]
+
+--[=[
+	@type NumberMeta { Min: number?, Max: number? }
+	@tag Declarator options
+	The bounds table accepted by [Scribe.Int] and read back from a field as
+	`Value.Min` and `Value.Max`.
+]=]
+
+--[=[
+	@type StringMeta { MaxLength: number? }
+	@tag Declarator options
+	The options table accepted by [Scribe.String].
+]=]
+
+--[=[
+	@type PlayerData<T> ValueType<T>
+	@tag Setup
+	One player's typed accessor tree: the type of `Data[player]`, `Data.Get(player)`
+	and the client's `Data.Get()`. Name it when you pass a player's data into your
+	own function, since a type function cannot be invoked across a module boundary.
+]=]
+
+--[=[
+	@type ServerData<T> ServerDataType<T, Player>
+	@tag Setup
+	The type of the `.Server` half of [Bundle], for annotating a variable that holds
+	it.
+]=]
+
+--[=[
+	@type ClientData<T> ClientDataType<T>
+	@tag Setup
+	The type of the `.Client` half of [Bundle]. `Scribe.ServerOnly` roots are absent
+	from it, so reading one on the client is a type error rather than a nil.
+]=]
+
+--[=[
+	@interface Op
+	@tag Diagnostics
+	.Kind "Init" | "Set" | "Insert" | "Remove" | "Clear" -- what the change did
+	.Path { string | number } -- the field it landed on, from the root
+	.Value unknown? -- the new value, absent for Remove and Clear
+	.Index number? -- array position, for Insert and Remove
+	One replicated change, as the debug hook and the Studio plugin's change feed
+	see it. You never build one; it is the shape handed to a stream digest.
+]=]
+
+--[=[
+	@type ScribeModule typeof(Scribe) & <T>(options: ScribeOptions<T>) -> Bundle<T>
+	@tag Setup
+	The module itself: every `Scribe.*` declarator and helper, plus the call
+	signature that builds a [Bundle]. Name it when you pass the module around.
 ]=]
 
 --------------------------------------------------------------------------------
@@ -712,10 +1944,20 @@ export type Bundle<T> = {
 
 local KNOWN_OPTION_KEYS: { [string]: boolean } = {
 	Template = true,
+	Exchangeable = true,
 	Transport = true,
 	TransportChannel = true,
 	Migrations = true,
+	UserOwnsGamePassAsync = true,
+	GetProductInfoAsync = true,
+	GetPolicyInfoAsync = true,
+	DevMode = true,
+	IsRunning = true,
+	MigrationShadow = true,
+	ImportLegacyData = true,
+	MigrationConcurrency = true,
 	OnPlayerInit = true,
+	OnPlayerLeaving = true,
 	ProfileStoreIndex = true,
 	ProfileKeyPrefix = true,
 	SaveInterval = true,
@@ -728,10 +1970,18 @@ local KNOWN_OPTION_KEYS: { [string]: boolean } = {
 	DontSave = true,
 	ResetData = true,
 	LoadFailurePolicy = true,
+	LoadTimeout = true,
 	VersionAheadPolicy = true,
 	KickOnSessionEnd = true,
 	LoadFailureMessage = true,
+	LegacyImportFailureMessage = true,
+	MigrationFailureMessage = true,
+	VersionAheadMessage = true,
+	SchemaFailureMessage = true,
+	RateLimitedMessage = true,
 	SessionEndMessage = true,
+	SessionStolenMessage = true,
+	SessionInterruptedMessage = true,
 	Leaderboards = true,
 	Products = true,
 	Passes = true,
@@ -741,16 +1991,26 @@ local KNOWN_OPTION_KEYS: { [string]: boolean } = {
 	GiftCooldown = true,
 	GiftMaxPending = true,
 	GiftIntentTTL = true,
+	PurchaseIdTTL = true,
+	MaxProcessedPurchaseIds = true,
+	PurchaseClaimTTL = true,
+	MaxPurchaseClaims = true,
 	AllowDuplicateGifts = true,
 	NoGiftIntentPolicy = true,
 	Economy = true,
 	CommandRateLimit = true,
 	RequestTimeout = true,
 	MaxInboundBytes = true,
+	MaxInboundRetainedBytes = true,
+	MaxOutboundBytes = true,
+	MaxInboundFrameRate = true,
 	BoundsPolicy = true,
 	WipeGuardPolicy = true,
+	SchemaPolicy = true,
+	BudgetPolicy = true,
 	WipeGuardShrinkRatio = true,
 	LogLevel = true,
+	LogRingSize = true,
 	StatusThresholds = true,
 	Banner = true,
 }
@@ -759,32 +2019,44 @@ local function buildBundle<T>(options: ScribeOptions<T>): Bundle<T>
 	if type(options) ~= "table" then
 		error("Scribe: options must be a table", 2)
 	end
-	-- Scribe.Configure refuses to run past this point: the process-wide values it
-	-- sets are applied during construction, so a later change would be ignored.
-	Config.BundleConstructed = true
 	if type((options :: any).Template) ~= "table" then
 		error("Scribe: options.Template is required and must be a table", 2)
 	end
-	-- Storage location is intentional, never defaulted: two games (or a test
-	-- build) accidentally sharing the "Default" store is a silent data hazard.
 	local anyOpts = options :: any
-	if type(anyOpts.ProfileStoreIndex) ~= "string" or anyOpts.ProfileStoreIndex == "" then
-		error("Scribe: options.ProfileStoreIndex is required — name your game's DataStore explicitly", 2)
-	end
-	if type(anyOpts.ProfileKeyPrefix) ~= "string" or anyOpts.ProfileKeyPrefix == "" then
-		error('Scribe: options.ProfileKeyPrefix is required — set a per-player key prefix (e.g. "PLAYER_")', 2)
+	-- Server only on purpose: the client reads neither of these. Validating them before
+	-- the realm branch would force the live DataStore name and key format into the shared
+	-- module every client requires, rather than behind `if RunService:IsServer()`.
+	if RunService:IsServer() then
+		-- Storage location is intentional, never defaulted: two games (or a test
+		-- build) accidentally sharing the "Default" store is a silent data hazard.
+		if type(anyOpts.ProfileStoreIndex) ~= "string" or anyOpts.ProfileStoreIndex == "" then
+			error("Scribe: options.ProfileStoreIndex is required: name your game's DataStore explicitly", 2)
+		end
+		-- Required, but "" is legitimate: it means bare user-id keys, which is what a
+		-- game adopting an existing store keyed only by user id needs. Absent or
+		-- non-string is still an error, so the choice stays explicit.
+		if type(anyOpts.ProfileKeyPrefix) ~= "string" then
+			error(
+				'Scribe: options.ProfileKeyPrefix is required: set a per-player key prefix (e.g. "PLAYER_"), or "" for bare user-id keys',
+				2
+			)
+		end
 	end
 
-	-- The type checker enforces the TYPE of every option, but the Luau solver
-	-- does not reject unknown table keys, so a misspelled option name would be
-	-- silently ignored. Catch that in Studio (dev-mode) with a startup warning.
+	-- Scribe.Configure refuses to run past this point, because its process-wide values
+	-- are applied during construction. Set after the option guards, so a call that
+	-- only fails a guard does not poison the flag for a later Configure.
+	Config.BundleConstructed = true
+
+	-- Luau does not reject unknown table keys, so a misspelled option name is silently
+	-- ignored. Catch it in Studio with a startup warning.
 	if RunService:IsStudio() then
 		for key in options :: any do
 			if type(key) == "string" and not KNOWN_OPTION_KEYS[key] then
 				Log.Warn(
 					"Lifecycle",
 					"UNKNOWN_OPTION",
-					`unknown Scribe option "{key}" — check the spelling`,
+					`unknown Scribe option "{key}": check the spelling`,
 					{ Option = key }
 				)
 			end
@@ -804,11 +2076,9 @@ local function buildBundle<T>(options: ScribeOptions<T>): Bundle<T>
 	-- mutation of the shared template throws at the call site.
 	Util.deepFreeze(anyOptions.Template)
 
-	-- Sandbox guard: a Sandboxed script cannot fire a non-Sandboxed event, so a
-	-- Sandboxed Scribe silently fails to send its replication frames (the client
-	-- never handshakes, the server never delivers) and data never syncs. Detect
-	-- it up front and say exactly how to fix it. This usually happens when Scribe
-	-- is inserted from a model/toolbox rather than synced from source.
+	-- A Sandboxed script cannot fire a non-Sandboxed event, so a Sandboxed Scribe
+	-- silently never sends a replication frame and nothing syncs. Usually caused by
+	-- inserting the package from the toolbox rather than syncing it from source.
 	local sandboxOk, sandboxed = pcall(function()
 		return (script :: any).Sandboxed
 	end)
@@ -822,8 +2092,15 @@ local function buildBundle<T>(options: ScribeOptions<T>): Bundle<T>
 		)
 	end
 
+	-- Edit mode (a storybook, the command bar, a plugin) has no server, yet
+	-- RunService:IsServer() is still true there. Dispatching on that alone builds the
+	-- server half, which resolves the transport and leaves RemoteEvents saved into the
+	-- place file; the client half understands edit mode. `IsRunning` is also the seam
+	-- specs use, since RunService cannot be patched.
+	local isRunning = if anyOptions.IsRunning ~= nil then anyOptions.IsRunning == true else RunService:IsRunning()
+
 	local bundle: any
-	if RunService:IsServer() then
+	if RunService:IsServer() and isRunning then
 		local Server = require(script.Server) :: any
 		local serverData = Server.new(anyOptions, compiled)
 		local clientStub = setmetatable({}, {
@@ -838,7 +2115,9 @@ local function buildBundle<T>(options: ScribeOptions<T>): Bundle<T>
 		local serverStub = setmetatable({}, {
 			__index = function()
 				error(
-					"Scribe: the Server API is not available on the client — client writes go through Data.Request commands",
+					if isRunning
+						then "Scribe: the Server API is not available on the client. Client writes go through Data.Request commands"
+						else "Scribe: the Server API is not available in edit mode. Scribe builds only the client half there (storybooks, the command bar)",
 					2
 				)
 			end,
@@ -860,7 +2139,12 @@ end
 
 	The module you require and call. `Scribe(options)` compiles your template
 	and returns a `{ Server, Client }` bundle. Use `.Server` on the server and
-	`.Client` on the client from the same shared module.
+	`.Client` on the client from the same shared module. Every option the table
+	accepts is documented in [Configuration](../configuration.md).
+
+	In edit mode (`RunService:IsRunning()` false, as in a UI Labs / Hoarcekat
+	storybook or the command bar) there is no server to build, so the bundle holds
+	the edit-mode client half and `.Server` errors if touched.
 
 	`Scribe` also exposes the field *declarators* (`Scribe.Int`, `Scribe.Vector3`,
 	…) you use inside a template, the visibility wrappers (`Scribe.ServerOnly`,
@@ -868,7 +2152,6 @@ end
 
 	```lua
 	local Scribe = require(ReplicatedStorage.Packages.Scribe)
-
 	return Scribe({
 	    Template = { Coins = Scribe.Int(0, { Min = 0 }) },
 	    ProfileStoreIndex = "PlayerData",
@@ -891,12 +2174,20 @@ Scribe.Version = require(script.Internal.Version)
 	@tag Visibility
 	@function ServerOnly
 	@param value T
-	@return T
+	@return ServerOnly<T>
 	Marks a **root** field server-only: it persists and is readable on the
 	server, but is never replicated to any client. May also wrap a nested field
 	to keep just that subtree server-side.
+
+	The field is absent from the **client's** accessor type, so reading it there
+	is a type error rather than a `nil` at runtime. On the server it reads like
+	any other field.
+
+	Combines with [Scribe.Session] for runtime state only the server sees:
+	`Scribe.ServerOnly(Scribe.Session(v))`. Combining it with [Scribe.Shared] is
+	a startup error, since a field has one replication target, not two.
 ]=]
-function Scribe.ServerOnly<T>(value: T): T
+function Scribe.ServerOnly<T>(value: T): ServerOnly<T>
 	return Marker.make("ServerOnly", value) :: any
 end
 
@@ -908,6 +2199,10 @@ end
 	@return T
 	Marks a **root** field shared: it replicates to *every* client (not just the
 	owner), for public info like a display name or team.
+
+	Combines with [Scribe.Session] for runtime state everyone sees and nothing
+	saves: `Scribe.Shared(Scribe.Session(v))`. Combining it with
+	[Scribe.ServerOnly] is a startup error.
 ]=]
 function Scribe.Shared<T>(value: T): T
 	return Marker.make("Shared", value) :: any
@@ -919,9 +2214,13 @@ end
 	@function Session
 	@param value T
 	@return T
-	Marks a **root** field session-only: replicated to the owner but never
-	persisted. Ideal for runtime state like `InCombat` that should reset on
-	rejoin.
+	Marks a **root** field session-only: never persisted, and replicated to the
+	owner unless another wrapper says otherwise. Ideal for runtime state like
+	`InCombat` that should reset on rejoin.
+
+	Saving and replication are independent, so this composes with exactly one of
+	[Scribe.ServerOnly] (nobody sees it) or [Scribe.Shared] (everyone does), in
+	either order. Doubling it up is a startup error.
 ]=]
 function Scribe.Session<T>(value: T): T
 	return Marker.make("Session", value) :: any
@@ -947,12 +2246,56 @@ end
 	@tag Field Types
 	@function Number
 	@param default number
-	@param meta { Min: number?, Max: number? }?
+	@param meta FloatMeta?
 	@return number
-	Declares a floating-point field with optional bounds.
+	Declares a floating-point field with optional bounds and an optional narrowed
+	wire form.
+
+	`Min` and `Max` must be finite, since `math.huge` and `NaN` would each declare a
+	bound that silently checks nothing. For a bound past the double range use
+	[Scribe.Big], whose bounds may be written as numeric strings.
+
+	`Precision` is opt-in and narrows only the replicated copy; the server keeps and
+	persists the full double either way. A fixed-point step requires both `Min` and
+	`Max`, and bounds too wide for the width you ask for refuse to compile.
+
+	```lua
+	Health = Scribe.Number(100, { Min = 0, Max = 100, Precision = 0.5 }), -- 1 byte
+	```
+
+	See [Narrowing a float](../templates.md#narrowing-a-float) for the byte table.
 ]=]
-function Scribe.Number(default: number, meta: NumberMeta?): number
+function Scribe.Number(default: number, meta: FloatMeta?): number
 	return Marker.make("Number", default, meta :: any) :: any
+end
+
+--[=[
+	@within Scribe
+	@tag Field Types
+	@function Big
+	@param default (number | string)?
+	@param meta BigMeta?
+	@return BigValue
+	A number with unlimited range, for an idle or simulator currency that runs past
+	2^53. It carries about 15 significant digits at any magnitude, so
+	`1e20 + 1 == 1e20`; use [Scribe.Int] when every digit has to be exact.
+
+	```lua
+	Essence = Scribe.Big(0, { Min = 0, Max = "1e600" }), -- a bound past 1.8e308 must be a string
+	data.Essence.Get():Short() --> "1.95Dc"
+	```
+
+	`Set` and every arithmetic method take a plain number, a numeric string, or
+	another big value, and [Value.Multiply] and [Value.Divide] exist only here.
+	`Get()` returns a [BigValue](bigvalue.md), not a plain number, and it will not
+	compare against one: `Get() < 2000` throws and `Get() == 5` is silently false.
+
+	A big field may be a leaderboard stat, which requires non-negative values and
+	refuses `Scale`. See [Big Numbers](../big-numbers.md) and
+	[Leaderboards](../leaderboards.md#ranking-a-scribebig).
+]=]
+function Scribe.Big(default: (number | string)?, meta: BigMeta?): BigValue
+	return Marker.make("Big", if default == nil then 0 else default, meta :: any) :: any
 end
 
 --[=[
@@ -963,6 +2306,12 @@ end
 	@param meta { MaxLength: number? }?
 	@return string
 	Declares a string field, optionally length-capped.
+
+	`MaxLength` is a **byte** budget and must be a non-negative integer; a template
+	declaring otherwise fails to compile. Over-long values are truncated on a
+	character boundary (never mid-character, which would produce invalid UTF-8 and
+	fail the profile's next save), or refused outright under
+	`BoundsPolicy = "Reject"`.
 ]=]
 function Scribe.String(default: string, meta: StringMeta?): string
 	return Marker.make("String", default, meta :: any) :: any
@@ -985,6 +2334,34 @@ end
 --[=[
 	@within Scribe
 	@tag Field Types
+	@function Flags
+	@param members { string }
+	@return Flags
+	A fixed set of named booleans stored as one field, up to 32 members, addressed
+	by name:
+
+	```lua
+	Settings = Scribe.Flags({ "Music", "Sfx", "TutorialDone" }),
+	data.Settings.Enable("Music")
+	data.Settings.Has("Music") --> true
+	```
+
+	The accessors are [Value.Enable], [Value.Disable], [Value.Toggle], [Value.Has],
+	[Value.Count] and [Value.Clear]. Members are not accessor children, so it is
+	`Settings.Enable("Music")` and not `Settings.Music.Set(true)`. Enabling an
+	undeclared name is an error, and setting a flag to what it holds writes nothing.
+
+	The stored value is the enabled member names, so reordering or removing members
+	later is safe, and more than 32 is refused when the template compiles. See
+	[Named booleans](../containers.md#named-booleans).
+]=]
+function Scribe.Flags(members: { string }): Flags
+	return Marker.make("Flags", {}, { Members = members }) :: any
+end
+
+--[=[
+	@within Scribe
+	@tag Field Types
 	@function Timed
 	@param default T
 	@return T
@@ -1002,35 +2379,56 @@ end
 	@function Dynamic
 	@param factory () -> T
 	@return T
-	Declares a field whose default is produced by `factory` **per profile** rather
-	than frozen once at server start. Use it for values that must be evaluated for
-	each profile, like a creation timestamp:
+	Declares a field whose default is produced by `factory` per profile rather than
+	frozen once at server start. The field types as the factory's return type, and a
+	datatype result is packed for you.
 
 	```lua
-	CREATION_UNIX = Scribe.Dynamic(os.time),
-	JOINED_AT     = Scribe.Dynamic(function() return DateTime.now() end), -- datatype, packed for you
+	CreatedUnix = Scribe.Dynamic(os.time),
+	JoinedAt    = Scribe.Dynamic(function() return DateTime.now() end),
 	```
 
-	Returning players keep their stored value; the factory only runs to seed the
-	field on a brand-new profile (or one that gains the field after you add it to
-	the template later). The field types as the factory's return type.
+	The factory runs only to seed a brand-new profile, or an existing profile that
+	gains the field after you add it, so a returning player keeps a stored value.
 
-	**The factory must be pure.** It is also called once at declaration time (while
-	your template module loads) to sample its return type, so it must be
-	side-effect-free and must neither yield nor error; keep it to plain producers
-	like `os.time` / `DateTime.now`. Anything that reserves an id, reads a store, or
-	has other side effects would fire that effect at module load with no profile
-	attached. Player-specific defaults (based on `player.Name`, a lookup, and so on)
-	belong in `OnPlayerInit`.
-
-	`Scribe.Dynamic` cannot sit inside a `Scribe.Session` root (a startup error):
-	Session data is rebuilt from its default every session, so a one-time seed has
-	nowhere to live. Use `OnPlayerInit` for per-session values.
+	It must be pure, because Scribe also calls it once while your template module
+	loads to sample its return type, so anything that yields, errors or reserves an
+	id fires that effect with no profile attached. A factory takes no arguments, so
+	player-specific defaults belong in `OnPlayerInit`, and `Scribe.Dynamic` inside a
+	[Scribe.Session] root is a startup error.
 ]=]
 -- `(...any) -> T` (not `() -> T`) so standard-library functions with optional
 -- params typecheck when passed directly, e.g. `Scribe.Dynamic(os.time)`.
 function Scribe.Dynamic<T>(factory: (...any) -> T): T
 	return Marker.make("Dynamic", factory(), { Factory = factory :: any }) :: any
+end
+
+--[=[
+	@within Scribe
+	@tag Field Types
+	@function Derived
+	@param output T
+	@param inputs { string }
+	@param compute (...any) -> T
+	@return T
+	Declares a field Scribe computes from other declared fields instead of accepting
+	writes. It is never persisted, never migrated, recomputed whenever an input
+	changes, and replicated only when the receiver cannot compute it itself.
+
+	`output` is an ordinary declarator supplying the type and bounds. `inputs` are
+	dotted paths to statically declared scalar fields, passed to `compute` in the
+	order written; one derived field may read another, and the compiler orders the
+	graph and rejects cycles at startup. `compute` must be pure, because Scribe calls
+	it once per realm at startup to seed the default.
+
+	Reads are ordinary (`Get`, `Changed`, `Observe`) and every mutator throws. The
+	field must be a root field or live inside a [Scribe.Session] root, and wrapping
+	it in `Scribe.Session`, `Scribe.Timed`, `Scribe.Dynamic`, `Scribe.Optional` or a
+	container is refused when the template compiles. See
+	[Derived Fields](../derived.md).
+]=]
+function Scribe.Derived<T>(output: T, inputs: { string }, compute: (...any) -> T): Derived<T>
+	return Marker.make("Derived", output, { Inputs = inputs, Compute = compute :: any }) :: any
 end
 
 --[=[
@@ -1054,14 +2452,9 @@ end
 	omits it. `Get()` returns `nil` until something writes it, and `Set(nil)` takes
 	it back to absent.
 
-	This is mainly what makes closed [Scribe.ArrayOf] / [Scribe.DictOf]
-	element shapes practical: without it, every element field would need a sentinel
-	value standing in for "not set", and `""` or `0` is usually a real value too.
-
-	It only wraps leaves, and it cannot wrap `Scribe.Timed` (a lapsed timer restores
-	a default, which an optional field does not have), `Scribe.Dynamic` (a factory
-	exists to seed a value), or a container declarator (an empty container is
-	already the absent case).
+	It wraps leaves only. `Scribe.Timed`, `Scribe.Dynamic` and the container
+	declarators are all refused inside it, since each of the three exists to supply
+	a value an optional field is defined not to have.
 ]=]
 function Scribe.Optional<T>(inner: T): T?
 	return Marker.make("Optional", inner) :: any
@@ -1072,65 +2465,133 @@ end
 	@tag Field Types
 	@function ArrayOf
 	@param shape T
-	@param opts { MaxItems: number? }?
+	@param opts ArrayOpts?
 	@return { T }
-	Declares an array whose **elements have a schema**. Everything a declared field
-	gets (type checking, bounds, enum members, and automatic datatype packing) then
-	applies per element:
+	Declares an array whose elements have a schema, so type checking, bounds and
+	datatype packing all apply per element. `shape` may be a record or a single leaf
+	declarator, and it nests freely.
 
 	```lua
 	PlacedFurniture = Scribe.ArrayOf({
-	    Cf       = Scribe.CFrame(CFrame.new()),
-	    ItemId   = Scribe.String("", { MaxLength = 64 }),
-	}, { MaxItems = 200 }),
+	    Cf = Scribe.CFrame(CFrame.new()), ItemId = Scribe.String("", { MaxLength = 64 }),
+	}, { MaxItems = 200, Evict = "Front" }),
 	```
 
-	```lua
-	data.PlacedFurniture.Insert({ Cf = CFrame.new(0, 5, 0), ItemId = "OakChair" })
-	local cf = data.PlacedFurniture[1].Cf.Get() -- a real CFrame, unpacked for you
-	```
+	`opts` takes `MaxItems` and `Evict` and nothing else. `MaxItems` refuses growth
+	past the cap but leaves an already-oversized container writable, so a rolling
+	deploy is safe. `Evict` requires `MaxItems` and names the end an `Insert` at the
+	cap drops from, `"Front"` or `"Back"`.
 
-	An element schema is the only way to have Scribe pack and unpack a Roblox
-	datatype inside a container. A plain array literal stores its entries as opaque
-	data, so a `Scribe.CFrame` inside one is a template error: with no schema for the
-	entries, Scribe cannot tell a packed CFrame from a buffer you stored yourself when
-	reading it back. To keep the container free-form, leave it plain and call
-	[Scribe.Datatypes] `Pack` and `Unpack` around the buffer yourself.
-
-	The element shape may be a single leaf declarator (`Scribe.ArrayOf(Scribe.CFrame(CFrame.new()))`
-	is an array of CFrames) and nests freely: an element field may itself be an
-	`ArrayOf` or a `DictOf`.
-
-	Element records are **closed** at every depth, nested sub-records included.
-	Writing a field the shape does not declare is an error rather than a silently
-	stored extra field, which is what makes a typo like
-	`data.PlacedFurniture[1].Colour.Set(...)` fail loudly.
-
-	An `Insert` or `Set` that omits a declared field fills it from that field's
-	default, but strict Luau still asks for every non-optional field, since the type
-	level cannot know the runtime fills them. Pass the whole element, or mark the
-	omittable fields [Scribe.Optional].
-
-	`MaxItems` caps the entry count; exceeding it is a write error, but only growth
-	is refused, so a container a newer-template server already stored over cap stays
-	writable through a rolling deploy. Elements may not use `Scribe.Timed`,
-	`Scribe.Dynamic`, `Scribe.Shared` or `Scribe.Session`.
-
-	[Value.Find], [Value.Has] and [Value.RemoveValue] compare entries by value, not
-	by identity as they do on an untyped array.]=]
+	Element records are closed at every depth, and [Value.Find], [Value.Has] and
+	[Value.RemoveValue] compare by value. See [Containers](../containers.md#element-rules).
+]=]
 function Scribe.ArrayOf<T>(shape: T, opts: ArrayOpts?): { T }
 	if opts ~= nil then
 		for key in opts :: any do
 			-- A silently dropped option (MaxKeys on an ArrayOf, say) leaves the
 			-- container uncapped while reading as protected; refuse it.
-			if key ~= "MaxItems" then
-				error(`Scribe.ArrayOf: unknown option "{tostring(key)}" (ArrayOf takes MaxItems)`, 2)
+			if key ~= "MaxItems" and key ~= "Evict" then
+				error(`Scribe.ArrayOf: unknown option "{tostring(key)}" (ArrayOf takes MaxItems and Evict)`, 2)
 			end
 		end
 	end
 	return Marker.make("ArrayOf", nil, {
 		Element = shape,
 		MaxItems = if opts then opts.MaxItems else nil,
+		Evict = if opts then opts.Evict else nil,
+	}) :: any
+end
+
+--[=[
+	@within Scribe
+	@tag Field Types
+	@function SetOf
+	@param element T
+	@param opts SetOpts?
+	@return SetOf<T>
+	A collection of unique entries: membership, not order. Use it where you would
+	otherwise keep a dictionary of `true` values, such as owned items.
+
+	```lua
+	Unlocked = Scribe.SetOf(Scribe.String("", { MaxLength = 32 })),
+	data.Unlocked.Add("AshfallRidge")    --> true
+	data.Unlocked.Remove("AshfallRidge") --> true
+	```
+
+	The accessors are [Value.Add], [Value.Remove], [Value.Has], [Value.Find],
+	[Value.Count] and [Value.Clear]. `Remove` takes the member itself and returns
+	whether it was one. An `Add` of a value already present, or a `Remove` of one
+	that is absent, writes nothing and fires no `Changed`.
+
+	Entries are stored deduplicated and sorted, so `element` must be a scalar and a
+	record shape is refused by the declarator. `MaxItems` caps membership and is the
+	only option. See [Sets of unique values](../containers.md#sets-of-unique-values).
+]=]
+function Scribe.SetOf<T>(element: T, opts: SetOpts?): SetOf<T>
+	if opts ~= nil then
+		for key in opts :: any do
+			if key ~= "MaxItems" then
+				error(`Scribe.SetOf: unknown option "{tostring(key)}" (SetOf takes MaxItems)`, 2)
+			end
+		end
+	end
+	-- A set is deduplicated and sorted, neither of which works on a record: table.sort
+	-- throws a bare comparison error on the second member. Refuse it here rather than at
+	-- the surprising second Add.
+	if type(element) == "table" and (element :: any).__scribeMarker == nil then
+		error("Scribe.SetOf takes a scalar element (Scribe.String, Scribe.Int, ...), not a record shape", 2)
+	end
+	return Marker.make("SetOf", nil, {
+		Element = element,
+		MaxItems = if opts then opts.MaxItems else nil,
+		Unique = true,
+	}) :: any
+end
+
+--[=[
+	@within Scribe
+	@tag Field Types
+	@function MapOf
+	@param keyType MapKeyType
+	@param value V
+	@param opts DictOpts?
+	@return MapOf<K, V>
+	A dictionary whose keys have a declared type, for keys that are user ids or
+	anything else you would otherwise `tostring` at every write and `tonumber` at
+	every read. [Scribe.DictOf] is the string-keyed shorthand.
+
+	```lua
+	Friends = Scribe.MapOf("integer", { Name = Scribe.String("") }),
+	data.Friends[ava.UserId].Name.Set("Ava") -- no tostring
+	```
+
+	`keyType` is `"integer"` or `"string"`, and anything else errors at declaration.
+	Integer keys come back as numbers even though a DataStore serializes every object
+	key to a string, and fractional, infinite and NaN keys are refused at the write.
+
+	`opts` takes `MaxKeys` and `MaxKeyLength` and nothing else, and `MaxKeyLength`
+	with `keyType = "integer"` is an error rather than a cap that could never fire.
+	See [Maps with typed keys](../containers.md#maps-with-typed-keys).
+]=]
+function Scribe.MapOf<K, V>(keyType: K & MapKeyType, value: V, opts: DictOpts?): MapOf<K, V>
+	if keyType ~= "integer" and keyType ~= "string" then
+		error(`Scribe.MapOf: keyType must be "integer" or "string", got {tostring(keyType)}`, 2)
+	end
+	if opts ~= nil then
+		for key in opts :: any do
+			if key ~= "MaxKeys" and key ~= "MaxKeyLength" then
+				error(`Scribe.MapOf: unknown option "{tostring(key)}" (MapOf takes MaxKeys and MaxKeyLength)`, 2)
+			end
+		end
+	end
+	if keyType == "integer" and opts ~= nil and (opts :: any).MaxKeyLength ~= nil then
+		error("Scribe.MapOf: MaxKeyLength applies to string keys only", 2)
+	end
+	return Marker.make("MapOf", nil, {
+		Element = value,
+		KeyType = keyType,
+		MaxKeys = if opts then opts.MaxKeys else nil,
+		MaxKeyLength = if opts then opts.MaxKeyLength else nil,
 	}) :: any
 end
 
@@ -1141,37 +2602,22 @@ end
 	@param shape V
 	@param opts { MaxKeys: number?, MaxKeyLength: number? }?
 	@return { [string]: V }
-	Declares a string-keyed dictionary whose **values have a schema**, the
-	dictionary counterpart of [Scribe.ArrayOf]:
+	Declares a string-keyed dictionary whose values have a schema, the dictionary
+	counterpart of [Scribe.ArrayOf]:
 
 	```lua
-	Resources = Scribe.DictOf(Scribe.Int(0, { Min = 0 }), { MaxKeys = 500 }),
-	Pets      = Scribe.DictOf({
-	    Level = Scribe.Int(1, { Min = 1, Max = 100 }),
-	    Home  = Scribe.CFrame(CFrame.new()),
-	}),
+	Inventory = Scribe.DictOf({ Count = Scribe.Int(1, { Min = 1, Max = 999 }) }, { MaxKeys = 200 }),
+	data.Inventory.Emberblade.Count.Get()        -- nil: nothing has written this key
+	data.Inventory.Emberblade.Count.Increment(5) -- 6: starts from the declared default
 	```
 
-	```lua
-	data.Resources.Wood.Get()        -- nil: nothing has written this key yet
-	data.Resources.Wood.Increment(5) -- 5: the write starts from the declared default
-	data.Pets.Dragon.Level.Set(12)   -- creates Dragon with Home at its default too
-	```
+	A key exists only once something writes it; until then `Get()` is `nil` and
+	`Count()` does not include it. Any string is a valid key, so a typo is a new key
+	rather than an error. Use plain declared fields when the key set is fixed.
 
-	A key exists only once something writes it: until then `Get()` is `nil` and
-	`Count()` does not include it. The element default is what the first write
-	starts from, not a value every conceivable key already reports.
-
-	Any string is a valid key, so a typo is a new key rather than an error. Use
-	`DictOf` for open-ended keys like catalog ids, and plain declared fields when the
-	key set is fixed, which buys back that typo protection. `MaxKeys` caps how many
-	keys there may be and `MaxKeyLength` caps each key's byte length; both are write
-	errors, and `MaxKeyLength` rejects rather than truncates, since a truncated key
-	writes to the wrong slot.
-
-	The same element rules as `ArrayOf` apply: records are closed, missing fields
-	fill from their defaults, and `Scribe.Timed` / `Scribe.Dynamic` / `Scribe.Shared`
-	/ `Scribe.Session` are rejected inside the shape.
+	`MaxKeys` caps the key count and `MaxKeyLength` caps each key's byte length. Both
+	are write errors, and `MaxKeyLength` rejects rather than truncates. The element
+	rules match [Scribe.ArrayOf]; see [Containers](../containers.md#element-rules).
 ]=]
 function Scribe.DictOf<V>(shape: V, opts: DictOpts?): { [string]: V }
 	if opts ~= nil then
@@ -1191,8 +2637,8 @@ end
 -- Roblox datatype fields (opt-in serialization): stored and replicated as a
 -- compact packed buffer; Get/Set/Update/Observe convert at the boundary so
 -- callers only ever see the real datatype.
-local function datatypeMarker(name: string, default: any): any
-	return Marker.make("Datatype", default, { Datatype = name })
+local function datatypeMarker(name: string, default: any, precision: string?): any
+	return Marker.make("Datatype", default, { Datatype = name, Precision = precision })
 end
 
 --[=[
@@ -1231,13 +2677,34 @@ end
 	@tag Field Types
 	@function CFrame
 	@param default CFrame
+	@param meta CFrameMeta?
 	@return CFrame
-	Declares a `CFrame` field. Axis-aligned rotations (the overwhelmingly common
-	case for placed structures) pack to just 13 bytes; arbitrary rotations use a
-	quaternion. See `Scribe.Vector3` for the full datatype list.
+	Declares a `CFrame` field. An axis-aligned rotation, the common case for placed
+	structures, packs to 13 bytes; any other rotation packs as a quaternion in 29
+	and reads back turned by roughly `1e-7`.
+
+	`Precision = "exact"` is the only option and it is off by default. It stores all
+	twelve components as `f32` at a flat 49 bytes, so the value round-trips bit for
+	bit. Reach for it when the orientation is data you compare, accumulate or replay.
+	`"exact"` is its only accepted value, and `Precision` on any other datatype
+	declarator is refused when the template compiles.
+
+	```lua
+	Camera = Scribe.CFrame(CFrame.identity, { Precision = "exact" }), -- 49 bytes, lossless
+	```
+
+	See [Full-precision CFrames](../datatypes.md#full-precision-cframes) for the byte
+	table and for the axis snapping the 13-byte path does.
 ]=]
-function Scribe.CFrame(default: CFrame): CFrame
-	return datatypeMarker("CFrame", default)
+function Scribe.CFrame(default: CFrame, meta: CFrameMeta?): CFrame
+	if meta ~= nil then
+		for key in meta :: any do
+			if key ~= "Precision" then
+				error(`Scribe.CFrame: unknown option "{tostring(key)}" (CFrame takes Precision)`, 2)
+			end
+		end
+	end
+	return datatypeMarker("CFrame", default, if meta then meta.Precision else nil)
 end
 
 function Scribe.Color3(default: Color3): Color3
@@ -1291,9 +2758,25 @@ end
 --[=[
 	@within Scribe
 	@tag Field Types
-	@prop Datatypes { Pack: (name: string, value: any) -> buffer, Unpack: (name: string, b: buffer) -> any }
-	Low-level pack/unpack helpers for the 17 datatypes, exposed so migrations can
-	convert legacy representations to the packed form.
+	@prop Datatypes table
+	Low-level helpers for the 17 Roblox datatypes, exposed so a migration can convert
+	a legacy representation into the packed form.
+
+	| Call | Returns |
+	| --- | --- |
+	| `Pack(name, value, precision?)` | the packed `buffer` |
+	| `Unpack(name, b)` | the datatype |
+	| `IsSupported(name)` | whether Scribe has a codec for `name` |
+	| `PrecisionValues(name)` | the `Precision` values `name` accepts, sorted, or `nil` |
+
+	`Pack` and `Unpack` both throw `Scribe: unsupported datatype "<name>"` on a name
+	with no codec, so ask `IsSupported` first when the name is not a literal.
+
+	`precision` is optional and additive: omit it and every datatype packs exactly the
+	bytes it always has. `PrecisionValues` reports what a datatype accepts, and today
+	only [Scribe.CFrame] accepts anything (`"exact"`); any other value throws naming
+	the ones it does. `Unpack` takes none, because every layout is self-describing
+	from its first byte, which is what lets old data keep decoding.
 ]=]
 Scribe.Datatypes = require(script.Internal.Datatypes)
 
@@ -1307,42 +2790,86 @@ Scribe.Datatypes = require(script.Internal.Datatypes)
 
 	```lua
 	local data, reason = Data.WaitForData(player)
-	if not data then
-	    if reason == Scribe.Reason.PlayerLeft then
-	        return -- routine, not an error
-	    end
-	    warn("data unavailable:", reason)
+	if not data and reason ~= Scribe.Reason.PlayerLeft then
+	    warn("data unavailable:", reason)   -- PlayerLeft is routine, not an error
 	end
 	```
+
+	The seven members are `LoadFailed`, `MigrationFailed`, `SessionEnded`,
+	`PlayerLeft`, `Shutdown`, `StillLoading` and `Timeout`. Each one's string, what it
+	means and whether it is worth retrying are in the
+	[Session Lifecycle](../lifecycle.md#when-there-is-no-data) guide.
 
 	The matching `Scribe.LifecycleReason` type is the same set as a string union,
 	so a comparison against a typo fails to type-check.
 ]=]
 --[=[
 	@within Scribe
+	@param value number | BigValue
+	@param decimals number?
+	@return string
+	Renders a quantity the short way a player reads it: `1.5K`, `100M`, `2.4B`.
+
+	```lua
+	local label = Scribe.Short(data.Coins.Get()) -- "1.5M"
+	```
+
+	Takes a plain number or a `Scribe.Big` value, so a balance label does not have to
+	know which numeric type the field was declared as.
+
+	`decimals` defaults to 2 and rounds rather than truncates, so `Scribe.Short(1500, 0)`
+	gives `"2K"`. Anything past the suffix table renders in full rather than losing
+	its magnitude.
+]=]
+function Scribe.Short(value: (number | BigValue)?, decimals: number?): string
+	if decimals ~= nil and (type(decimals) ~= "number" or decimals < 0 or decimals % 1 ~= 0) then
+		error(`Scribe.Short: decimals must be a non-negative whole number, got {tostring(decimals)}`, 2)
+	end
+	local big = BigMath.from(value)
+	if big == nil then
+		error(`Scribe.Short: expected a number or a Scribe.Big value, got {typeof(value)}`, 2)
+	end
+	return BigMath.toShort(big, decimals)
+end
+
+--[=[
+	@within Scribe
+	@param suffixes { string }
+	Replaces the suffix table [Scribe.Short] and `BigValue:Short()` render with.
+
+	```lua
+	Scribe.SetShortSuffixes({ "", "K", "M", "B", "T", "aa", "ab", "ac" })
+	```
+
+	The defaults run `K, M, B, T, Qa, Qi, Sx` and on up. The conventions diverge past
+	`T`, so this exists rather than leaving a game to write its own formatter and stop
+	using this one. Index 1 is the units tier and must be empty, because it is what
+	renders a small number unchanged.
+]=]
+function Scribe.SetShortSuffixes(suffixes: { string })
+	BigMath.SetSuffixes(suffixes)
+end
+
+--[=[
+	@within Scribe
 	@tag Configuration
 	@function Configure
 	@param config { AutoSaveInterval: number? }
-	Sets configuration that belongs to the **process**, not to one bundle. Call it
-	once, before constructing any bundle:
+	Sets configuration that belongs to the process rather than to one bundle. Call
+	it once, before constructing any bundle:
 
 	```lua
 	Scribe.Configure({ AutoSaveInterval = 60 })
 	```
 
-	`AutoSaveInterval` is the autosave cadence. It lives here because ProfileStore's
-	`AUTO_SAVE_PERIOD` is a module-wide constant: it applies to every Scribe bundle
-	AND to any direct ProfileStore use in the same game. The per-bundle
-	`SaveInterval` option still works and still wins if it is set, but two bundles
-	asking for different cadences is a conflict Scribe can only resolve as
-	last-writer-wins, so it now logs `SAVE_INTERVAL_CONFLICT` when that happens.
+	`AutoSaveInterval` is the autosave cadence, and it lives here because
+	ProfileStore's `AUTO_SAVE_PERIOD` is a module-wide constant that also covers any
+	direct ProfileStore use in the same game. The per-bundle `SaveInterval` option
+	still wins where it is set, and two bundles asking for different cadences logs
+	`SAVE_INTERVAL_CONFLICT`. Values below 15 seconds clamp up to it.
 
-	Values below 15 seconds clamp up to it, since Roblox throttles per-key writes
-	to roughly one per 6 seconds and saving faster just produces failures.
-
-	Calling this twice with different values, or after a bundle exists, is an
-	error: the value may already have been applied, so a late change would be
-	silently ignored.
+	Calling this twice with different values, or after a bundle exists, is an error,
+	because the value may already have been applied.
 ]=]
 function Scribe.Configure(config: { AutoSaveInterval: number? })
 	if type(config) ~= "table" then
@@ -1383,7 +2910,145 @@ Scribe.Reason = table.freeze({
 	SessionEnded = "session-ended" :: Types.LifecycleReason,
 	PlayerLeft = "player-left" :: Types.LifecycleReason,
 	Shutdown = "shutdown" :: Types.LifecycleReason,
+	StillLoading = "still-loading" :: Types.LifecycleReason,
 	Timeout = "timeout" :: Types.LifecycleReason,
+})
+
+--[=[
+	@within Scribe
+	@tag Commands
+	@prop RequestReason { [string]: RequestReason }
+	The reasons Scribe answers a `Client.Request` with, as named constants.
+
+	The eleven members are `RateLimited`, `NotReady`, `UnknownCommand`, `BadArgs`,
+	`BadIdempotencyKey`, `Error`, `ReplyEncodeFailed`, `Timeout`, `SendFailed`,
+	`EditMode` and `MockError`. Each one's string and what provokes it are in the
+	[Commands and Requests](../commands.md#what-the-caller-gets-back-on-failure)
+	guide.
+
+	A command handler may return any `(false, string)` of its own; those are
+	deliberately not members, so a reason that is not in this table came from your
+	handler rather than from Scribe.
+]=]
+Scribe.RequestReason = table.freeze({
+	RateLimited = "rate-limited" :: Types.RequestReason,
+	NotReady = "not-ready" :: Types.RequestReason,
+	UnknownCommand = "unknown-command" :: Types.RequestReason,
+	BadArgs = "bad-args" :: Types.RequestReason,
+	BadIdempotencyKey = "bad-idempotency-key" :: Types.RequestReason,
+	Error = "error" :: Types.RequestReason,
+	ReplyEncodeFailed = "reply-encode-failed" :: Types.RequestReason,
+	Timeout = "timeout" :: Types.RequestReason,
+	SendFailed = "send-failed" :: Types.RequestReason,
+	EditMode = "edit-mode" :: Types.RequestReason,
+	MockError = "mock-error" :: Types.RequestReason,
+})
+
+--[=[
+	@within Scribe
+	@tag Commands
+	@prop RequestFailed table
+	The marker [Client.Request] returns as a third value whenever the refusal is
+	Scribe's rather than your handler's.
+
+	`RequestReason` tells you what a reason string means, but not who said it: a
+	handler may return any `(false, string)` it likes, including `false, "timeout"`,
+	and those values reach the caller verbatim. Compare against this frozen table
+	instead; handler values cross the wire, which carries no reference identity, so
+	nothing a handler returns can ever equal it.
+
+	```lua
+	local ok, reason, failed = Data.Request("EquipItem", itemId)
+	if failed == Scribe.RequestFailed then
+	    retryLater(reason) -- Scribe refused; `reason` is a RequestReason
+	elseif not ok then
+	    showToast(reason)  -- your handler's own message, safe to show
+	end
+	```
+
+	It is present on every framework refusal, including the four the client raises
+	with no reply frame at all, and absent on success and on handler values.
+]=]
+Scribe.RequestFailed = Types.RequestFailed
+
+--[=[
+	@within Scribe
+	@tag Monetization
+	@prop PurchaseReason { [string]: PurchaseReason }
+	The fixed refusals of [Server.Purchase]. A `Grant` that throws passes its own
+	error text through instead, so a non-member reason is a failed grant.
+
+	The eight members are `DataNotLoaded`, `InvalidCostSpec`, `InvalidCostAmount`,
+	`InvalidCostPath`, `CostPathNotSpendable`, `InsufficientFunds`,
+	`PaidRandomRestricted` and `PolicyPending`. Each one's
+	string is in the [Monetization](../monetization.md#reading-the-refusal) guide.
+]=]
+Scribe.PurchaseReason = table.freeze({
+	DataNotLoaded = "player data not loaded" :: Types.PurchaseReason,
+	InvalidCostSpec = "invalid Cost spec" :: Types.PurchaseReason,
+	InvalidCostAmount = "invalid Cost amount" :: Types.PurchaseReason,
+	InvalidCostPath = "invalid cost path" :: Types.PurchaseReason,
+	CostPathNotSpendable = "cost path is not a spendable number" :: Types.PurchaseReason,
+	InsufficientFunds = "insufficient funds" :: Types.PurchaseReason,
+	PaidRandomRestricted = "paid-random-restricted" :: Types.PurchaseReason,
+	PolicyPending = "policy-pending" :: Types.PurchaseReason,
+})
+
+--[=[
+	@within Scribe
+	@tag Monetization
+	@prop GiftReason { [string]: GiftReason }
+	The fixed refusals of [Server.PromptGift]. Two further refusals are interpolated
+	with the offending value and so cannot be constants: an unknown product name, and
+	a failed purchase prompt.
+
+	The fourteen members are `BuyerDataNotLoaded`, `InvalidRecipient`,
+	`CannotGiftYourself`, `GiftCooldown`, `TooManyPending`, `DataServicesDown`,
+	`RecipientAlreadyOwns`, `CreditReserveFailed`, `DeliveryFailed`,
+	`DeliveryUnconfirmed`, `AlreadyPending`, `IntentRecordFailed`,
+	`PaidRandomRestricted` and `PolicyPending`. Each one's
+	string is in the [Gifting](../gifting.md#reading-the-refusal) guide.
+]=]
+Scribe.GiftReason = table.freeze({
+	BuyerDataNotLoaded = "buyer data not loaded" :: Types.GiftReason,
+	InvalidRecipient = "invalid recipient" :: Types.GiftReason,
+	CannotGiftYourself = "cannot gift yourself" :: Types.GiftReason,
+	GiftCooldown = "gift cooldown" :: Types.GiftReason,
+	TooManyPending = "too many pending gifts" :: Types.GiftReason,
+	DataServicesDown = "data services are experiencing issues; try again later" :: Types.GiftReason,
+	RecipientAlreadyOwns = "recipient already owns this" :: Types.GiftReason,
+	CreditReserveFailed = "could not reserve gift credit; try again later" :: Types.GiftReason,
+	DeliveryFailed = "could not deliver gift; try again later" :: Types.GiftReason,
+	DeliveryUnconfirmed = "gift delivery could not be confirmed; do not send it again" :: Types.GiftReason,
+	AlreadyPending = "a gift of this item is already pending; try again shortly" :: Types.GiftReason,
+	IntentRecordFailed = "could not record gift intent; try again later" :: Types.GiftReason,
+	PaidRandomRestricted = "paid-random-restricted" :: Types.GiftReason,
+	PolicyPending = "policy-pending" :: Types.GiftReason,
+})
+
+--[=[
+	@type ProductState "purchasable" | "owned" | "paid-random-restricted" | "policy-pending" | "not-loaded"
+	@tag Reasons
+	The state of a declared pass or product for one player, from
+	[Server.GetProductState] and [Client.GetProductState]. Every value but
+	`"purchasable"` is also the reason [Server.PromptPurchase] refuses with, so a
+	shop and the prompt cannot disagree. The names are also on [Scribe.ProductState].
+]=]
+
+--[=[
+	@within Scribe
+	@tag Monetization
+	@prop ProductState { [string]: ProductState }
+	The members are `Purchasable`, `Owned`, `PaidRandomRestricted`, `PolicyPending`
+	and `NotLoaded`. Each one's string is in the
+	[Monetization](../monetization.md#paid-random-items) guide.
+]=]
+Scribe.ProductState = table.freeze({
+	Purchasable = "purchasable" :: Types.ProductState,
+	Owned = "owned" :: Types.ProductState,
+	PaidRandomRestricted = "paid-random-restricted" :: Types.ProductState,
+	PolicyPending = "policy-pending" :: Types.ProductState,
+	NotLoaded = "not-loaded" :: Types.ProductState,
 })
 
 --[=[
@@ -1404,6 +3069,8 @@ end
 	@prop OnStatusChanged Signal
 	Fires with the new status (`"Healthy" | "Degraded" | "Outage"`) whenever
 	service health changes.
+
+	The value is a [Signal](signal.md), where `Connect`, `Once` and `Wait` are documented.
 ]=]
 Scribe.OnStatusChanged = Health.OnStatusChanged
 
@@ -1413,6 +3080,8 @@ Scribe.OnStatusChanged = Health.OnStatusChanged
 	@prop OnIssue Signal
 	Fires for every Error/Fatal log entry: the single hook to wire up developer
 	alerting (Discord webhook, PagerDuty, …) from your own game code.
+
+	The value is a [Signal](signal.md), where `Connect`, `Once` and `Wait` are documented.
 ]=]
 Scribe.OnIssue = Log.OnIssue
 
@@ -1421,11 +3090,18 @@ Scribe.OnIssue = Log.OnIssue
 	@tag Diagnostics
 	@function AddLogSink
 	@param fn (entry: LogEntry) -> ()
+	@return () -> ()
 	Registers an extra log sink. Scribe never sends logs anywhere itself. Add a
 	sink to forward them to your own pipeline. Keep secrets in game code.
+
+	Returns a function that removes the sink again. Calling it twice is a no-op
+	rather than removing whoever took that slot since. Keep it if your sink has a
+	lifetime (a hot-reloaded module, a bundle you `Stop()`), because the sink list
+	is a module singleton that nothing else clears, and **every entry spawns a
+	thread per registered sink**, on the busiest failure path there is.
 ]=]
-function Scribe.AddLogSink(fn: (entry: LogEntry) -> ())
-	Log.AddSink(fn :: any)
+function Scribe.AddLogSink(fn: (entry: LogEntry) -> ()): () -> ()
+	return Log.AddSink(fn :: any)
 end
 
 --[=[
@@ -1434,8 +3110,9 @@ end
 	@function GetRecentLogs
 	@param filter { Level: LogLevel?, Category: LogCategory?, Code: LogCode?, Limit: number? }?
 	@return { LogEntry }
-	Returns entries from the 512-entry ring buffer in chronological order, so the
-	newest is the LAST element. `Limit` keeps the most recent N. Optionally
+	Returns entries from the ring buffer in chronological order, so the newest is
+	the LAST element. The ring holds 512 entries unless the `LogRingSize` option
+	raises it. `Limit` keeps the most recent N. Optionally
 	filtered by level/category/code. `Code`, `Level`, and `Category` are typed
 	string unions, so editors autocomplete valid values (see the Log Code
 	Reference for the full list of codes).
@@ -1459,6 +3136,58 @@ end
 
 --[=[
 	@within Scribe
+	@tag Diagnostics
+	@function GetPercentiles
+	@return { [string]: { P50: number, P90: number, P99: number } }
+	Nearest-rank percentiles for every distribution [`GetMetrics`](#getmetrics)
+	reports as a `{ Count, Average, Max }` record: save durations, profile sizes,
+	per-frame flush costs, bytes per send.
+	
+	The half `GetMetrics` cannot give you: an average hides the tail, and a P99 save
+	duration is what a player actually waits for on a bad key.
+
+	Keyed by metric name. A name that has never been observed is **absent** rather
+	than present with zeroes, so `next()` on the result tells you whether anything
+	has been measured at all.
+
+	Computed over a rolling window of the most recent 256 samples per name, bounded
+	because an unbounded sample list on a metric observed once per save is a slow
+	leak. So these describe recent behaviour, and `GetMetrics().<name>.Count` is the
+	all-time count, which deliberately does not agree with the window.
+]=]
+function Scribe.GetPercentiles(): { [string]: { P50: number, P90: number, P99: number } }
+	return Metrics.GetPercentiles()
+end
+
+--[=[
+	@within Scribe
+	@tag Diagnostics
+	@function GetBudgetSnapshot
+	@return BudgetSnapshot
+	The DataStore request allowance the engine currently reports, by request type.
+
+	```lua
+	local budget = Scribe.GetBudgetSnapshot()
+	if budget.Available and budget.Budgets.UpdateAsync < 10 then
+	    warn("running low on save allowance")
+	end
+	```
+
+	`Available` is `false` when the engine could not be asked at all, such as on a
+	headless runner or in Studio with API access off. Treat that as *no opinion*: it
+	is not the same as an allowance of zero, and code that confuses the two stalls
+	forever in exactly the environments where there is nothing to conserve.
+
+	Purely a read. To have Scribe act on it, set
+	[`BudgetPolicy`](../configuration.md#integrity), which paces the two leaderboard
+	background loops and deliberately touches no save path.
+]=]
+function Scribe.GetBudgetSnapshot(): Budget.Snapshot
+	return Budget.Snapshot()
+end
+
+--[=[
+	@within Scribe
 	@tag Setup
 	@function new
 	@param options ScribeOptions
@@ -1466,6 +3195,12 @@ end
 	Compiles the template and builds the `{ Server, Client }` bundle. Calling the
 	module directly (`Scribe(options)`) is sugar for this. Require the same
 	shared module on both the server and the client and use the matching half.
+
+	`options` is a `ScribeOptions` table. Only three fields are required; the rest
+	cover persistence, monetization, gifting, behaviour limits and diagnostics.
+	[Configuration](../configuration.md) documents every one of them, and
+	[The three you must set](../configuration.md#the-three-you-must-set) is where
+	to start on a first bundle.
 ]=]
 Scribe.new = buildBundle
 

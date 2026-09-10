@@ -33,7 +33,7 @@ return function(TS, t)
 			t.expect(clientPlugin.runtime.boundary).toBe("client")
 			t.expect(serverPlugin.runtime.boundary).toBe("server")
 			t.expect(clientPlugin.runtime).never.toBe(serverPlugin.runtime)
-			t.expect(serverScribe.scribeVersion()).toBe("1.0.11")
+			t.expect(serverScribe.scribeVersion()).toBe("2.3.0")
 		end)
 
 		t.it("active facade delegates to the loaded server provider", function()

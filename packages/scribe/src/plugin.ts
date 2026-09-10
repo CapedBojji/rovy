@@ -71,7 +71,7 @@ export interface ScribePluginOptions {
 	readonly strict?: boolean;
 }
 
-export const SCRIBE_SUPPORTED_VERSION = "1.0.11";
+export const SCRIBE_SUPPORTED_VERSION = "2.3.0";
 
 export type ScribeImmediateTree<D extends AnyScribeData> =
 	& ScribeReadTree<ScribeFullSchema<D>>

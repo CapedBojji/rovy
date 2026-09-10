@@ -4,13 +4,16 @@ This directory contains an unmodified source snapshot of the native Scribe
 runtime used by `@rovy/scribe`.
 
 - Repository: `https://github.com/ericplane/Scribe`
-- Wally package: `ericplane/scribe@1.0.11`
-- Tag: `v1.0.11`
-- Commit: `4253d303f3ea9e70b362d9e1e498b805ac3a8d01`
+- Wally package: `ericplane/scribe@2.3.0`
+- Tag: `v2.3.0`
+- Commit: `e3309e9debdce2d3571406c48ded89f728404795`
 - License: MIT; see `LICENSE`
 
 The checked-in Wally payload is `src`, `default.project.json`, `wally.toml`,
-`LICENSE`, and the upstream `README.md`. The native Studio acceptance fixture
+`LICENSE`, `NOTICE`, `licenses/`, and the upstream `README.md`. Scribe 2.x
+bundles its own patched ProfileStore under `src/Internal/Store`, which is what
+`NOTICE` and `licenses/` cover, so games no longer install ProfileStore
+themselves. The native Studio acceptance fixture
 also needs the unmodified upstream `test/Helpers/FakeProfileStore.luau`, so that
 single test helper is included.
 

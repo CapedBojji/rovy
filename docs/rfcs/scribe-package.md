@@ -14,6 +14,12 @@ snapshot is in [`docs/packages/scribe-parity.md`](../packages/scribe-parity.md).
 
 ## Inventory baseline
 
+> **The supported peer has since moved to `2.3.0`.** This inventory was written
+> against `1.0.11` and is kept as the record of that design work; it is not a
+> description of the current peer. See
+> [Compatibility](/packages/scribe-compatibility) for what is supported now,
+> and the notes below on what 2.x changed.
+
 The inventory was made from the official `ericplane/scribe` tag:
 
 - Version: `1.0.11`
@@ -21,6 +27,18 @@ The inventory was made from the official `ericplane/scribe` tag:
 - Commit: `4253d303f3ea9e70b362d9e1e498b805ac3a8d01`
 - Commit date: 2026-07-23
 - Runtime dependency: `lm-loleris/profilestore@1.0.3`
+
+### What 2.x changed against this baseline
+
+- The replication protocol moved from 1 to 6, so mismatched server and client
+  builds refuse each other with `PROTOCOL_MISMATCH`.
+- ProfileStore is bundled inside the package, so the Wally dependency above is
+  gone.
+- The command frame carries an idempotency key between the header and the
+  arguments, and a key on a non-`Idempotent` command is refused.
+- Writes into the reserved `_Scribe` root raise, transactions may not touch a
+  second player, and `Data.RestoreVersion` no longer rolls that root back.
+- In edit mode a bundle builds the client half rather than the server half.
 
 The source files used were `src/init.luau`, `src/Types.luau`,
 `src/Internal/Node.luau`, `src/Internal/Datatypes.luau`,

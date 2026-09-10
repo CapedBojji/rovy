@@ -14,8 +14,11 @@ Verified runtime peer:
 
 ```toml
 [dependencies]
-Scribe = "ericplane/scribe@1.0.11"
+Scribe = "ericplane/scribe@2.3.0"
 ```
+
+Scribe 2.x bundles its own patched ProfileStore, so do not install
+`lm-loleris/profilestore` alongside it.
 
 Read the [package guide](https://capedbojji.github.io/rovy/packages/scribe),
 [migration guide](https://capedbojji.github.io/rovy/packages/scribe-migration),

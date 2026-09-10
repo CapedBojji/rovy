@@ -1,7 +1,6 @@
 --!strict
--- Client assembly: local mirror tree, Hello/Init handshake, diff
--- application, command RPC, leaderboard/status/shared mirrors, and the
--- always-on edit-mode fallback with mock helpers.
+-- Client assembly: local mirror tree, Hello/Init handshake, diff application,
+-- command RPC, leaderboard/status/shared mirrors, and the edit-mode fallback.
 
 local RunService = game:GetService("RunService")
 
@@ -11,15 +10,40 @@ local Node = require(Internal.Node)
 local Wire = require(Internal.Wire)
 local Template = require(Internal.Template)
 local TransportModule = require(Internal.Transport)
+local DerivedModule = require(Internal.Derived)
 local Version = require(Internal.Version)
 local Log = require(Internal.Log)
 local Metrics = require(Internal.Metrics)
 local Health = require(Internal.Health)
 local Signal = require(Internal.Signal)
+local Clock = require(script.Parent.Internal.Clock)
+local Rng = require(script.Parent.Internal.Rng)
+local Sched = require(Internal.Sched)
+local Defaults = require(Internal.Defaults)
+-- For RequestFailed only: the identity Request appends to its own refusals.
+local Types = require(script.Parent.Types)
 
 local Client = {}
 
+-- Test seam: Players.LocalPlayer is read-only in Studio.
+local localPlayerProbe: (() -> any)? = nil
+
+function Client.SetLocalPlayerProbe(fn: (() -> any)?)
+	localPlayerProbe = fn
+end
+
+local function readLocalPlayer(): any
+	if localPlayerProbe ~= nil then
+		return localPlayerProbe()
+	end
+	return (game:GetService("Players") :: any).LocalPlayer
+end
+
 local ID_TO_STATUS: { [number]: string } = { [0] = "Healthy", [1] = "Degraded", [2] = "Outage" }
+
+-- The placeholder a request slot carries until it is settled. Frozen and shared
+-- because it is never read or written; one allocation for the whole module.
+local NO_RESULTS: { any } = table.freeze({} :: { any })
 
 -- Applies a decoded op to a plain table (other players' Shared mirrors).
 local function applyPlainOp(root: { [any]: any }, op: Wire.Op)
@@ -31,11 +55,9 @@ local function applyPlainOp(root: { [any]: any }, op: Wire.Op)
 			if op.Kind == "Remove" then
 				return -- array removals always ship alongside their creating Insert
 			end
-			-- Materialize intermediates for Set (any value) and Clear too: the
-			-- server only emits an op when the parent chain existed at emission, so
-			-- a missing parent here means its creating op was coalesced away in the
-			-- same flush while the server still holds the (possibly empty)
-			-- container. Creating it keeps existence parity with the server.
+			-- Materialize intermediates for Set and Clear too: a missing parent means
+			-- its creating op was coalesced away in the same flush while the server
+			-- still holds the container, so creating it here keeps existence parity.
 			nextContainer = {}
 			container[segment] = nextContainer
 		end
@@ -61,23 +83,30 @@ local function applyPlainOp(root: { [any]: any }, op: Wire.Op)
 		if type(value) == "table" then
 			table.clear(value)
 		else
-			-- A Clear only emits for a container that existed server-side; if its
-			-- creating op was coalesced away, materialize the cleared {} here.
+			-- A Clear only emits for a container that existed server-side, so if
+			-- its creating op was coalesced away, materialize the cleared {}.
 			container[key] = {}
 		end
 	end
 end
 
 function Client.new(options: any, compiled: Template.Compiled): any
-	local isRunning = RunService:IsRunning()
+	-- Test seams: patching RunService itself is illegal on a real service Instance,
+	-- so without these nothing needing edit mode or the Studio hook runs in Studio.
+	local isRunning = if options.IsRunning ~= nil then options.IsRunning == true else RunService:IsRunning()
+	local devMode = if options.DevMode ~= nil then options.DevMode == true else RunService:IsStudio()
 	local editMode = not isRunning
 
 	if options.LogLevel then
 		Log.SetLevel(options.LogLevel)
 	end
+	if options.LogRingSize ~= nil then
+		Log.SetRingSize(options.LogRingSize)
+	end
 
 	local mirror: { [string]: any } = Template.BuildDefaults(compiled, "Client")
 	local loaded = editMode
+	local stopped = false
 	local loadedSignal = Signal.new()
 
 	local tree = Node.NewTree({
@@ -88,7 +117,7 @@ function Client.new(options: any, compiled: Template.Compiled): any
 		OnOp = nil, -- client writes are local-only
 		OnAnomaly = nil,
 		BoundsPolicy = options.BoundsPolicy or "Clamp",
-		DevMode = RunService:IsStudio(),
+		DevMode = devMode,
 		TimedHooks = {
 			-- Timed internals are server-only; the client sees the value.
 			SetTimed = function()
@@ -106,9 +135,19 @@ function Client.new(options: any, compiled: Template.Compiled): any
 		LogError = function(message)
 			Log.Error("Lifecycle", "LISTENER_ERROR", message, {})
 		end,
+		OnDerivedIssue = function(code, field, detail)
+			-- A mismatch means the server computed a different value than this realm,
+			-- so the compute function is impure. The server's value wins.
+			local report: typeof(Log.Warn) = if code == "DERIVED_MISMATCH" then Log.Warn else Log.Error
+			report("Derived", code :: any, `"{field}": {detail}`, { Field = field })
+		end,
 	})
 
 	local sharedMirrors: { [number]: { [string]: any } } = {}
+	-- Derived fields another player's mirror has to compute for itself.
+	local function isSharedLocalDerived(node: any): boolean
+		return node.Visibility == "Shared" and not node.Derived.Transmit
+	end
 	local leaderboardCache: { [string]: { Entries: { any }, MyRank: number?, MyScore: number? } } = {}
 	local mockCommands: { [string]: (...any) -> ...any } = {}
 	local mockLeaderboards: { [string]: { any } } = {}
@@ -119,8 +158,47 @@ function Client.new(options: any, compiled: Template.Compiled): any
 	local OnLeaderboard = Signal.new()
 
 	local transport: any = nil
-	local requestWaiters: { [number]: thread } = {}
+	-- One in-flight Client.Request. The slot carries the answer, not the resumption:
+	-- Sched.Resume is task.spawn, so a synchronous loopback can settle the slot from
+	-- inside the send while the requester is still running, and resuming a running
+	-- thread raises.
+	--   Parked   written only by the requester either side of its yield, so never true
+	--            while it runs. coroutine.status is no substitute: a transport that
+	--            yields inside SendToServer would misdeliver the reply.
+	--   Settled  an answer has been claimed. The reply, the timeout and a throwing send
+	--            race for it; first wins. Results carries an explicit Count because a
+	--            handler may return nils and `#` on a table with a hole is undefined.
+	type RequestSlot = {
+		Correlation: number,
+		Thread: thread,
+		Parked: boolean,
+		Settled: boolean,
+		Results: { any },
+		Count: number,
+	}
+	local requestWaiters: { [number]: RequestSlot } = {}
 	local nextCorrelation = 0
+
+	-- The one place a request is answered and the one place a slot leaves the map, so
+	-- the "exactly one winner" rule is a single guard. Nothing after it yields.
+	local function settleRequest(slot: RequestSlot, results: { any }, count: number)
+		if slot.Settled then
+			return
+		end
+		slot.Settled = true
+		slot.Results = results
+		slot.Count = count
+		-- Cleared by identity, never by presence: correlations wrap at 2^32, so a dead
+		-- request's timer must not evict the slot that inherited its number.
+		if requestWaiters[slot.Correlation] == slot then
+			requestWaiters[slot.Correlation] = nil
+		end
+		-- No values passed: the requester reads the slot, so a resumed request and one
+		-- answered before it yielded cannot disagree about arity.
+		if slot.Parked then
+			Sched.Resume(slot.Thread)
+		end
+	end
 
 	local function waitForLoaded()
 		while not loaded do
@@ -142,10 +220,8 @@ function Client.new(options: any, compiled: Template.Compiled): any
 		local ok, err = pcall(function()
 			transport:SendToServer(Wire.Finish(w))
 		end)
-		-- A dropped Hello leaves the client stuck at defaults (the server logs
-		-- CLIENT_HANDSHAKE_TIMEOUT), so surface the underlying send error once
-		-- instead of retrying it silently forever. A Sandboxed Scribe fails here
-		-- ("cannot fire ... the calling thread is sandboxed").
+		-- A dropped Hello leaves the client stuck at defaults, so surface the send error
+		-- once instead of retrying silently. A sandboxed calling thread fails here.
 		if not ok and not helloSendFailLogged then
 			helloSendFailLogged = true
 			Log.Warn("Transport", "SEND_FAIL", `client could not send its Hello handshake: {tostring(err)}`, {})
@@ -156,10 +232,9 @@ function Client.new(options: any, compiled: Template.Compiled): any
 		local ops = Wire.DecodeOps(reader, compiled)
 		-- The snapshot supersedes local state: reset to defaults, then apply.
 		local defaults = Template.BuildDefaults(compiled, "Client")
-		-- Do the reset + apply INSIDE ReplayFire so that on a re-Init (a second
-		-- snapshot after a resync) Changed listeners see their true pre-snapshot
-		-- value as `old`. ReplayFire snapshots olds before running this closure;
-		-- resetting the mirror outside it would make every `old` the default.
+		-- Reset and apply inside ReplayFire so a re-Init's Changed listeners see their
+		-- true pre-snapshot value as `old`; ReplayFire snapshots olds before the closure,
+		-- so resetting outside it makes every `old` the default.
 		tree:ReplayFire(function()
 			table.clear(mirror)
 			for key, value in defaults do
@@ -169,6 +244,12 @@ function Client.new(options: any, compiled: Template.Compiled): any
 				tree:ApplyOp(op)
 			end
 		end)
+		-- Foreign mirrors are superseded too. sendInit re-sends a SharedInit for every
+		-- player still on the server right after this frame, so what does not come back
+		-- is what left; the only way a client that missed a SharedGone drops that ghost.
+		-- Cleared silently: a player who left and one whose SharedInit is a frame away
+		-- are indistinguishable here, so firing would report everyone gone and then back.
+		table.clear(sharedMirrors)
 		if not loaded then
 			loaded = true
 			loadedSignal:Fire()
@@ -176,9 +257,92 @@ function Client.new(options: any, compiled: Template.Compiled): any
 		Log.Debug("Replication", "INIT_APPLIED", "initial snapshot applied", {})
 	end
 
+	-- Fragment reassembly ------------------------------------------------------
+	--
+	-- The server splits any frame larger than its MaxOutboundBytes; everything below
+	-- this point sees only whole logical frames, so a snapshot still lands in one
+	-- ReplayFire. Not a security boundary: only the server can raise OnClientEvent on
+	-- the Down remote, which is also why the decoder below has no object budget. The
+	-- ceiling only stops a corrupted length field becoming a huge allocation.
+	local MAX_REASSEMBLY_BYTES = 64 * 1024 * 1024
+	local fragBuf: buffer? = nil
+	local fragSeq, fragTotal, fragWritten, fragExpected = -1, 0, 0, 0
+	-- Set whenever a fragment lands, cleared by the handshake retry loop: a Hello sent
+	-- mid-snapshot makes the server throw it away and re-encode the whole profile.
+	local fragProgress = false
+
+	local function resetFragments()
+		fragBuf, fragSeq, fragTotal, fragWritten, fragExpected = nil, -1, 0, 0, 0
+	end
+
+	-- Refusals are counted, not just dropped: a gap, a replayed piece or a forged
+	-- length is otherwise indistinguishable from an unfinished frame.
+	local function refuseFragment(reason: string): buffer?
+		resetFragments()
+		Metrics.Add("FragmentsRefused")
+		Log.Debug("Replication", "FRAGMENT_REFUSED", reason, {})
+		return nil
+	end
+
+	local function acceptFragment(bytes: buffer): buffer?
+		local size = buffer.len(bytes)
+		if size < Wire.FRAGMENT_HEADER then
+			return refuseFragment("fragment shorter than its header")
+		end
+		local seq = buffer.readu16(bytes, 1)
+		local declared = buffer.readu32(bytes, 3)
+		local index = buffer.readu16(bytes, 7)
+		local payload = size - Wire.FRAGMENT_HEADER
+		if index == 0 then
+			resetFragments()
+			if declared == 0 or payload == 0 then
+				return refuseFragment("empty fragment")
+			end
+			if declared > MAX_REASSEMBLY_BYTES then
+				return refuseFragment("declared length is not a plausible frame")
+			end
+			fragBuf, fragSeq, fragTotal, fragWritten, fragExpected = buffer.create(declared), seq, declared, 0, 0
+		end
+		local dest = fragBuf
+		if dest == nil then
+			-- Not an error and deliberately not counted: a fragment arriving with
+			-- nothing in flight is the tail of a frame whose head was lost.
+			return nil
+		end
+		if seq ~= fragSeq or index ~= fragExpected or declared ~= fragTotal or payload == 0 then
+			return refuseFragment("fragment does not continue the frame in progress")
+		end
+		if fragWritten + payload > fragTotal then
+			return refuseFragment("fragment overruns the declared length")
+		end
+		buffer.copy(dest, fragWritten, bytes, Wire.FRAGMENT_HEADER, payload)
+		fragWritten += payload
+		fragExpected += 1
+		fragProgress = true
+		if fragWritten < fragTotal then
+			return nil
+		end
+		resetFragments()
+		-- A reassembled frame is never itself a fragment; refusing it stops a malformed
+		-- stream re-entering the dispatcher without bound.
+		if buffer.readu8(dest, 0) == Wire.Frames.Fragment then
+			return refuseFragment("reassembled frame is itself a fragment")
+		end
+		Metrics.Add("FramesReassembled")
+		return dest
+	end
+
 	local function handleFrame(bytes: buffer)
 		local reader = Wire.NewReader(bytes)
 		local frameType = Wire.RU8(reader)
+
+		if frameType == Wire.Frames.Fragment then
+			local whole = acceptFragment(bytes)
+			if whole ~= nil then
+				handleFrame(whole)
+			end
+			return
+		end
 
 		if frameType == Wire.Frames.Init then
 			applyInit(reader)
@@ -190,9 +354,9 @@ function Client.new(options: any, compiled: Template.Compiled): any
 				return
 			end
 			local ops = Wire.DecodeOps(reader, compiled)
-			for _, op in ops do
-				tree:ApplyOp(op)
-			end
+			-- One frame, one batch: a Server.Batch that coalesced into this frame
+			-- must not fan back out into one container fire per op.
+			tree:ApplyOps(ops)
 			Metrics.Add("DiffsApplied")
 		elseif frameType == Wire.Frames.CommandReply then
 			local correlation = Wire.RU32(reader)
@@ -202,15 +366,17 @@ function Client.new(options: any, compiled: Template.Compiled): any
 			for i = 1, count do
 				results[i] = Wire.DecodeGeneric(reader)
 			end
-			local thread = requestWaiters[correlation]
-			if thread then
-				requestWaiters[correlation] = nil
+			local slot = requestWaiters[correlation]
+			if slot then
 				if ok then
-					-- Transparent RPC: the handler's return values ARE the
-					-- Request results`).
-					task.spawn(thread, table.unpack(results, 1, count))
+					-- Transparent RPC: the handler's return values are the Request results,
+					-- handed over by reference with the frame's own count byte.
+					settleRequest(slot, results, count)
 				else
-					task.spawn(thread, false, results[1])
+					-- ok == 0: the framework refused, so results[1] is a sentinel and the
+					-- appended marker is what makes that distinguishable. The count is
+					-- spelled out because a malformed reply can leave results[1] nil.
+					settleRequest(slot, { false, results[1], Types.RequestFailed }, 3)
 				end
 			end
 		elseif frameType == Wire.Frames.Status then
@@ -228,13 +394,13 @@ function Client.new(options: any, compiled: Template.Compiled): any
 			for _, op in ops do
 				applyPlainOp(shared, op)
 			end
-			-- One event per update carrying the current shared data (a clone, so
-			-- listeners can't mutate the mirror); nil is reserved for SharedGone.
-			-- CloneUnpack also converts any datatype fields from their packed wire
-			-- buffer back to the real datatype (the Shared mirror has no accessor
-			-- tree to do this on read). Only pay for that full-mirror unpack+clone
-			-- when something is actually listening: a game that reads Shared data via
-			-- Data.GetShared (pull) instead of OnSharedChanged (push) then skips it.
+			-- A Shared derived field the server did not send is computed per client, and
+			-- a foreign mirror is a plain table with no accessor tree. Recompute before
+			-- the change event so a listener never sees it without its derived fields.
+			DerivedModule.EvaluateInto(compiled, shared, isSharedLocalDerived)
+			-- One event per update carrying a clone of the shared data; nil is reserved
+			-- for SharedGone. CloneUnpack also converts packed datatype fields back to
+			-- the real datatype, so only pay for it when something is listening.
 			if OnSharedChanged:HasListeners() then
 				OnSharedChanged:Fire(userId, Node.CloneUnpack(compiled.Root, shared))
 			end
@@ -259,15 +425,13 @@ function Client.new(options: any, compiled: Template.Compiled): any
 				cache.MyScore = Wire.RF64(reader)
 			end
 			leaderboardCache[name] = cache
-			OnLeaderboard:Fire(name)
+			OnLeaderboard:Fire(name, entries)
 		end
 	end
 
-	-- Studio-only client debug hook for the Scribe Studio plugin's client
-	-- view. Attached before the transport connects so the Init snapshot
-	-- application is captured too. Read-only by construction; outside Studio
-	-- the branch is never taken and the hook does not exist.
-	if isRunning and RunService:IsStudio() and RunService:IsClient() then
+	-- Studio-only client debug hook for the Scribe Studio plugin. Attached before the
+	-- transport connects so the Init snapshot application is captured too.
+	if isRunning and devMode and (options.IsClient == true or RunService:IsClient()) then
 		local hookOk, hookErr = pcall(function()
 			(require(script.DebugHook) :: any).Attach({
 				Compiled = compiled,
@@ -284,22 +448,33 @@ function Client.new(options: any, compiled: Template.Compiled): any
 	end
 
 	if isRunning then
-		task.spawn(function()
-			transport = TransportModule.Resolve(options.Transport, options.TransportChannel)
-			transport:ListenClient(function(bytes: buffer)
+		Sched.Spawn(function()
+			local resolved = TransportModule.Resolve(options.Transport, options.TransportChannel)
+			transport = resolved
+			resolved:ListenClient(function(bytes: buffer)
 				local ok, err = pcall(handleFrame :: any, bytes)
 				if not ok then
 					Log.Warn("Transport", "MALFORMED_FRAME", tostring(err), {})
 				end
 			end)
-			-- Hello retries cover server-side races and custom adapters that
-			-- connect late.
+			-- Hello retries cover server-side races and adapters that connect late.
 			sendHello()
 			local delaySeconds = 2
 			while not loaded do
-				task.wait(delaySeconds)
-				if loaded then
+				-- The retry delay only. The first sendHello stays immediate: delaying it
+				-- would slow every ordinary join to fix a problem only a mass rejoin has.
+				Clock.Wait(Rng.Jitter(delaySeconds))
+				if loaded or stopped then
 					break
+				end
+				if fragProgress then
+					-- A snapshot is arriving, one fragment at a time. Asking again is harmful:
+					-- the server answers a Hello by re-encoding the whole profile, so a large
+					-- Init would keep restarting. Clearing the flag keeps a stalled sequence
+					-- from blocking retries forever.
+					fragProgress = false
+					delaySeconds = 2
+					continue
 				end
 				sendHello()
 				delaySeconds = math.min(delaySeconds * 1.5, 10)
@@ -362,18 +537,100 @@ function Client.new(options: any, compiled: Template.Compiled): any
 		local function resume(result: boolean)
 			if not settled then
 				settled = true
-				task.spawn(thread, result)
+				Sched.Resume(thread, result)
 			end
 		end
 		local conn = loadedSignal:Connect(function()
 			resume(true)
 		end)
-		task.delay(timeout or 30, function()
+		Clock.Delay(timeout or Defaults.ClientWaitForData, function()
 			resume(false)
 		end)
 		local result = coroutine.yield()
 		conn:Disconnect()
 		return result
+	end
+
+	-- The body behind Request and RequestOnce. `idemKey` is nil for a plain request
+	-- and ships as an empty string, which the server reads as "no key", so a command
+	-- frame has one layout. `level` keeps the arity error pointing at the caller.
+	local function dispatchRequest(name: string, idemKey: string?, args: { n: number, [number]: any }, level: number)
+		if editMode then
+			local mock = mockCommands[name]
+			if mock then
+				local results
+				local ok = pcall(function()
+					results = table.pack(mock(table.unpack(args, 1, args.n)))
+				end)
+				if ok and results then
+					return table.unpack(results, 1, results.n)
+				end
+				return false, "mock-error", Types.RequestFailed
+			end
+			return false, "edit-mode", Types.RequestFailed
+		end
+		-- Fail loud rather than clamping: dropping the extras here would run the
+		-- handler with missing trailing arguments instead of the server's refusal.
+		if args.n > Wire.MAX_COMMAND_ARGS then
+			error(`Scribe: a command takes at most {Wire.MAX_COMMAND_ARGS} arguments (got {args.n})`, level)
+		end
+		-- No transport check here: waitForLoaded only returns once an Init frame arrived,
+		-- which requires the transport. A nil one still surfaces as "send-failed" below.
+		waitForLoaded()
+		nextCorrelation = (nextCorrelation + 1) % 4294967296
+		local correlation = nextCorrelation
+		local w = Wire.NewWriter(64)
+		Wire.U8(w, Wire.Frames.Command)
+		Wire.U32(w, correlation)
+		Wire.Str(w, name)
+		Wire.U8(w, args.n)
+		-- Ahead of the arguments, so the server can refuse an unusable key before it
+		-- decodes anything attacker-sized.
+		Wire.Str(w, idemKey or "")
+		for i = 1, args.n do
+			Wire.EncodeGeneric(w, args[i])
+		end
+
+		local slot: RequestSlot = {
+			Correlation = correlation,
+			Thread = coroutine.running(),
+			Parked = false,
+			Settled = false,
+			Results = NO_RESULTS,
+			Count = 0,
+		}
+		requestWaiters[correlation] = slot
+		-- Armed before the send so the deadline covers the send itself, which matters if
+		-- the spawn below ever goes. Clock.Delay cannot be cancelled, so the callback
+		-- always fires and settleRequest is what makes a late one a no-op.
+		Clock.Delay(options.RequestTimeout or Defaults.Request, function()
+			settleRequest(slot, { false, "timeout", Types.RequestFailed }, 3)
+		end)
+		-- Spawned, not deferred. Sched.Spawn runs the send immediately on this stack, so
+		-- a synchronous loopback closes the round trip before this line returns and the
+		-- requester never parks. A Sched.Defer would put the reply's resume inside a
+		-- deferred callback, promoting the requester one re-entrancy generation per round
+		-- trip until it hangs. The spawn also means a SendToServer that never returns
+		-- hangs its own coroutine, so the timeout can still answer.
+		local bytes = Wire.Finish(w)
+		Sched.Spawn(function()
+			local ok = pcall(function()
+				transport:SendToServer(bytes)
+			end)
+			if not ok then
+				-- Reached synchronously for a throwing send, so the requester is still
+				-- running and this records rather than resumes.
+				settleRequest(slot, { false, "send-failed", Types.RequestFailed }, 3)
+			end
+		end)
+		-- A loop rather than an `if`, so a stray resume from outside Scribe re-parks
+		-- instead of returning an unsettled slot; the timeout above always arrives.
+		while not slot.Settled do
+			slot.Parked = true
+			coroutine.yield()
+			slot.Parked = false
+		end
+		return table.unpack(slot.Results, 1, slot.Count)
 	end
 
 	--[=[
@@ -384,69 +641,54 @@ function Client.new(options: any, compiled: Template.Compiled): any
 		@param name string
 		@param ... any
 		@return ...any
-		Calls a server command registered with [Server.Command] and returns its
-		results. Yields until the reply arrives (or times out → `false, "timeout"`).
-		This is the one way clients change data authoritatively.
+		Calls a server command registered with [Server.Command] and returns whatever
+		its handler returned. It yields until the reply arrives, and resolves
+		`false, "timeout"` if none comes within `RequestTimeout`. This is the one way
+		a client changes data authoritatively.
+
+		When Scribe refuses rather than your handler, the result is `false`, one
+		[Scribe.RequestReason], and [Scribe.RequestFailed] in a third slot. Test that
+		third value, because a handler may return `false, "timeout"` of its own. A
+		retry after a timeout runs the handler a second time, so reach for
+		[Client.RequestOnce] when that is not safe. See
+		[Commands & Requests](../commands.md#what-the-caller-gets-back-on-failure).
 	]=]
 	function Data.Request(name: string, ...: any): ...any
-		if editMode then
-			local mock = mockCommands[name]
-			if mock then
-				local args = table.pack(...)
-				local results
-				local ok = pcall(function()
-					results = table.pack(mock(table.unpack(args, 1, args.n)))
-				end)
-				if ok and results then
-					return table.unpack(results, 1, results.n)
-				end
-				return false, "mock-error"
-			end
-			return false, "edit-mode"
-		end
-		waitForLoaded()
-		if not transport then
-			return false, "no-transport"
-		end
-		nextCorrelation = (nextCorrelation + 1) % 4294967296
-		local correlation = nextCorrelation
-		local args = table.pack(...)
-		-- Fail loud rather than clamping: a silent clamp here would drop the extras
-		-- before the server ever saw them, so the handler would run with missing
-		-- trailing arguments instead of the server's "too many command arguments".
-		if args.n > Wire.MAX_COMMAND_ARGS then
-			error(`Scribe: a command takes at most {Wire.MAX_COMMAND_ARGS} arguments (got {args.n})`, 2)
-		end
-		local w = Wire.NewWriter(64)
-		Wire.U8(w, Wire.Frames.Command)
-		Wire.U32(w, correlation)
-		Wire.Str(w, name)
-		Wire.U8(w, args.n)
-		for i = 1, args.n do
-			Wire.EncodeGeneric(w, args[i])
-		end
+		return dispatchRequest(name, nil, table.pack(...), 3)
+	end
 
-		local thread = coroutine.running()
-		requestWaiters[correlation] = thread
-		task.delay(options.RequestTimeout or 10, function()
-			if requestWaiters[correlation] == thread then
-				requestWaiters[correlation] = nil
-				task.spawn(thread, false, "timeout")
-			end
-		end)
-		-- Deferred so the requester is already suspended when a synchronous
-		-- (loopback) transport delivers the reply.
-		local bytes = Wire.Finish(w)
-		task.defer(function()
-			local ok = pcall(function()
-				transport:SendToServer(bytes)
-			end)
-			if not ok and requestWaiters[correlation] == thread then
-				requestWaiters[correlation] = nil
-				task.spawn(thread, false, "send-failed")
-			end
-		end)
-		return coroutine.yield()
+	--[=[
+		@within Client
+		@tag Commands
+		@client
+		@yields
+		@param name string
+		@param key string
+		@param ... any
+		@return ...any
+		Like [Client.Request], but tagged with an idempotency `key`: the server runs
+		the handler at most once per key and replays its original reply, byte for
+		byte, to every repeat. Use it for anything a retry must not do twice, and
+		generate the key once per intent rather than once per attempt.
+
+		The command must be registered `Idempotent = true`, and a key sent to one that
+		is not, or a keyless [Client.Request] to one that is, is refused with
+		`"bad-idempotency-key"`. A key must be non-empty, valid UTF-8, and at most 64
+		bytes, and this call raises on your own thread rather than send one that is
+		not. See
+		[Running a command at most once](../commands.md#running-a-command-at-most-once).
+	]=]
+	function Data.RequestOnce(name: string, key: string, ...: any): ...any
+		-- Rejected here rather than at the server: an unusable key is a caller mistake,
+		-- and a round trip would return it looking like a genuine handler refusal.
+		if type(key) ~= "string" or key == "" or #key > Wire.MAX_IDEMPOTENCY_KEY_BYTES or not utf8.len(key) then
+			error(
+				`Scribe: RequestOnce needs a non-empty idempotency key of at most `
+					.. `{Wire.MAX_IDEMPOTENCY_KEY_BYTES} valid UTF-8 bytes`,
+				2
+			)
+		end
+		return dispatchRequest(name, key, table.pack(...), 3)
 	end
 
 	--[=[
@@ -494,6 +736,8 @@ function Client.new(options: any, compiled: Template.Compiled): any
 		@client
 		@prop OnLeaderboard Signal
 		Fires `(boardName, entries)` whenever a replicated board updates.
+
+		The value is a [Signal](signal.md), where `Connect`, `Once` and `Wait` are documented.
 	]=]
 	Data.OnLeaderboard = OnLeaderboard
 
@@ -515,6 +759,8 @@ function Client.new(options: any, compiled: Template.Compiled): any
 		@client
 		@prop OnServiceStatus Signal
 		Fires with the new status whenever service health changes.
+
+		The value is a [Signal](signal.md), where `Connect`, `Once` and `Wait` are documented.
 	]=]
 	Data.OnServiceStatus = OnServiceStatus
 
@@ -526,6 +772,10 @@ function Client.new(options: any, compiled: Template.Compiled): any
 		@return { [string]: any }?
 		Reads another player's `Scribe.Shared` roots (public info replicated to
 		everyone), or `nil` if not yet received.
+
+		Never returns the **local** player's own roots: the server broadcasts a
+		player's Shared data to everyone except that player, so `nil` there is
+		permanent rather than pending. Read your own through the ordinary accessor.
 	]=]
 	function Data.GetShared(playerOrUserId: Player | number): { [string]: any }?
 		local userId = if typeof(playerOrUserId) == "Instance"
@@ -543,6 +793,8 @@ function Client.new(options: any, compiled: Template.Compiled): any
 		@client
 		@prop OnSharedChanged Signal
 		Fires `(userId, sharedData)` when another player's Shared data changes.
+
+		The value is a [Signal](signal.md), where `Connect`, `Once` and `Wait` are documented.
 	]=]
 	Data.OnSharedChanged = OnSharedChanged
 	--[=[
@@ -554,10 +806,21 @@ function Client.new(options: any, compiled: Template.Compiled): any
 		actually changes. Ownership already held at load is the baseline and does not
 		fire. Use [Client.ObserveOwned] instead when you care about one specific key
 		and want the current value immediately.
+
+		The value is a [Signal](signal.md), where `Connect`, `Once` and `Wait` are documented.
 	]=]
 	Data.OnOwnershipChanged = OnOwnershipChanged
 
 	-- Ownership: reads the replicated mirror.
+	-- Client twin of the server's check. Without it a non-string key reads as "not owned"
+	-- off a nil table index, so a typo is indistinguishable from a player who owns nothing.
+	local function assertOwnsKey(key: any, what: string)
+		if type(key) ~= "string" then
+			-- 3: assertOwnsKey -> Data.<Api> -> the game code that got it wrong.
+			error(`Scribe: {what}: key must be a string, got {typeof(key)}`, 3)
+		end
+	end
+
 	local function ownsFromMirror(key: string): boolean
 		local reserved = mirror[Template.RESERVED_ROOT]
 		if type(reserved) == "table" and type(reserved.Perks) == "table" and reserved.Perks[key] == true then
@@ -581,6 +844,7 @@ function Client.new(options: any, compiled: Template.Compiled): any
 		Yields until data has loaded.
 	]=]
 	function Data.Owns(key: string): boolean
+		assertOwnsKey(key, "Owns")
 		if not editMode then
 			waitForLoaded()
 		end
@@ -607,6 +871,7 @@ function Client.new(options: any, compiled: Template.Compiled): any
 		back to the current mirror value after `timeout` seconds (default 10).
 	]=]
 	function Data.OwnsAsync(key: string, timeout: number?): boolean
+		assertOwnsKey(key, "OwnsAsync")
 		if editMode then
 			return ownsFromMirror(key)
 		end
@@ -621,17 +886,17 @@ function Client.new(options: any, compiled: Template.Compiled): any
 					if disconnect then
 						disconnect()
 					end
-					task.spawn(thread)
+					Sched.Resume(thread)
 				end
 			end
 			disconnect = tree.Accessor[Template.SESSION_ROOT].OwnsSynced.Changed(function(v)
 				if v == true then
 					wake()
 				end
-			end)
-			task.delay(timeout or 10, wake)
-			-- If the flag arrived between the check and the connect, clean up and
-			-- skip the yield -- never task.spawn a thread that has not yielded.
+			end) :: () -> ()
+			Clock.Delay(timeout or Defaults.OwnsAsync, wake)
+			-- If the flag arrived between the check and the connect, clean up and skip
+			-- the yield: never task.spawn a thread that has not yielded.
 			if ownsSyncedFromMirror() then
 				settled = true
 				if disconnect then
@@ -644,8 +909,8 @@ function Client.new(options: any, compiled: Template.Compiled): any
 		return ownsFromMirror(key)
 	end
 
-	-- Drives OnOwnershipChanged. Mirrors ObserveOwned's dedupe, but across every key
-	-- the mirror actually holds, so a listener does not have to know keys up front.
+	-- Drives OnOwnershipChanged. Dedupes like ObserveOwned, but across every key the
+	-- mirror holds, so a listener does not have to know keys up front.
 	local ownsLast: { [string]: boolean } = {}
 	local ownsWatched = false
 	local function scanOwnership(silent: boolean?)
@@ -685,7 +950,9 @@ function Client.new(options: any, compiled: Template.Compiled): any
 		waitForLoaded()
 		scanOwnership(true) -- baseline: current ownership is not a "change"
 		local accessor = tree.Accessor
-		accessor[Template.RESERVED_ROOT].Perks.Changed(function()
+		-- Through the privileged handle, not the public child: a public read of the
+		-- reserved root hands back a detached deep copy (readOut in Node.luau).
+		tree.Reserved.Perks.Changed(function()
 			scanOwnership()
 		end)
 		accessor[Template.SESSION_ROOT].OwnsCache.Changed(function()
@@ -704,6 +971,7 @@ function Client.new(options: any, compiled: Template.Compiled): any
 		Returns a disconnect function. Ideal for reactively toggling "buy" buttons.
 	]=]
 	function Data.ObserveOwned(key: string, callback: (owned: boolean) -> ()): () -> ()
+		assertOwnsKey(key, "ObserveOwned")
 		if not editMode then
 			waitForLoaded()
 		end
@@ -712,14 +980,546 @@ function Client.new(options: any, compiled: Template.Compiled): any
 			local owned = ownsFromMirror(key)
 			if owned ~= last then
 				last = owned
-				task.spawn(callback, owned)
+				Sched.Spawn(callback, owned)
 			end
 		end
 		local accessor = tree.Accessor
-		local disconnectPerk = accessor[Template.RESERVED_ROOT].Perks.Changed(push)
+		-- Privileged handle: see the note in ensureOwnershipWatched.
+		local disconnectPerk = tree.Reserved.Perks.Changed(push)
 		local disconnectCache = accessor[Template.SESSION_ROOT].OwnsCache.Changed(push)
 		push()
 		return function()
+			disconnectPerk()
+			disconnectCache()
+		end
+	end
+
+	-- Product info --------------------------------------------------------------
+	--
+	-- Client-side by necessity: a live server has no player in context, so its
+	-- GetProductInfoAsync answers the base catalog price, which is the one number a
+	-- discounted player never pays. Studio servers DO answer personalized, so the
+	-- server version tests clean and ships broken.
+	--
+	-- Lazy throughout: a bundle that never asks for a price pays nothing.
+
+	-- Overridable because patching a real service Instance is illegal, the same seam
+	-- as the server's UserOwnsGamePassAsync.
+	local getProductInfoAsync: (assetId: number, infoType: any) -> any = options.GetProductInfoAsync
+		or function(assetId: number, infoType: any): any
+			local marketplace: any = game:GetService("MarketplaceService")
+			return marketplace:GetProductInfoAsync(assetId, infoType)
+		end
+	local getPolicyInfoAsync: (player: any) -> any = options.GetPolicyInfoAsync
+		or function(player: any): any
+			return (game:GetService("PolicyService") :: any):GetPolicyInfoForPlayerAsync(player)
+		end
+
+	-- Distinct from nil, so an observer's first push fires while nothing is resolved.
+	local UNRESOLVED: any = table.freeze({})
+	local PRODUCT_ATTEMPTS = 4
+	local PRODUCT_RETRY_BASE = 2
+
+	local productAssets: { [string]: { Id: number, InfoType: any } }? = nil
+	local productInfo: { [string]: any } = {}
+	local productWaiters: { [string]: { { Thread: thread, Settled: boolean } } } = {}
+	local productObservers: { [string]: { () -> () } } = {}
+	local productQueue: { string } = {}
+	local productQueued: { [string]: boolean } = {}
+	local productFlushScheduled = false
+	local membershipWatched = false
+	local membershipConnection: any = nil
+
+	-- Every declared pass and product, built on first use.
+	local function ensureProductAssets(): { [string]: { Id: number, InfoType: any } }
+		if productAssets == nil then
+			local built: { [string]: { Id: number, InfoType: any } } = {}
+			for passName, config in (options.Passes or {}) :: { [string]: any } do
+				built[passName] = { Id = config.Id, InfoType = Enum.InfoType.GamePass }
+			end
+			-- The server refuses a product named like a pass, so one namespace is enough.
+			for productName, config in (options.Products or {}) :: { [string]: any } do
+				built[productName] = { Id = config.Id, InfoType = Enum.InfoType.Product }
+			end
+			productAssets = built
+		end
+		return productAssets :: any
+	end
+
+	-- The declared pass or product, or a raise naming the key.
+	local function productAsset(name: string, api: string): { Id: number, InfoType: any }
+		local asset = ensureProductAssets()[name]
+		if asset == nil then
+			-- 3: productAsset -> Data.<Api> -> the game code that got it wrong.
+			error(`Scribe.{api}: "{tostring(name)}" is not a declared pass or product`, 3)
+		end
+		return asset
+	end
+
+	local function notifyProduct(name: string)
+		local observers = productObservers[name]
+		if observers == nil then
+			return
+		end
+		-- Cloned: a callback may disconnect itself, which mutates the list.
+		for _, push in table.clone(observers) do
+			push()
+		end
+	end
+
+	local function settleProduct(name: string, info: any)
+		productQueued[name] = nil
+		if info ~= nil then
+			productInfo[name] = info
+		end
+		local waiters = productWaiters[name]
+		productWaiters[name] = nil
+		if waiters ~= nil then
+			for _, waiter in waiters do
+				-- Settled is the discriminator, not coroutine status: a caller that timed
+				-- out and then parked on something else is also "suspended", and resuming
+				-- it here wakes it out of an unrelated wait.
+				if not waiter.Settled then
+					waiter.Settled = true
+					-- Directly: a wake must never travel the defer queue.
+					Sched.Resume(waiter.Thread, info)
+				end
+			end
+		end
+		notifyProduct(name)
+	end
+
+	local function fetchProduct(name: string)
+		local asset = if productAssets ~= nil then (productAssets :: any)[name] else nil
+		if asset == nil then
+			return
+		end
+		for attempt = 1, PRODUCT_ATTEMPTS do
+			local ok, result = pcall(getProductInfoAsync, asset.Id, asset.InfoType)
+			if ok and type(result) == "table" then
+				settleProduct(name, result)
+				return
+			end
+			if attempt == PRODUCT_ATTEMPTS then
+				Log.Warn(
+					"Monetization",
+					"PRODUCT_INFO_FAIL",
+					`could not read product info for "{name}": {tostring(result)}`,
+					{ Product = name }
+				)
+				-- Never the base price: nil means "show a placeholder".
+				settleProduct(name, nil)
+				return
+			end
+			Log.Warn(
+				"Monetization",
+				"PRODUCT_INFO_THROTTLED",
+				`product info for "{name}" failed, retrying ({attempt}/{PRODUCT_ATTEMPTS})`,
+				{ Product = name }
+			)
+			Clock.Wait(Rng.Jitter(PRODUCT_RETRY_BASE * 2 ^ (attempt - 1)))
+		end
+	end
+
+	local function flushProductQueue()
+		productFlushScheduled = false
+		local batch = productQueue
+		productQueue = {}
+		-- Together on purpose: the engine only coalesces calls in flight at the same
+		-- time, so one burst costs one request where N singles cost N.
+		for _, name in batch do
+			Sched.Spawn(fetchProduct, name)
+		end
+	end
+
+	local function enqueueProduct(name: string)
+		if productInfo[name] ~= nil or productQueued[name] then
+			return
+		end
+		productQueued[name] = true
+		table.insert(productQueue, name)
+		if not productFlushScheduled then
+			productFlushScheduled = true
+			Sched.Defer(flushProductQueue)
+		end
+	end
+
+	-- Observers hear about the new value landing, not the old one being dropped, so a
+	-- successful refresh does not blink the price to nil.
+	local function refreshProduct(name: string?)
+		local names: { string } = {}
+		if name ~= nil then
+			names[1] = name
+		else
+			for cached in productInfo do
+				table.insert(names, cached)
+			end
+		end
+		for _, each in names do
+			productInfo[each] = nil
+			enqueueProduct(each)
+		end
+	end
+
+	-- A Roblox Plus discount moves the price, leaving the cached one wrong for the rest
+	-- of the session. Armed on first use, and one-shot: the flag flips at most once in a
+	-- session. The 10% to 20% step at month three does not move it at all, which is what
+	-- RefreshProductInfo is for.
+	--
+	-- The signal is on the PLAYER. Asking the Players service for it raises, and the
+	-- pcall would swallow that into a watch that silently never fires.
+	local function watchMembership()
+		if membershipWatched then
+			return
+		end
+		-- Left unarmed while there is no LocalPlayer, so the next read retries.
+		membershipWatched = pcall(function()
+			local localPlayer: any = readLocalPlayer()
+			membershipConnection = localPlayer:GetPropertyChangedSignal("HasRobloxSubscription"):Once(function()
+				refreshProduct(nil)
+			end)
+		end)
+	end
+
+	-- Paid random items. The server enforces; this greys the button, so unknown
+	-- reads as pending.
+	local POLICY_ATTEMPTS = 3
+	local POLICY_RETRY_BASE = 2
+	local POLICY_REARM_AFTER = 30
+	local policy: any = nil
+	local policyObservers: { () -> () } = {}
+
+	local function anyPaidRandom(): boolean
+		for _, config in (options.Products or {}) :: { [string]: any } do
+			if config.PaidRandom == true then
+				return true
+			end
+		end
+		return false
+	end
+
+	local function notifyPolicy()
+		for _, push in table.clone(policyObservers) do
+			push()
+		end
+	end
+
+	local function readPolicy(attempts: number)
+		local mine = policy
+		for attempt = 1, attempts do
+			if policy ~= mine or stopped then
+				return
+			end
+			mine.LastAttempt = Clock.Monotonic()
+			local ok, info = pcall(function()
+				return getPolicyInfoAsync(readLocalPlayer())
+			end)
+			if policy ~= mine or stopped then
+				return
+			end
+			if ok and type(info) == "table" then
+				mine.Restricted = info.ArePaidRandomItemsRestricted == true
+				mine.Phase = "known"
+				notifyPolicy()
+				return
+			end
+			if attempt == attempts then
+				mine.Phase = "failed"
+				if not mine.Logged then
+					mine.Logged = true
+					Log.Warn(
+						"Monetization",
+						"POLICY_READ_FAIL",
+						`could not read the local player's policy: {tostring(info)}; paid random items stay pending`,
+						{}
+					)
+				end
+				return
+			end
+			Clock.Wait(Rng.Jitter(POLICY_RETRY_BASE * 2 ^ (attempt - 1)))
+		end
+	end
+
+	local function ensurePolicy(): any
+		if policy == nil then
+			policy = { Phase = "pending", Restricted = false, LastAttempt = 0, Logged = false }
+			Sched.Spawn(readPolicy, POLICY_ATTEMPTS)
+		elseif policy.Phase == "failed" and Clock.Monotonic() - policy.LastAttempt >= POLICY_REARM_AFTER then
+			policy.Phase = "pending"
+			Sched.Spawn(readPolicy, 1)
+		end
+		return policy
+	end
+
+	-- nil when the local player may buy paid random items.
+	local function paidRandomState(): string?
+		local current = ensurePolicy()
+		if current.Phase == "known" then
+			return if current.Restricted then "paid-random-restricted" else nil
+		end
+		return "policy-pending"
+	end
+
+	-- The same answer the server gives, from the mirror and the local policy.
+	local function productStateFor(name: string): string
+		if not loaded then
+			return "not-loaded"
+		end
+		local products: any = options.Products or {}
+		local passes: any = options.Passes or {}
+		local config: any = products[name] or passes[name]
+		if products[name] ~= nil and config.PaidRandom == true then
+			local refused = paidRandomState()
+			if refused ~= nil then
+				return refused
+			end
+		end
+		local ownedKey = if products[name] ~= nil then config.Grants else name
+		if ownedKey ~= nil and ownsFromMirror(ownedKey) then
+			return "owned"
+		end
+		return "purchasable"
+	end
+
+	--[=[
+		@within Client
+		@tag Monetization
+		@client
+		@param name string
+		@return { [string]: any }?
+		Marketplace info for a declared pass or product, as **this** player sees it.
+		`PriceInRobux` is what they are charged, after any Roblox Plus or regional
+		discount; `UserBasePriceInRobux` and `PriceDiscountDetails` are there for a
+		"was 100, now 80" button.
+
+		Returns nil until the first read lands, and starts that read. Poll it, or use
+		[Client.ObserveProductInfo]. Never waits for the profile to load.
+
+		Client-only by necessity: a live server has no player in context and reads the
+		base catalog price, which is not what a discounted player pays.
+	]=]
+	function Data.GetProductInfo(name: string): { [string]: any }?
+		productAsset(name, "GetProductInfo")
+		watchMembership()
+		enqueueProduct(name)
+		return productInfo[name]
+	end
+
+	--[=[
+		@within Client
+		@tag Monetization
+		@client
+		@param name string
+		@return number?
+		Shorthand for the `PriceInRobux` of [Client.GetProductInfo]: the Robux this
+		player pays. nil until the first read lands, and starts that read.
+	]=]
+	function Data.GetPrice(name: string): number?
+		local info = Data.GetProductInfo(name)
+		local price = if info ~= nil then info.PriceInRobux else nil
+		return if type(price) == "number" then price else nil
+	end
+
+	--[=[
+		@within Client
+		@tag Monetization
+		@client
+		@param name string
+		@param timeout number?
+		@return { [string]: any }?
+		Like [Client.GetProductInfo], but yields until the read lands. Returns nil if it
+		times out (default 10s), or if Marketplace refused every attempt.
+	]=]
+	function Data.GetProductInfoAsync(name: string, timeout: number?): { [string]: any }?
+		productAsset(name, "GetProductInfoAsync")
+		watchMembership()
+		local cached = productInfo[name]
+		if cached ~= nil then
+			return cached
+		end
+		enqueueProduct(name)
+		-- Re-checked before parking: a queue that ever resolved synchronously would
+		-- leave this thread in the waiter list with nobody left to wake it.
+		local resolved = productInfo[name]
+		if resolved ~= nil then
+			return resolved
+		end
+		local waiters = productWaiters[name]
+		if waiters == nil then
+			waiters = {}
+			productWaiters[name] = waiters
+		end
+		local waiter = { Thread = coroutine.running(), Settled = false }
+		table.insert(waiters :: { any }, waiter)
+		Clock.Delay(timeout or Defaults.ProductInfo, function()
+			if not waiter.Settled then
+				waiter.Settled = true
+				Sched.Resume(waiter.Thread, nil)
+			end
+		end)
+		return coroutine.yield()
+	end
+
+	--[=[
+		@within Client
+		@tag Monetization
+		@client
+		@param name string
+		@param timeout number?
+		@return number?
+		Shorthand for the `PriceInRobux` of [Client.GetProductInfoAsync]: the Robux this
+		player pays. nil if the read times out (default 10s) or was refused.
+	]=]
+	function Data.GetPriceAsync(name: string, timeout: number?): number?
+		local info = Data.GetProductInfoAsync(name, timeout)
+		local price = if info ~= nil then info.PriceInRobux else nil
+		return if type(price) == "number" then price else nil
+	end
+
+	--[=[
+		@within Client
+		@tag Monetization
+		@client
+		@param name string
+		@param callback ({ [string]: any }?) -> ()
+		@return () -> ()
+		Calls `callback` with the info now (nil if it has not landed), again when it
+		does, and again if the price changes. Returns a disconnect function. The
+		reactive way to price a shop button.
+	]=]
+	function Data.ObserveProductInfo(name: string, callback: ({ [string]: any }?) -> ()): () -> ()
+		productAsset(name, "ObserveProductInfo")
+		watchMembership()
+		local last: any = UNRESOLVED
+		local alive = true
+		local function push()
+			if not alive then
+				return
+			end
+			local info = productInfo[name]
+			if info ~= last then
+				last = info
+				Sched.Spawn(callback, info)
+			end
+		end
+		local list = productObservers[name]
+		if list == nil then
+			list = {}
+			productObservers[name] = list
+		end
+		table.insert(list :: { () -> () }, push)
+		enqueueProduct(name)
+		push()
+		return function()
+			alive = false
+			local current = productObservers[name]
+			if current ~= nil then
+				local index = table.find(current, push)
+				if index ~= nil then
+					table.remove(current, index)
+				end
+			end
+		end
+	end
+
+	--[=[
+		@within Client
+		@tag Monetization
+		@client
+		@param names { string }?
+		Warms `names`, or every declared pass and product when omitted, as one batch.
+		Optional: every read path fetches on demand anyway. Worth calling before opening
+		a shop with many items, because one burst costs one request where the same reads
+		trickling in frame by frame cost one each.
+	]=]
+	function Data.PrefetchProductInfo(names: { string }?)
+		watchMembership()
+		if anyPaidRandom() then
+			ensurePolicy()
+		end
+		if names == nil then
+			for name in ensureProductAssets() do
+				enqueueProduct(name)
+			end
+			return
+		end
+		-- Validated in full first, so a typo raises instead of half-warming.
+		for _, name in names do
+			productAsset(name, "PrefetchProductInfo")
+		end
+		for _, name in names do
+			enqueueProduct(name)
+		end
+	end
+
+	--[=[
+		@within Client
+		@tag Monetization
+		@client
+		@param name string?
+		Drops the cached info for `name`, or for everything when omitted, and reads it
+		again. Scribe already does this the first time the local player's
+		`HasRobloxSubscription` flips; use this for any later move.
+	]=]
+	function Data.RefreshProductInfo(name: string?)
+		if name ~= nil then
+			productAsset(name, "RefreshProductInfo")
+		end
+		refreshProduct(name)
+	end
+
+	--[=[
+		@within Client
+		@tag Monetization
+		@client
+		@param name string
+		@return ProductState
+		The state of a declared pass or product for the local player, as one
+		[Scribe.ProductState] string: `"purchasable"`, `"owned"`, `"paid-random-restricted"`,
+		`"policy-pending"` or `"not-loaded"`. The same answer the server's
+		[Server.GetProductState] gives, computed here from the mirror and the local
+		player's own policy, so a shop can grey a button without a round trip. Raises
+		for a name that is not declared.
+	]=]
+	function Data.GetProductState(name: string): string
+		productAsset(name, "GetProductState")
+		return productStateFor(name)
+	end
+
+	--[=[
+		@within Client
+		@tag Monetization
+		@client
+		@param name string
+		@param callback (state: ProductState) -> ()
+		@return () -> ()
+		Calls `callback` with the current [Client.GetProductState] and again whenever
+		it changes: the profile loading, the policy landing, ownership changing.
+		Returns a disconnect.
+	]=]
+	function Data.ObserveProductState(name: string, callback: (state: string) -> ()): () -> ()
+		productAsset(name, "ObserveProductState")
+		local last: string? = nil
+		local function push()
+			local state = productStateFor(name)
+			if state ~= last then
+				last = state
+				Sched.Spawn(callback, state)
+			end
+		end
+		local loadedConn = if loaded then nil else loadedSignal:Connect(push)
+		table.insert(policyObservers, push)
+		local disconnectPerk = tree.Reserved.Perks.Changed(push)
+		local disconnectCache = tree.Accessor[Template.SESSION_ROOT].OwnsCache.Changed(push)
+		push()
+		return function()
+			if loadedConn ~= nil then
+				loadedConn:Disconnect()
+			end
+			local index = table.find(policyObservers, push)
+			if index ~= nil then
+				table.remove(policyObservers, index)
+			end
 			disconnectPerk()
 			disconnectCache()
 		end
@@ -843,7 +1643,7 @@ function Client.new(options: any, compiled: Template.Compiled): any
 		@tag Edit Mode
 		@client
 		@param values { [string]: any }?
-		@param scribeState { Perks: { string }?, GiftCredits: { [string]: number }?, Leaderboards: { [string]: { LeaderboardEntry } }? }?
+		@param scribeState { Perks: { string }?, GiftCredits: { [string]: number }?, PurchaseLogs: { Robux: { any }?, InGame: { any }? }?, Leaderboards: { [string]: { LeaderboardEntry } }? }?
 		Seeds mock data for a storybook / edit mode. **Errors outside edit mode.**
 		Use it to render Scribe-backed components with realistic state.
 
@@ -853,9 +1653,8 @@ function Client.new(options: any, compiled: Template.Compiled): any
 	]=]
 	function Data.Mock(values: { [string]: any }?, scribeState: { [string]: any }?)
 		assertEditMode("Data.Mock")
-		-- Batch the whole-root Sets through ReplayFire so a nested observer
-		-- registered before Mock still fires (a plain whole-root Set fires only
-		-- the container's Changed, never its descendants').
+		-- Batch the whole-root Sets through ReplayFire so a nested observer registered
+		-- before Mock still fires; a whole-root Set fires only the container's Changed.
 		tree:ReplayFire(function()
 			if values then
 				for key, value in values do
@@ -864,7 +1663,9 @@ function Client.new(options: any, compiled: Template.Compiled): any
 				end
 			end
 			if scribeState then
-				local reservedAccessor = tree.Accessor[Template.RESERVED_ROOT]
+				-- The privileged handle: Data.Mock seeds Scribe's own ledgers, which the
+				-- public accessor refuses to write.
+				local reservedAccessor = tree.Reserved
 				if scribeState.Perks then
 					for _, perk in scribeState.Perks :: { string } do
 						reservedAccessor.Perks[perk].Set(true)
@@ -905,34 +1706,9 @@ function Client.new(options: any, compiled: Template.Compiled): any
 		mockCommands[name] = handler
 	end
 
-	-- A root field named like a client Data API/signal is silently shadowed by
-	-- that real key (a real key always wins over __index), so the field is
-	-- unreachable through `Data.<name>` on the client.
-	--
-	-- Reported ALWAYS, not just in Studio, and at Error level so it reaches
-	-- Scribe.OnIssue. The case worth catching is not someone authoring a template
-	-- (they would notice), it is a shipped game upgrading into a collision because
-	-- a newer Scribe added a method matching a field they already store: their
-	-- `Data.<name>` silently turns from an accessor into a function, in
-	-- production, where nobody is watching a Studio-only warning.
-	local rootChildren = compiled.Root.Children :: { [string]: any }
-	for key in Data do
-		if type(key) == "string" and rootChildren[key] then
-			Log.Error(
-				"Lifecycle",
-				"API_NAME_COLLISION",
-				`template root field "{key}" collides with a client Data API name, so it is unreachable as `
-					.. `Data.{key} on the client. Rename the field, or read it through the accessor tree.`,
-				{ Field = key }
-			)
-		end
-	end
-
-	-- Data.<rootField> resolves through the mirror tree. Returns the accessor
-	-- immediately — reads yield template defaults until the Init snapshot lands,
-	-- then Observe/Changed fire with the real values. (A metamethod must never
-	-- yield: `Data.Coins` before Init would otherwise error "attempt to yield
-	-- across metamethod/C-call boundary".)
+	-- Data.<rootField> resolves through the mirror tree, returning the accessor
+	-- immediately: reads give template defaults until Init lands. A metamethod must
+	-- never yield, so waiting here errors with "yield across metamethod/C-call".
 	setmetatable(Data :: any, {
 		__index = function(_, key: any)
 			if type(key) ~= "string" then
@@ -950,17 +1726,83 @@ function Client.new(options: any, compiled: Template.Compiled): any
 		The same `Data` object without the typed accessor tree: the untyped
 		escape hatch if the type solver ever trips on your template.
 	]=]
-	Data.Raw = Data
-
-	-- Load banner: one clean line confirming the bundle initialized
-	-- (Banner = false to silence).
-	if options.Banner ~= false then
-		print(`Running Scribe v{Version} by ericplane — client is now initialized`)
+	-- Server store roots are in this mirror like any other root; they simply are never
+	-- written from here. Same per-root shape as the server exposes.
+	--[=[
+		@within Client
+		@tag Reads
+		@client
+		@prop ServerStore table
+		The server-owned tree as this client mirrors it, present only when the
+		bundle declares `ServerStore`. Read and observe it like any other root,
+		with no player argument; writes belong on the server.
+		
+		See [Server-owned state](../server-store.md).
+	]=]
+	if compiled.Views.Store ~= nil then
+		local proxy = {}
+		for _, key in compiled.Views.Store.RootOrder do
+			proxy[key] = tree.Accessor[key]
+		end
+		Data.ServerStore = table.freeze(proxy)
 	end
 
-	-- Drive OnOwnershipChanged once the first snapshot lands. Two listeners plus a
-	-- small scan over the keys the mirror holds, so the cost is negligible.
-	task.spawn(ensureOwnershipWatched)
+	--[=[
+		@within Client
+		@tag Lifecycle
+		@client
+		Releases what this client bundle holds on the process: the transport listener,
+		the Hello retry loop, the subscription watch behind [Client.GetProductInfo], and
+		the mirror tree's listeners. The counterpart of [Server.Stop].
+
+		A game never needs it. A storybook that remounts a bundle per story, or a test
+		suite that builds many, otherwise stacks a listener per build. Idempotent.
+	]=]
+	function Data.Stop()
+		if stopped then
+			return
+		end
+		stopped = true
+		if transport ~= nil and type((transport :: any).Release) == "function" then
+			pcall((transport :: any).Release, transport)
+		end
+		if membershipConnection ~= nil then
+			pcall(function()
+				membershipConnection:Disconnect()
+			end)
+			membershipConnection = nil
+		end
+		tree:Destroy()
+	end
+
+	Data.Raw = Data
+
+	-- One line confirming the bundle initialized (Banner = false to silence).
+	if options.Banner ~= false then
+		print(`Running Scribe v{Version} by ericplane. Client is now initialized`)
+	end
+
+	-- Drive OnOwnershipChanged once the first snapshot lands.
+	Sched.Spawn(ensureOwnershipWatched)
+
+	-- A root field named like a client Data API is silently shadowed by that real key
+	-- (a real key always wins over __index), so it is unreachable as `Data.<name>`.
+	-- Reported always rather than only in Studio, and at Error level so it reaches
+	-- Scribe.OnIssue: the case worth catching is a shipped game upgrading into a
+	-- collision. Keep this last: `for key in Data` sees only the keys that exist when
+	-- it runs, and raw iteration means only real keys are judged.
+	local rootChildren = compiled.Root.Children :: { [string]: any }
+	for key in Data do
+		if type(key) == "string" and rootChildren[key] then
+			Log.Error(
+				"Lifecycle",
+				"API_NAME_COLLISION",
+				`template root field "{key}" collides with a client Data API name, so it is unreachable as `
+					.. `Data.{key} on the client. Rename the field, or read it through the accessor tree.`,
+				{ Field = key }
+			)
+		end
+	end
 
 	return Data
 end

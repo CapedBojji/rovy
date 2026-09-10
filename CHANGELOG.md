@@ -142,6 +142,14 @@
 
 ### Changed
 
+- Moved the supported native Scribe peer from `1.0.11` to `2.3.0` (tag `v2.3.0`,
+  commit `e3309e9debdce2d3571406c48ded89f728404795`) and revendored the
+  snapshot. Two upgrade notes for games: Scribe 2.x bundles its own patched
+  ProfileStore, so remove `lm-loleris/profilestore` from `wally.toml`; and the
+  replication protocol moved from 1 to 6, so a server and a client built from
+  different Scribe versions refuse each other with `PROTOCOL_MISMATCH` and must
+  be deployed together.
+
 - Set the first published version of every package to `0.1.0` (previously
   `0.0.0`) and widened the inter-package `peerDependencies` from the exact
   `0.0.0` to `^0.1.0`. `@rovy/jecs` keeps its upstream-tracking

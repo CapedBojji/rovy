@@ -29,13 +29,13 @@ Open that place in Roblox Studio and start a single-player playtest. The test
 passes when output contains all three lines:
 
 ```text
-ROVY_SCRIBE_STUDIO_COMPAT_OK 1.0.11
-ROVY_SCRIBE_NATIVE_SERVER_OK 1.0.11
-ROVY_SCRIBE_NATIVE_CLIENT_OK 1.0.11
+ROVY_SCRIBE_STUDIO_COMPAT_OK 2.3.0
+ROVY_SCRIBE_NATIVE_SERVER_OK 2.3.0
+ROVY_SCRIBE_NATIVE_CLIENT_OK 2.3.0
 ```
 
-The exact supported peer in this fixture is Scribe tag `v1.0.11`, commit
-`4253d303f3ea9e70b362d9e1e498b805ac3a8d01`.
+The exact supported peer in this fixture is Scribe tag `v2.3.0`, commit
+`e3309e9debdce2d3571406c48ded89f728404795`.
 
 The fixture injects Scribe's deterministic test ProfileStore so it can verify
 native persistence behavior without Roblox cloud access. Real cloud service

@@ -110,7 +110,7 @@ export class FakeScribeBinding implements ScribeBinding {
 	private readonly logs = new Array<ScribeLogEntry>();
 	private currentStatus: ScribeStatus = "Healthy";
 
-	constructor(readonly version = "1.0.11-fake") {}
+	constructor(readonly version = "2.3.0-fake") {}
 
 	configure(config: Readonly<Record<string, unknown>>): void {
 		this.configurations.push(config);

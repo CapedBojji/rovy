@@ -23,7 +23,7 @@ function M.nativeModule(version)
 	local configured = {}
 	local declaratorCalls = {}
 	local module = {
-		Version = version or "1.0.11",
+		Version = version or "2.3.0",
 		Datatypes = {},
 		OnStatusChanged = {},
 		OnIssue = {},

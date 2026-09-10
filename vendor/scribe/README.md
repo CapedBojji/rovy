@@ -8,7 +8,7 @@
 ```toml
 # wally.toml
 [dependencies]
-Scribe = "ericplane/scribe@1.0.11"
+Scribe = "ericplane/scribe@2.3.0"
 ```
 
 - **Fully typed.** A type-solver-generated accessor tree types your data end to end (`data.Coins.Increment(50)`, nested containers, arrays, and datatype fields), checked at compile time.
@@ -39,7 +39,7 @@ return Scribe({
 local Data = require(game:GetService("ReplicatedStorage").Shared.Data).Server
 
 game:GetService("Players").PlayerAdded:Connect(function(player)
-    local data = Data.WaitForData(player) -- yields until Ready (or ~60s timeout)
+    local data = Data.WaitForData(player) -- yields until Ready (default 60s timeout)
     if data then
         data.Coins.Increment(50)
     end

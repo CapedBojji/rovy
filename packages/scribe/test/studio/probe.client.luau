@@ -135,7 +135,7 @@ local function runStudioCompatibility()
 		StudioCompatibilityUnknownOption = true,
 	})
 
-	assert(binding.version == "1.0.11", "unexpected native Scribe version")
+	assert(binding.version == "2.3.0", "unexpected native Scribe version")
 	assert(bundle.Client ~= nil, "wrapper binding did not construct the client bundle")
 	assert(
 		bundle.__ScribeTemplate == template,
