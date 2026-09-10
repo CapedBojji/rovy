@@ -1,6 +1,6 @@
 import { App } from "@rovy/core";
 import { DataStorePlugin } from "@rovy/datastore";
-import { CoinsLabel, FieldLabel, SavedLabel, renderCounts, resetRenderCounts } from "./ui";
+import { CoinsLabel, FieldLabel, SavedLabel, ScribeCoinsLabel, renderCounts, resetRenderCounts } from "./ui";
 import { DriveDocument, observed, queueAction } from "./systems";
 import { Tick } from "./schedules";
 import { Hud, hudState } from "./hud";
@@ -30,6 +30,9 @@ function describe(instance: Instance, depth: number): string {
 	return out;
 }
 
+/** Bumped by hand; the runner prints it so a stale build is obvious. */
+export const HARNESS_REVISION = "scribe-rerender-1";
+
 export function runIntegrationTests(): Array<CaseResult> {
 	const results = new Array<CaseResult>();
 	const record = (name: string, ok: boolean, detail: string): void => {
@@ -51,6 +54,7 @@ export function runIntegrationTests(): Array<CaseResult> {
 	app.mount(CoinsLabel, screen);
 	app.mount(SavedLabel, screen);
 	app.mount(FieldLabel, screen);
+	app.mount(ScribeCoinsLabel, screen);
 	app.start();
 	settle();
 
@@ -149,6 +153,16 @@ export function runIntegrationTests(): Array<CaseResult> {
 	);
 	print("ROVY_VISUAL_TREE " + describe(hudScreen, 0));
 	hudScreen.Destroy();
+
+	const beforeScribe = renderCounts.scribeEvent;
+	queueAction("sendScribeChanged");
+	app.runSchedule(Tick);
+	settle();
+	record(
+		"ui rerenders on a @scribeEvent bound in static rerender",
+		renderCounts.scribeEvent > beforeScribe,
+		`before=${beforeScribe} after=${renderCounts.scribeEvent}`,
+	);
 
 	const changedLabel = screen.FindFirstChild("CoinsLabel") as TextLabel | undefined;
 	record(

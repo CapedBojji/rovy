@@ -28,7 +28,8 @@
             "ui": { "$path": "node_modules/@rovy/ui" },
             "imgui": { "$path": "node_modules/@rovy/imgui" },
             "networking": { "$path": "node_modules/@rovy/networking" },
-            "world-inspector": { "$path": "node_modules/@rovy/world-inspector" }
+            "world-inspector": { "$path": "node_modules/@rovy/world-inspector" },
+            "scribe": { "$path": "node_modules/@rovy/scribe" }
           }
         }
       },

@@ -2,9 +2,10 @@ import { system, type Commands } from "@rovy/core";
 import type { DocumentOpener, DocumentReader, DocumentWriter } from "@rovy/datastore";
 import { OWNER, Profile, WorldConfig } from "./documents";
 import { ProfileFieldChanged } from "./events";
+import { ScribeCoinsChanged } from "./scribe-data";
 import { Tick } from "./schedules";
 
-type Action = "open" | "addCoins" | "save" | "sendFieldChanged" | "openShared";
+type Action = "open" | "addCoins" | "save" | "sendFieldChanged" | "openShared" | "sendScribeChanged";
 
 /**
  * Document handles are injected params, so writes have to happen inside a
@@ -41,6 +42,9 @@ export class DriveDocument {
 				writer.save(OWNER);
 			} else if (action === "sendFieldChanged") {
 				commands.send(new ProfileFieldChanged("coins"));
+			} else if (action === "sendScribeChanged") {
+				// Exactly what ScribeEventRuntime.flush does for a profile change.
+				commands.send(new ScribeCoinsChanged());
 			} else if (action === "openShared") {
 				// Calls def.key(owner) internally: a shared document whose string
 				// key was emitted verbatim used to throw here.

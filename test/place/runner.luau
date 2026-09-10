@@ -5,6 +5,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TS = require(ReplicatedStorage:WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
 local harness = TS.import(script, ReplicatedStorage:WaitForChild("RovyIntegration"), "harness")
 
+print("ROVY_HARNESS_REVISION " .. tostring(harness.HARNESS_REVISION))
+
 local ok, resultsOrErr = pcall(harness.runIntegrationTests)
 if not ok then
 	print("ROVY_INTEGRATION_FAIL threw: " .. tostring(resultsOrErr))
