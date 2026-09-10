@@ -1,0 +1,23 @@
+{
+  "name": "@rovy/integration-place",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Roblox integration place: proves Rovy runs in a real DataModel",
+  "scripts": {
+    "build": "rbxtsc --type game",
+    "dev": "rbxtsc --type game -w"
+  },
+  "devDependencies": {
+    "@rbxts/compiler-types": "3.0.0-types.0",
+    "@rbxts/t": "^3.2.1",
+    "@rbxts/types": "^1.0.920",
+    "@rovy/core": "workspace:*",
+    "@rovy/datastore": "workspace:*",
+    "@rovy/jecs": "workspace:*",
+    "@rovy/scribe": "workspace:*",
+    "@rovy/ui": "workspace:*",
+    "roblox-ts": "^3.0.0",
+    "rovy-transformer": "workspace:*",
+    "typescript": "^5.9.3"
+  }
+}

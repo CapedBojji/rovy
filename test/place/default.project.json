@@ -1,0 +1,36 @@
+{
+  "name": "rovy-integration",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "rbxts_include": {
+        "$path": "include",
+        "node_modules": {
+          "$className": "Folder",
+          "@rbxts": {
+            "$className": "Folder",
+            "t": {
+              "$className": "Folder",
+              "lib": { "$path": "node_modules/@rbxts/t/lib" }
+            },
+            "better-janitor": {
+              "$className": "Folder",
+              "src": { "$path": "../../packages/core/node_modules/@rbxts/better-janitor/src" }
+            }
+          },
+          "@rovy": {
+            "$className": "Folder",
+            "jecs": { "$path": "node_modules/@rovy/jecs" },
+            "core": { "$path": "node_modules/@rovy/core" },
+            "datastore": { "$path": "node_modules/@rovy/datastore" },
+            "ui": { "$path": "node_modules/@rovy/ui" }
+          }
+        }
+      },
+      "RovyIntegration": {
+        "$path": "out"
+      }
+    }
+  }
+}

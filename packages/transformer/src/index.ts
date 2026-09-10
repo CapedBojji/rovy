@@ -2777,8 +2777,24 @@ function lowerUiTrigger(
 		};
 	}
 	if (name === "$eventTrigger") {
+		// `$eventTrigger<DocumentChanged<typeof Doc>>()` names the event by type
+		// because package-owned events have no class to reference. Resolve it the
+		// same way an `EventReader<...>` param is resolved.
+		let ctor: ts.Expression | undefined = callExpr.arguments[0];
+		if (ctor === undefined) {
+			const typeArg = callExpr.typeArguments?.[0];
+			if (typeArg !== undefined && ts.isTypeReferenceNode(typeArg)) {
+				ctor = eventCtorFromEventTypeNode(state, sourceFile, typeArg);
+			}
+			if (ctor === undefined) {
+				state.diagnostic(
+					callExpr,
+					"[rovy/ui] $eventTrigger needs an event class argument or a resolvable event type argument",
+				);
+			}
+		}
 		return {
-			descriptor: obj([prop("kind", str("event")), prop("ctor", callExpr.arguments[0] ?? id("undefined"))], false),
+			descriptor: obj([prop("kind", str("event")), prop("ctor", ctor ?? id("undefined"))], false),
 			queryStatements: [],
 		};
 	}
@@ -5283,6 +5299,23 @@ function scribeCommandIdFromTypeArg(
 		`[rovy/scribe] ${lastTypeName(node.typeName)} requires an @scribeCommand class`,
 	);
 	return "unknown";
+}
+
+// Resolve an event named by type to the constructor the runtime actually sends
+// with. Plain `@event` classes resolve to themselves; package-owned events (such
+// as datastore document events) resolve through their package registry.
+function eventCtorFromEventTypeNode(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	typeArg: ts.TypeReferenceNode,
+): ts.Expression | undefined {
+	const eventKind = datastoreEventKind(state, sourceFile, typeArg);
+	if (eventKind !== undefined) {
+		const documentId = documentIdFromInjectedDocumentType(state, typeArg);
+		return call(field(state.addRovyDataImport(sourceFile), "eventCtor"), [str(eventKind), str(documentId)]);
+	}
+	const named = lastTypeName(typeArg.typeName);
+	return named === undefined ? undefined : id(named);
 }
 
 function datastoreEventCtorArg(

@@ -18,3 +18,7 @@
 **/**/sourcemap.json
 /packages/scribe/test/studio/.native
 /packages/scribe/test/studio/.build
+/test/place/out
+/test/place/include
+/test/place/.build
+/test/place/node_modules

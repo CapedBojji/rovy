@@ -18,6 +18,8 @@
     "test:vide": "pnpm --filter @rovy/vide test",
     "build:world-inspector": "pnpm --filter @rovy/world-inspector build",
     "test:world-inspector": "pnpm --filter @rovy/world-inspector test",
+    "build:place": "bash scripts/build-integration-place.sh",
+    "test:place": "bash scripts/run-integration-place.sh",
     "build:datastore": "pnpm --filter @rovy/datastore build",
     "test:datastore": "pnpm --filter @rovy/datastore test",
     "build:scribe": "pnpm --filter @rovy/scribe build",

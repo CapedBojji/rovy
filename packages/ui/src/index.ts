@@ -249,7 +249,26 @@ function resourceTriggerMacro(ctor: Ctor): UiTriggerDescriptor {
 	return { kind: "resource", ctor };
 }
 
-function eventTriggerMacro(ctor: Ctor): UiTriggerDescriptor {
+/**
+ * Rerender when an event is sent.
+ *
+ * Pass the event class directly for an `@event` you declared. Events owned by a
+ * companion package have no class to name — `@rovy/datastore` keys its document
+ * events off a transformer-generated document id — so name the event *type*
+ * instead and let the transformer resolve the constructor, exactly as it does
+ * for an `EventReader<...>` param:
+ *
+ * ```ts
+ * static rerender = [$eventTrigger<DocumentChanged<typeof Profile>>()];
+ * ```
+ */
+function eventTriggerMacro(ctor: Ctor): UiTriggerDescriptor;
+function eventTriggerMacro<E>(): UiTriggerDescriptor;
+function eventTriggerMacro(ctor?: Ctor): UiTriggerDescriptor {
+	assert(
+		ctor !== undefined,
+		"[rovy/ui] $eventTrigger<E>() reached runtime untransformed — is rovy-transformer in tsconfig plugins?",
+	);
 	return { kind: "event", ctor };
 }
 
