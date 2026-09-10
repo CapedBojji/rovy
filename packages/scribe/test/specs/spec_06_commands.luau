@@ -5,6 +5,9 @@ local function loadPinnedNativeCommands()
 		Wire = {},
 		Log = {},
 		Metrics = {},
+		Marker = {},
+		Clock = {},
+		Util = {},
 	}
 	local Wire = {
 		MAX_COMMAND_ARGS = 8,
@@ -32,9 +35,16 @@ local function loadPinnedNativeCommands()
 		RU32 = function(reader)
 			return reader.correlation
 		end,
-		RStr = function(reader)
+		-- 2.x frame layout: the name is read length-bounded, and a string read
+		-- after the header is the idempotency key. Empty means the caller sent
+		-- none, which is what a non-Idempotent command requires.
+		RStrBounded = function(reader, _maxBytes)
 			return reader.name
 		end,
+		RStr = function(reader)
+			return reader.idemKey or ""
+		end,
+		MAX_IDEMPOTENCY_KEY_BYTES = 64,
 		RU8 = function(reader)
 			return reader.argc
 		end,
@@ -50,6 +60,58 @@ local function loadPinnedNativeCommands()
 	local Metrics = {
 		Add = function() end,
 	}
+	local nativeDir = zune.process.cwd() .. "/test/native/scribe-2.3.0"
+
+	-- Scribe 2.x pulls Marker, Clock and Util into command dispatch. Those are
+	-- pure helpers, so the fixture loads the pinned sources rather than
+	-- stubbing behaviour the dispatch actually depends on.
+	local loadedInternals = {}
+	local function loadInternal(name)
+		if loadedInternals[name] ~= nil then return loadedInternals[name] end
+		local modulePath = nativeDir .. "/Internal/" .. name .. ".luau"
+		local moduleScript = { Parent = nil }
+		local moduleEnv
+		-- Util reaches for HttpService:GenerateGUID for correlation ids. The
+		-- dispatch under test never inspects the value, so a counter is enough.
+		local guidCounter = 0
+		moduleEnv = setmetatable({
+			task = zune.task,
+			game = {
+				GetService = function(_, name)
+					assert(name == "HttpService", "unexpected service in pinned fixture: " .. tostring(name))
+					return {
+						GenerateGUID = function()
+							guidCounter += 1
+							return string.format("00000000-0000-0000-0000-%012d", guidCounter)
+						end,
+					}
+				end,
+			},
+			script = setmetatable(moduleScript, {
+				__index = function(_, key)
+					if key == "Parent" then
+						return setmetatable({}, {
+							__index = function(_, dependency)
+								return { __internalName = dependency }
+							end,
+						})
+					end
+					return nil
+				end,
+			}),
+			require = function(target)
+				return loadInternal(target.__internalName)
+			end,
+		}, { __index = _G })
+		local chunk = zune.luau.load(zune.luau.compile(zune.fs.readFile(modulePath)), {
+			chunk_name = modulePath,
+			env = moduleEnv,
+		})
+		local value = chunk()
+		loadedInternals[name] = value
+		return value
+	end
+
 	local scriptObject = {
 		Parent = {
 			Parent = {
@@ -58,18 +120,21 @@ local function loadPinnedNativeCommands()
 		},
 	}
 	local environment = setmetatable({
+		task = zune.task,
 		script = scriptObject,
 		require = function(target)
 			if target == internal.Wire then return Wire end
 			if target == internal.Log then return Log end
 			if target == internal.Metrics then return Metrics end
+			if target == internal.Marker then return loadInternal("Marker") end
+			if target == internal.Clock then return loadInternal("Clock") end
+			if target == internal.Util then return loadInternal("Util") end
 			error("unexpected pinned Scribe fixture dependency")
 		end,
 	}, {
 		__index = _G,
 	})
-	local path = zune.process.cwd()
-		.. "/test/native/scribe-1.0.11/Server/Commands.luau"
+	local path = nativeDir .. "/Server/Commands.luau"
 	local source = zune.fs.readFile(path)
 	local bytecode = zune.luau.compile(source)
 	local chunk = zune.luau.load(bytecode, {
@@ -360,7 +425,7 @@ return function(TS, t)
 	local coreRovy = core.rovy
 
 	t.describe("@rovy/scribe native command compatibility", function()
-		t.it("yields through pinned Scribe v1.0.11 xpcall dispatch", function()
+		t.it("yields through pinned Scribe v2.3.0 xpcall dispatch", function()
 			local NativeCommands = loadPinnedNativeCommands()
 			local sent
 			local commands = NativeCommands.new({

@@ -49,7 +49,7 @@ import {
 	scribeEvent,
 } from "@rovy/scribe";
 
-const supportedScribeVersion: "1.0.11" = SCRIBE_SUPPORTED_VERSION;
+const supportedScribeVersion: "2.3.0" = SCRIBE_SUPPORTED_VERSION;
 const playerLeftReason: "player-left" = ScribeReason.PlayerLeft;
 print(supportedScribeVersion);
 print(playerLeftReason);
