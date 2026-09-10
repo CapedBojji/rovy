@@ -162,6 +162,8 @@ interface NativeNode extends BaseRuntimeNode {
 	readonly props: InstanceProps;
 	readonly connections: Map<string, RBXScriptConnection>;
 	children: Array<RuntimeNode>;
+	/** Set when the author supplied LayoutOrder, so Rovy leaves it alone. */
+	authoredLayoutOrder?: boolean;
 }
 
 interface FragmentNode extends BaseRuntimeNode {
@@ -385,11 +387,24 @@ export function textBox(props?: InstanceProps, children?: UiChildren): UiNode {
 export function viewportFrame(props?: InstanceProps, children?: UiChildren): UiNode {
 	return native("ViewportFrame", props, children);
 }
+/**
+ * Roblox defaults `SortOrder` to `Name`, which would order children
+ * alphabetically instead of the order they were written. Rovy numbers children
+ * by declaration order (see assignLayoutOrder), so sort by that unless the
+ * caller asks for something else.
+ */
+function withLayoutSortOrder(props?: InstanceProps): InstanceProps {
+	if (props !== undefined && props.SortOrder !== undefined) return props;
+	const merged: InstanceProps = { ...(props ?? {}) };
+	merged.SortOrder = Enum.SortOrder.LayoutOrder;
+	return merged;
+}
+
 export function uiListLayout(props?: InstanceProps, children?: UiChildren): UiNode {
-	return native("UIListLayout", props, children);
+	return native("UIListLayout", withLayoutSortOrder(props), children);
 }
 export function uiGridLayout(props?: InstanceProps, children?: UiChildren): UiNode {
-	return native("UIGridLayout", props, children);
+	return native("UIGridLayout", withLayoutSortOrder(props), children);
 }
 export function uiPadding(props?: InstanceProps, children?: UiChildren): UiNode {
 	return native("UIPadding", props, children);
@@ -615,6 +630,7 @@ function reconcileChildren(
 	for (const [, bucket] of available) {
 		for (const stale of bucket) destroyNode(stale);
 	}
+	assignLayoutOrder(reconciled);
 	return reconciled;
 }
 
@@ -629,7 +645,37 @@ function renderComponent(state: MountedUiState, node: ComponentNode): void {
 	node.child = reconcileNode(state, node.child, normalizeChild(output), node.parent);
 }
 
+/**
+ * Give every rendered GuiObject a LayoutOrder matching the order it was
+ * written, so a UIListLayout/UIGridLayout lays children out the way the render
+ * reads. Fragments and components are flattened, because their children are
+ * parented alongside their siblings. An explicit LayoutOrder always wins.
+ */
+function assignLayoutOrder(nodes: ReadonlyArray<RuntimeNode>): void {
+	let order = 0;
+	const visit = (node: RuntimeNode): void => {
+		if (node.kind === "native") {
+			const instance = node.instance;
+			if (instance.IsA("GuiObject")) {
+				order += 1;
+				if (node.authoredLayoutOrder !== true) instance.LayoutOrder = order;
+			}
+			return;
+		}
+		if (node.kind === "component") {
+			if (node.child !== undefined) visit(node.child);
+			return;
+		}
+		// Portals parent elsewhere, so they take no slot among these siblings.
+		if (node.kind === "fragment") {
+			for (const child of node.children) visit(child);
+		}
+	};
+	for (const node of nodes) visit(node);
+}
+
 function patchNativeProps(node: NativeNode, nextProps: InstanceProps): void {
+	node.authoredLayoutOrder = nextProps.LayoutOrder !== undefined;
 	for (const [key] of pairs(node.props)) {
 		if (nextProps[key] === undefined) clearNativeProp(node, key);
 	}
