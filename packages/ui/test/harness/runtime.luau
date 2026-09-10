@@ -609,6 +609,7 @@ local function newInstance(className)
 	return instance
 end
 
+
 local function fakeBuffer()
 	local api = {}
 	function api.create(size)

@@ -9,6 +9,8 @@ place_dir="$repo_root/test/place"
 build_dir="$place_dir/.build"
 place_file="$build_dir/rovy-integration-$(date +%Y%m%d-%H%M%S).rbxl"
 export PLACE_FILE="$place_file"
+build_stamp="$(date +%Y%m%d-%H%M%S)-$$"
+export BUILD_STAMP="$build_stamp"
 
 # run-in-roblox 0.3.0 hardcodes /Applications/RobloxStudio.app/Contents/MacOS/
 # RobloxStudio and offers no override. macOS installs Studio as "Roblox
@@ -22,7 +24,7 @@ if [ "$(uname)" = "Darwin" ] && [ ! -x "/Applications/RobloxStudio.app/Contents/
   exit 2
 fi
 
-"$repo_root/scripts/build-integration-place.sh" >/dev/null
+"$repo_root/scripts/build-integration-place.sh"
 
 run_in_roblox_bin="$(command -v run-in-roblox || true)"
 if [ -z "$run_in_roblox_bin" ]; then
@@ -33,6 +35,20 @@ fi
 
 output="$("$run_in_roblox_bin" --place "$place_file" --script "$place_dir/runner.luau" 2>&1)"
 echo "$output"
+
+# Studio reuses a document it already has open, and run-in-roblox attaches to a
+# Studio that is already running, so a run can silently execute an older build
+# and report its results. The stamp compiled into this build proves otherwise.
+if ! printf '%s' "$output" | grep -q "ROVY_BUILD_STAMP $build_stamp"; then
+  echo >&2
+  echo "Studio ran a stale place, not the build just made." >&2
+  echo "expected ROVY_BUILD_STAMP $build_stamp" >&2
+  printf '%s\n' "$output" | grep "ROVY_BUILD_STAMP" >&2 || echo "  (no stamp in output)" >&2
+  echo >&2
+  echo "run-in-roblox attaches to a Studio that is already running. Quit Roblox" >&2
+  echo "Studio, or close every other open document, and run this again." >&2
+  exit 1
+fi
 
 # run-in-roblox exits 0 even when the driven script errors, so gate on the
 # marker the runner prints only after every case passes.
