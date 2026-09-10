@@ -53,9 +53,21 @@
 
 ### Fixed
 
+- Fixed `@rovy/world-inspector` leaking its boundary-specific registrations
+  into every other `App` in the same Luau state. The systems, observers, and
+  resource registered inside `WorldInspectorPlugin.build` and
+  `WorldInspectorServerPlugin.build` carried no owning `plugin`, so
+  `App.filterRegistry` kept them everywhere. A client app started after a
+  server app therefore inherited the server's `NET_SERVER_PARAM` system and
+  failed with "missing external injected param". Each registration now names
+  its owning plugin.
 - Fixed the shared Luau test harness, which could not load a `rovy-build`
   package facade: nodes answered `FindFirstChild` but not `IsA` or
-  `GetChildren`, so `@rovy/world-inspector` specs failed before running.
+  `GetChildren`. The harness also now loads every boundary of a partitioned
+  package rather than the one `RunService` would select, since Zune has no
+  `game` and specs drive a client and a server app in one process.
+- Fixed the `@rovy/world-inspector` test suite, which had never passed. It now
+  runs in `pnpm test` and in CI alongside every other package.
 - Fixed the ECS example on the README, the docs home page, and the Your First
   System walkthrough: all three referenced an `Update` schedule that was never
   declared or imported, and Rovy ships no built-in schedules. The examples now
