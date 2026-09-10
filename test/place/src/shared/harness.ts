@@ -58,7 +58,7 @@ export function runIntegrationTests(): Array<CaseResult> {
 	// Opening is asynchronous through the adapter; give it a schedule turn.
 	app.runSchedule(Tick);
 	settle();
-	record("shared document opens", observed.coins === 0, `coins=${observed.coins}`);
+	record("keyed document opens", observed.coins === 0, `coins=${observed.coins}`);
 
 	const beforeChange = renderCounts.documentChanged;
 	queueAction("addCoins");
@@ -80,6 +80,17 @@ export function runIntegrationTests(): Array<CaseResult> {
 		"ui rerenders on DocumentSaved",
 		renderCounts.documentSaved > beforeSave,
 		`before=${beforeSave} after=${renderCounts.documentSaved}`,
+	);
+
+	queueAction("openShared");
+	app.runSchedule(Tick);
+	settle();
+	app.runSchedule(Tick);
+	settle();
+	record(
+		"shared document opens with a string key",
+		observed.sharedKey === "live" && observed.sharedSeason === "alpha",
+		`key=${observed.sharedKey} season=${observed.sharedSeason}`,
 	);
 
 	const beforeClassEvent = renderCounts.classEvent;

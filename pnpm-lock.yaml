@@ -46,6 +46,9 @@ importers:
       '@rbxts/jest-globals':
         specifier: ^3.16.0-ts.1
         version: 3.16.0-ts.1
+      '@rbxts/t':
+        specifier: ^3.2.1
+        version: 3.2.1
       '@rbxts/types':
         specifier: ^1.0.920
         version: 1.0.924
@@ -60,14 +63,13 @@ importers:
         version: 5.9.3
 
   packages/datastore:
-    dependencies:
-      '@rbxts/t':
-        specifier: ^3.2.1
-        version: 3.2.1
     devDependencies:
       '@rbxts/compiler-types':
         specifier: 3.0.0-types.0
         version: 3.0.0-types.0
+      '@rbxts/t':
+        specifier: ^3.2.1
+        version: 3.2.1
       '@rbxts/types':
         specifier: ^1.0.920
         version: 1.0.924

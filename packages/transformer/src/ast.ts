@@ -36,6 +36,14 @@ export function call(expr: ts.Expression, args: ReadonlyArray<ts.Expression> = [
 	return ts.factory.createCallExpression(expr, undefined, [...args]);
 }
 
+export function callWithTypeArguments(
+	expr: ts.Expression,
+	typeArguments: ReadonlyArray<ts.TypeNode> | undefined,
+	args: ReadonlyArray<ts.Expression> = [],
+): ts.CallExpression {
+	return ts.factory.createCallExpression(expr, typeArguments === undefined ? undefined : [...typeArguments], [...args]);
+}
+
 export function arrow(body: ts.ConciseBody): ts.ArrowFunction {
 	return ts.factory.createArrowFunction(
 		undefined,

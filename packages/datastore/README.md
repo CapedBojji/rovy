@@ -14,8 +14,12 @@ injection hook that lets datastore install its handles automatically at
 ## Install
 
 ```sh
-npm i @rovy/core @rovy/datastore
+npm i @rovy/core @rovy/datastore @rbxts/t
 ```
+
+`@rbxts/t` is a peer dependency: each document declaration makes the transformer
+inject a validator into your own file, so the module must resolve from your
+project rather than from inside this package.
 
 ## Declare a document
 

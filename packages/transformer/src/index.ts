@@ -4,6 +4,7 @@ import {
 	arrow,
 	bool,
 	call,
+	callWithTypeArguments,
 	constDecl,
 	entityNameToExpression,
 	field,
@@ -1624,7 +1625,15 @@ function buildDocumentDeclaration(
 
 	const docId = documentIdForDeclaration(state, name);
 	const check = dataType !== undefined ? datastoreValidatorForType(state, sourceFile, dataType, dataType.getText(sourceFile)) : alwaysTrueValidator();
-	return call(field(state.addRovyDataImport(sourceFile), "__document"), [
+	// Without explicit type arguments, __document infers Owner from the very
+	// object literal being checked, so `key: (owner) => ...` saw `unknown` and
+	// tripped noImplicitAny. The declaration already states both types.
+	const ownerType = documentOwnerTypeNode(kind, builder.typeArguments?.[1]);
+	const typeArguments =
+		dataType !== undefined
+			? [dataType, ownerType, ts.factory.createLiteralTypeNode(str(kind))]
+			: undefined;
+	return callWithTypeArguments(field(state.addRovyDataImport(sourceFile), "__document"), typeArguments, [
 		obj(
 			[
 				prop("id", str(docId)),
@@ -1665,9 +1674,23 @@ function requiredOptionExpression(
 	return id("undefined");
 }
 
+function documentOwnerTypeNode(kind: DocumentDeclarationKind, declared: ts.TypeNode | undefined): ts.TypeNode {
+	if (kind === "player") return ts.factory.createTypeReferenceNode("Player", undefined);
+	if (kind === "shared") return ts.factory.createKeywordTypeNode(ts.SyntaxKind.VoidKeyword);
+	return declared ?? ts.factory.createKeywordTypeNode(ts.SyntaxKind.UnknownKeyword);
+}
+
 function documentKeyExpression(kind: DocumentDeclarationKind, options: ts.ObjectLiteralExpression): ts.Expression {
 	const key = propertyValue(options, "key");
-	if (key !== undefined) return key;
+	if (key !== undefined) {
+		// SharedDocumentOptions.key is a plain string, but the runtime always
+		// calls def.key(owner). Emitting the string verbatim made
+		// `def.key(...)` a call on a string at the first open.
+		if (kind === "shared" && !ts.isArrowFunction(key) && !ts.isFunctionExpression(key)) {
+			return arrow(key);
+		}
+		return key;
+	}
 	if (kind === "player") {
 		const player = id("player");
 		return ts.factory.createArrowFunction(

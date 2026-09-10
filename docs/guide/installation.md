@@ -54,8 +54,18 @@ npm i @rovy/networking
 Install datastore only when you need persistent documents:
 
 ```sh
-npm i @rovy/datastore
+npm i @rovy/datastore @rbxts/t
 ```
+
+`@rbxts/t` is a peer dependency. Every document declaration makes the
+transformer inject a `@rbxts/t` validator into **your** file, so the module has
+to resolve from your project, not from inside `@rovy/datastore`. With npm or
+yarn a nested copy usually hoists far enough to work by accident; with pnpm's
+isolated layout it does not.
+
+`@rovy/core` declares the same package as an *optional* peer. It is only needed
+when you turn on `runtimeTypeChecks` (or `debug`), which makes `@component` and
+`@inspect` emit validators the same way.
 
 Install the Scribe wrapper when the game uses Scribe-managed player profiles:
 

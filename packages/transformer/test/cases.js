@@ -71,7 +71,9 @@ import {
 		DocumentOpener,
 		DocumentReader,
 		DocumentWriter,
+		document,
 		playerDocument,
+		sharedDocument,
 		rovyData,
 	} from "@rovy/datastore";
 	import {
@@ -952,10 +954,65 @@ export const PlayerProfile = playerDocument<ProfileData>()({
 });
 `);
 	assertNoDiagnostics(result, "datastore document lowering");
-	assert.match(result.printed, /rovyData\.__document\(\{ id: "src\/main\/PlayerProfile", kind: "player"/);
+	// The call carries explicit type arguments so __document does not have to
+	// infer Owner from the very object literal being checked.
+	assert.match(
+		result.printed,
+		/rovyData\.__document<ProfileData, Player, "player">\(\{ id: "src\/main\/PlayerProfile", kind: "player"/,
+	);
 	assert.match(result.printed, /check: .*\.interface\(\{/);
 	assert.match(result.printed, /selectedPet: .*\.optional\(.*\.string\)/);
 	assert.match(result.printed, /pets: .*\.map\(.*\.string, .*\.interface/);
+});
+
+runCase("datastore shared document wraps a string key", () => {
+	const result = compileFixture(`
+${header}
+type ConfigData = { season: string };
+export const WorldConfig = sharedDocument<ConfigData>()({
+	name: "WorldConfig",
+	store: "WorldConfig",
+	key: "live",
+	default: () => ({ season: "alpha" }),
+});
+`);
+	assertNoDiagnostics(result, "shared document lowering");
+	// The runtime always calls def.key(owner), so a string key has to be
+	// wrapped. Emitting it verbatim made that a call on a string.
+	assert.match(result.printed, /kind: "shared"/);
+	assert.match(result.printed, /key: \(\) => "live"/);
+});
+
+runCase("datastore shared document defaults a missing key", () => {
+	const result = compileFixture(`
+${header}
+type ConfigData = { season: string };
+export const WorldConfig = sharedDocument<ConfigData>()({
+	name: "WorldConfig",
+	store: "WorldConfig",
+	default: () => ({ season: "alpha" }),
+});
+`);
+	assertNoDiagnostics(result, "shared document default key");
+	assert.match(result.printed, /key: \(\) => "global"/);
+});
+
+runCase("datastore keyed document keeps its owner type", () => {
+	const result = compileFixture(`
+${header}
+type GuildData = { xp: number };
+type GuildOwner = { guildId: string };
+export const GuildState = document<GuildData, GuildOwner>()({
+	name: "GuildState",
+	store: "GuildState",
+	key: (owner) => owner.guildId,
+	default: () => ({ xp: 0 }),
+});
+`);
+	assertNoDiagnostics(result, "keyed document lowering");
+	// Without the explicit type arguments, __document infers Owner from the
+	// object literal it is checking, so `owner` came out as `unknown`.
+	assert.match(result.printed, /rovyData\.__document<GuildData, GuildOwner, "keyed">\(/);
 });
 
 runCase("datastore unsupported field type fails transformer", () => {
