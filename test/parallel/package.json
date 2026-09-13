@@ -1,0 +1,22 @@
+{
+  "name": "@rovy/parallel-place",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Parallel Luau correctness, frame timing, and benchmark fixture",
+  "scripts": {
+    "build": "rbxtsc --type game",
+    "dev": "rbxtsc --type game -w"
+  },
+  "devDependencies": {
+    "@rbxts/compiler-types": "3.0.0-types.0",
+    "@rbxts/services": "^1.5.5",
+    "@rbxts/t": "^3.2.1",
+    "@rbxts/types": "^1.0.920",
+    "@rovy/core": "workspace:*",
+    "@rovy/jecs": "workspace:*",
+    "roblox-ts": "^3.0.0",
+    "rovy-transformer": "workspace:*",
+    "typescript": "^5.9.3",
+    "@rovy/parallel": "workspace:*"
+  }
+}

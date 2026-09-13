@@ -24,3 +24,9 @@
 /test/place/.build/*.rbxl
 /test/place/.build/*.rbxlx
 /test/place/src/shared/build-stamp.ts
+
+/packages/parallel/worker
+/test/parallel/node_modules
+/test/parallel/out
+/test/parallel/include
+/test/parallel/.build

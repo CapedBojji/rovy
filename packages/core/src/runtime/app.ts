@@ -122,6 +122,16 @@ export class App {
 		return this;
 	}
 
+	/** Packages with blocking waits opt into synchronous ECS execution guards. */
+	enforceSynchronousExecution(): this {
+		this.lifecycle.guardYields = true;
+		return this;
+	}
+
+	assertCanYield(operation: string): void {
+		this.lifecycle.assertCanYield(operation);
+	}
+
 	/** Queue a package-owned root mount before start(); consumed by packages such as @rovy/ui after start finalization. */
 	mount(ctor: unknown, target?: Instance, options?: AppMountOptions): this {
 		assert(!this.started, "[rovy] app.mount(...) must be called before app.start()");
@@ -492,6 +502,11 @@ export class App {
 	}
 
 	private flushBoundary(schedule?: Ctor, set?: Ctor): void {
+		if (!this.lifecycle.guardYields) { this.flushBoundaryBody(schedule, set); return; }
+		this.lifecycle.withSynchronousScope(() => this.flushBoundaryBody(schedule, set));
+	}
+
+	private flushBoundaryBody(schedule?: Ctor, set?: Ctor): void {
 		const context: FlushContext = {
 			app: this,
 			world: this.world,

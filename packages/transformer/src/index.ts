@@ -211,7 +211,8 @@ function transformVariableStatement(
 			declaration.name,
 			declaration.initializer,
 		);
-		const lowered = document ?? scribeData;
+		const parallelJob = buildParallelJobDeclaration(state, sourceFile, declaration);
+		const lowered = parallelJob ?? document ?? scribeData;
 		if (lowered === undefined) return ts.visitEachChild(declaration, visitor, state.context);
 		return ts.factory.updateVariableDeclaration(
 			declaration,
@@ -1590,6 +1591,136 @@ function validateSerializableScribeDefault(
 			`[rovy/scribe] nonserializable default at '${path.join(".")}'`,
 		);
 	}
+}
+
+function parallelJobBuilder(state: TransformState, declaration: ts.VariableDeclaration): ts.CallExpression | undefined {
+	const initializer = declaration.initializer;
+	if (!initializer || !ts.isCallExpression(initializer) || !ts.isCallExpression(initializer.expression)) return undefined;
+	const builder = initializer.expression;
+	return state.resolveParallelWorkerName(declaration.getSourceFile(), builder.expression) === "job" ? builder : undefined;
+}
+
+function isPackagedParallelJob(state: TransformState, declaration: ts.VariableDeclaration): boolean {
+	if (!declaration.getSourceFile().isDeclarationFile || !state.typeChecker) return false;
+	const type = state.typeChecker.getTypeAtLocation(declaration);
+	return (type.getSymbol()?.declarations ?? []).some((candidate) => {
+		if (!ts.isInterfaceDeclaration(candidate) || candidate.name.text !== "JobDefinition") return false;
+		const file = candidate.getSourceFile().fileName.replace(/\\/g, "/");
+		return /(?:^|\/)(?:node_modules\/@rovy\/parallel|packages\/parallel)\/(?:out\/|src\/)?worker(?:\/index)?\.(?:d\.)?ts$/.test(file);
+	});
+}
+
+function parallelJobValueExpression(state: TransformState, name: ts.EntityName): ts.Expression | undefined {
+	let root = name;
+	while (ts.isQualifiedName(root)) root = root.left;
+	for (const declaration of state.typeChecker?.getSymbolAtLocation(root)?.declarations ?? []) {
+		if ((ts.isImportSpecifier(declaration) && (declaration.isTypeOnly || declaration.parent.parent.isTypeOnly)) ||
+			(ts.isNamespaceImport(declaration) && declaration.parent.isTypeOnly) ||
+			(ts.isImportClause(declaration) && declaration.isTypeOnly)) {
+			state.diagnostic(name, "[rovy/parallel] packaged job injection requires a value import; import type cannot provide the runtime job id");
+			return undefined;
+		}
+	}
+	return entityNameToExpression(name);
+}
+
+function buildParallelJobDeclaration(
+	state: TransformState,
+	sourceFile: ts.SourceFile,
+	declaration: ts.VariableDeclaration,
+): ts.Expression | undefined {
+	const builder = parallelJobBuilder(state, declaration);
+	if (!builder || !ts.isIdentifier(declaration.name)) return undefined;
+	const initializer = declaration.initializer as ts.CallExpression;
+	const statement = declaration.parent.parent;
+	if (!sourceFile.fileName.endsWith(".job.ts") ||
+		!ts.isVariableStatement(statement) || statement.parent !== sourceFile ||
+		!(declaration.parent.flags & ts.NodeFlags.Const) ||
+		!statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) {
+		state.diagnostic(declaration, "[rovy/parallel] jobs must be named exported top-level const declarations in .job.ts modules");
+	}
+	const options = initializer.arguments[0];
+	if (!options || !ts.isObjectLiteralExpression(options) || initializer.arguments.length !== 1 || builder.arguments.length !== 0) {
+		state.diagnostic(initializer, "[rovy/parallel] use job<Inputs, Output, State>()({...}) with one options object");
+		return initializer;
+	}
+	const inputTypeNode = builder.typeArguments?.[0];
+	const checker = state.typeChecker;
+	const inputType = inputTypeNode && checker?.getTypeFromTypeNode(inputTypeNode);
+	let inputCount: number | undefined;
+	if (inputType && checker?.isTupleType(inputType)) {
+		const tuple = inputType as ts.TypeReference;
+		const flags = (tuple.target as ts.TupleType).elementFlags;
+		if (flags.every((flag) => flag === ts.ElementFlags.Required)) inputCount = checker.getTypeArguments(tuple).length;
+	} else if (inputTypeNode && ts.isTupleTypeNode(inputTypeNode)) {
+		if (inputTypeNode.elements.every((element) =>
+			!ts.isOptionalTypeNode(element) && !ts.isRestTypeNode(element) &&
+			(!ts.isNamedTupleMember(element) || (!element.questionToken && !element.dotDotDotToken)))) {
+			inputCount = inputTypeNode.elements.length;
+		}
+	}
+	if (inputCount === undefined || builder.typeArguments?.[1] === undefined) {
+		state.diagnostic(builder, "[rovy/parallel] job requires an explicit fixed required Inputs tuple and Output type; optional and rest inputs are unsupported");
+		return initializer;
+	}
+	for (const property of options.properties) {
+		const name = property.name && propertyNameText(property.name);
+		if (name?.startsWith("__")) state.diagnostic(property, "[rovy/parallel] job metadata is transformer-owned; do not provide __ options");
+	}
+	validateParallelJobModule(state, sourceFile);
+	return ts.factory.updateCallExpression(initializer, builder, initializer.typeArguments, [
+		ts.factory.updateObjectLiteralExpression(options, [
+			...options.properties,
+			prop("__id", str(documentIdForDeclaration(state, declaration.name))),
+			prop("__module", ts.factory.createAsExpression(id("script"), ts.factory.createTypeReferenceNode("ModuleScript"))),
+			prop("__exportName", str(declaration.name.text)),
+			prop("__inputCount", num(inputCount)),
+		]),
+	]);
+}
+
+// Requiring a job inside an Actor must not install application extensions or
+// scheduled systems, including those reached through local helper modules.
+function validateParallelJobModule(state: TransformState, root: ts.SourceFile): void {
+	const visited = new Set<ts.SourceFile>();
+	const visit = (file: ts.SourceFile): void => {
+		if (visited.has(file) || file.isDeclarationFile) return;
+		visited.add(file);
+		for (const statement of file.statements) {
+			if (ts.isClassDeclaration(statement)) {
+				for (const decorator of ts.getDecorators(statement) ?? []) {
+					if (RUNTIME_DECORATORS.has(decoratorName(state, file, decorator) ?? "")) {
+						state.diagnostic(root, `[rovy/parallel] job module dependency '${file.fileName}' contains application runtime declarations; use worker-only helpers`);
+					}
+				}
+			}
+			if (!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) continue;
+			const specifier = statement.moduleSpecifier;
+			if (!specifier || !ts.isStringLiteral(specifier)) continue;
+			if (ts.isImportDeclaration(statement)) {
+				const clause = statement.importClause;
+				if (clause?.isTypeOnly) continue;
+				if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings) && !clause.name &&
+					clause.namedBindings.elements.length > 0 && clause.namedBindings.elements.every((item) => item.isTypeOnly)) continue;
+			} else if (statement.isTypeOnly || (statement.exportClause && ts.isNamedExports(statement.exportClause) &&
+				statement.exportClause.elements.length > 0 && statement.exportClause.elements.every((item) => item.isTypeOnly))) continue;
+			if (specifier.text.startsWith("@rovy/") && specifier.text !== "@rovy/parallel/worker") {
+				state.diagnostic(root, `[rovy/parallel] job dependency '${file.fileName}' imports application package '${specifier.text}'; use import type or worker-only helpers`);
+				continue;
+			}
+			if (!specifier.text.startsWith(".")) continue;
+			const target = state.typeChecker?.getSymbolAtLocation(specifier)?.declarations?.find(ts.isSourceFile);
+			if (target) {
+				const from = state.resolveBoundary(root);
+				const to = state.resolveBoundary(target);
+				if (from !== "unknown" && to !== "unknown" && to !== "shared" && from !== to) {
+					state.diagnostic(root, `[rovy/parallel] ${from} job cannot import ${to} dependency '${target.fileName}'`);
+				}
+				visit(target);
+			}
+		}
+	};
+	visit(root);
 }
 
 function buildDocumentDeclaration(
@@ -4789,6 +4920,32 @@ function lowerParam(
 		const name = lastTypeName(type.typeName);
 		if (name === "Commands") return simpleParam("commands");
 		if (name === "World") return simpleParam("world");
+		const parallelImports = state.getParallelImports(sourceFile);
+		const parallelName = ts.isIdentifier(type.typeName)
+			? parallelImports.named.get(type.typeName.text)
+			: ts.isIdentifier(type.typeName.left) && parallelImports.namespaces.has(type.typeName.left.text)
+				? type.typeName.right.text : undefined;
+		if (parallelName === "JobWriter" || parallelName === "JobReader") {
+			const jobType = type.typeArguments?.[0];
+			const declaration = jobType && ts.isTypeQueryNode(jobType) ? declarationForEntityName(state, jobType.exprName) : undefined;
+			const prefix = `@rovy/parallel/${parallelName === "JobWriter" ? "writer" : "reader"}:`;
+			if (declaration && jobType && ts.isTypeQueryNode(jobType) && isPackagedParallelJob(state, declaration)) {
+				const value = parallelJobValueExpression(state, jobType.exprName);
+				if (!value) return externalParam("@rovy/parallel/invalid");
+				return {
+					descriptor: obj([
+						prop("kind", str("external")),
+						prop("id", ts.factory.createBinaryExpression(str(prefix), ts.SyntaxKind.PlusToken, field(value, "__id"))),
+					], false),
+					queryStatements: [],
+				};
+			}
+			if (!declaration || !parallelJobBuilder(state, declaration)) {
+				state.diagnostic(type, `[rovy/parallel] ${parallelName} requires typeof an exported job declaration`);
+				return externalParam("@rovy/parallel/invalid");
+			}
+			return externalParam(`${prefix}${documentIdForDeclaration(state, declaration.name)}`);
+		}
 		if (isNetworkingType(state, sourceFile, type, "NetClient")) {
 			validateNetworkingBoundary(state, sourceFile, type, "client", "NetClient");
 			return externalParam("@rovy/networking/NetClient");

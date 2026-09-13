@@ -2259,4 +2259,217 @@ class BadPrefab extends Prefab {
 	assert.match(result.diagnostics.join("\n"), /@prefab constructor params must be optional or defaulted/);
 });
 
+runCase("parallel job emits stable metadata and defining ModuleScript", () => {
+	const result = compileFixture(`
+import { job as defineJob } from "@rovy/parallel/worker";
+type Inputs = [origin: number, enabled: boolean];
+export const Probe = defineJob<Inputs, boolean, number>()({
+	setup() { return 42; },
+	run(input, output, state) { output[0] = state === 42; },
+});
+`, { fileName: "probe.job.ts" });
+	assertNoDiagnostics(result, "parallel job metadata");
+	assert.match(result.printed, /defineJob<Inputs, boolean, number>\(\)\(\{/);
+	assert.match(result.printed, /__id: "src\/probe\.job\/Probe"/);
+	assert.match(result.printed, /__module: script as ModuleScript/);
+	assert.match(result.printed, /__exportName: "Probe"/);
+	assert.match(result.printed, /__inputCount: 2/);
+	assert.match(result.printed, /setup\(\) \{ return 42; \}/);
+});
+
+runCase("parallel namespace job accepts an empty fixed tuple", () => {
+	const result = compileFixture(`
+import * as worker from "@rovy/parallel/worker";
+export const Empty = worker.job<[], number>()({ run(input, output) {} });
+`, { fileName: "empty.job.ts" });
+	assertNoDiagnostics(result, "parallel namespace definition");
+	assert.match(result.printed, /__inputCount: 0/);
+});
+
+runCase("parallel aliased and namespace params resolve imported typeof jobs", () => {
+	const result = compileFixture(`
+${header}
+import { JobWriter as Writer, JobReader as Reader } from "@rovy/parallel";
+import * as parallel from "@rovy/parallel";
+import { Probe as Renamed } from "./probe.job";
+import * as jobs from "./probe.job";
+@schedule class Work {}
+@system({ schedule: Work })
+class Submit {
+	run(writer: Writer<typeof Renamed>, reader: Reader<typeof Renamed>,
+		namespacedWriter: parallel.JobWriter<typeof jobs.Probe>,
+		namespacedReader: parallel.JobReader<typeof jobs.Probe>) {}
+}
+`, {
+		files: {
+			"probe.job.ts": `import { job as define } from "@rovy/parallel/worker";
+export const Probe = define<[number], boolean>()({ run(input, output) {} });`,
+		},
+	});
+	assertNoDiagnostics(result, "parallel injection aliases");
+	assert.equal((result.printed.match(/id: "@rovy\/parallel\/writer:src\/probe\.job\/Probe"/g) ?? []).length, 2);
+	assert.equal((result.printed.match(/id: "@rovy\/parallel\/reader:src\/probe\.job\/Probe"/g) ?? []).length, 2);
+});
+
+runCase("parallel jobs reject malformed options and forged metadata", () => {
+	for (const expression of [
+		"job<[number], boolean>()(options)",
+		"job<[number], boolean>()()",
+		"job<[number], boolean>()({}, {})",
+		"job<[number], boolean>(42)({})",
+	]) {
+		const result = compileFixture(`import { job } from "@rovy/parallel/worker";
+const options = {}; export const Bad = ${expression};`, { fileName: "bad.job.ts" });
+		assert.match(result.diagnostics.join("\n"), /one options object/, expression);
+	}
+	const forged = compileFixture(`import { job } from "@rovy/parallel/worker";
+export const Bad = job<[number], boolean>()({ __id: "forged", run(input, output) {} });`, { fileName: "bad.job.ts" });
+	assert.match(forged.diagnostics.join("\n"), /metadata is transformer-owned/);
+});
+
+runCase("parallel input arity rejects arrays optional rest and missing types", () => {
+	for (const typeArguments of [
+		"number[], boolean", "[number?], boolean", "[value?: number], boolean",
+		"[...number[]], boolean", "[first: number, ...rest: string[]], boolean",
+		"[number]", "",
+	]) {
+		const generics = typeArguments ? `<${typeArguments}>` : "";
+		const result = compileFixture(`import { job } from "@rovy/parallel/worker";
+export const Bad = job${generics}()({ run(input, output) {} });`, { fileName: "bad.job.ts" });
+		assert.match(result.diagnostics.join("\n"), /fixed required Inputs tuple and Output type/, typeArguments);
+	}
+});
+
+runCase("parallel jobs require exported const in a job module", () => {
+	for (const [declaration, fileName] of [
+		["const Bad", "bad.job.ts"],
+		["export let Bad", "bad.job.ts"],
+		["export const Bad", "bad.ts"],
+		["export const Bad", "bad.server.ts"],
+	]) {
+		const result = compileFixture(`import { job } from "@rovy/parallel/worker";
+${declaration} = job<[number], boolean>()({ run(input, output) {} });`, { fileName });
+		assert.match(result.diagnostics.join("\n"), /named exported top-level const declarations in \.job\.ts modules/);
+	}
+});
+
+runCase("parallel injection rejects values which are not job definitions", () => {
+	for (const argument of ["number", "typeof Fake"]) {
+		const result = compileFixture(`
+${header}
+import { JobReader } from "@rovy/parallel";
+const Fake = {};
+@schedule class Work {}
+@system({ schedule: Work }) class Apply { run(reader: JobReader<${argument}>) {} }
+`);
+		assert.match(result.diagnostics.join("\n"), /JobReader requires typeof an exported job declaration/);
+	}
+});
+
+runCase("parallel modules reject transitive runtime imports but permit type imports", () => {
+	const source = `import { job } from "@rovy/parallel/worker";
+import { helper } from "./helper";
+export const Probe = job<[number], boolean>()({ run(input, output) { helper(); } });`;
+	const rejected = compileFixture(source, {
+		fileName: "probe.job.ts",
+		files: {
+			"helper.ts": `export { helper } from "./bootstrap";`,
+			"bootstrap.ts": `import { App } from "@rovy/core"; export function helper() { return new App(); }`,
+		},
+	});
+	assert.match(rejected.diagnostics.join("\n"), /bootstrap\.ts.*imports application package '@rovy\/core'/);
+	const allowed = compileFixture(source, {
+		fileName: "probe.job.ts",
+		files: {
+			"helper.ts": `import type { Entity } from "@rovy/core";
+import { type World } from "@rovy/core";
+export function helper() { return 1; }`,
+		},
+	});
+	assertNoDiagnostics(allowed, "parallel type-only helper imports");
+});
+
+runCase("parallel dependency checks preserve server client shared boundaries", () => {
+	for (const [from, to] of [["server", "client"], ["client", "server"], ["shared", "server"], ["shared", "client"]]) {
+		const result = compileFixture(`import { job } from "@rovy/parallel/worker";
+import { helper } from "../${to}/helper";
+export const Probe = job<[number], boolean>()({ run(input, output) { helper(); } });`, {
+			fileName: `${from}/probe.job.ts`,
+			files: { [`${to}/helper.ts`]: "export function helper() { return 1; }" },
+		});
+		assert.match(result.diagnostics.join("\n"), new RegExp(`${from} job cannot import ${to} dependency`));
+	}
+	const allowed = compileFixture(`import { job } from "@rovy/parallel/worker";
+import { helper } from "../shared/helper";
+export const Probe = job<[number], boolean>()({ run(input, output) { helper(); } });`, {
+		fileName: "server/probe.job.ts",
+		files: { "shared/helper.ts": "export function helper() { return 1; }" },
+	});
+	assertNoDiagnostics(allowed, "parallel server imports shared helper");
+});
+
+const packagedParallelFiles = {
+	"../node_modules/@rovy/parallel/worker/index.d.ts": `
+export interface JobDefinition<I, O, S = undefined> {
+	readonly __id: string;
+	readonly __module: unknown;
+	readonly __exportName: string;
+	readonly __inputCount: number;
+	run(input: I, output: O[], state: S): void;
+}`,
+	"../node_modules/@example/jobs/index.d.ts": `
+import { JobDefinition as Definition } from "@rovy/parallel/worker";
+type ProbeDefinition = Definition<[number], boolean>;
+export declare const Probe: ProbeDefinition;`,
+};
+
+runCase("parallel packaged job aliases and namespaces use provider runtime ids", () => {
+	const result = compileFixture(`
+${header}
+import { JobWriter as Writer, JobReader as Reader } from "@rovy/parallel";
+import { Probe as ImportedProbe } from "@example/jobs";
+import * as jobs from "@example/jobs";
+@schedule class Work {}
+@system({ schedule: Work }) class Consumer {
+	run(writer: Writer<typeof ImportedProbe>, reader: Reader<typeof jobs.Probe>) {}
+}`, { files: packagedParallelFiles });
+	assertNoDiagnostics(result, "packaged job runtime identifiers");
+	assert.match(result.printed, /id: "@rovy\/parallel\/writer:" \+ ImportedProbe\.__id/);
+	assert.match(result.printed, /id: "@rovy\/parallel\/reader:" \+ jobs\.Probe\.__id/);
+	assert.doesNotMatch(result.printed, /@rovy\/parallel\/(writer|reader):[^" ]*node_modules/);
+});
+
+runCase("parallel packaged jobs reject type-only runtime token imports", () => {
+	for (const [importStatement, expression] of [
+		['import type { Probe } from "@example/jobs";', "Probe"],
+		['import { type Probe } from "@example/jobs";', "Probe"],
+		['import type * as jobs from "@example/jobs";', "jobs.Probe"],
+	]) {
+		const result = compileFixture(`
+${header}
+import { JobReader } from "@rovy/parallel";
+${importStatement}
+@schedule class Work {}
+@system({ schedule: Work }) class Consumer { run(reader: JobReader<typeof ${expression}>) {} }
+`, { files: packagedParallelFiles });
+		assert.match(result.diagnostics.join("\n"), /packaged job injection requires a value import/);
+	}
+});
+
+runCase("parallel packaged lookalike definitions are not accepted as real jobs", () => {
+	const result = compileFixture(`
+${header}
+import { JobReader } from "@rovy/parallel";
+import { Probe } from "@example/fake";
+@schedule class Work {}
+@system({ schedule: Work }) class Consumer { run(reader: JobReader<typeof Probe>) {} }
+`, { files: {
+		...packagedParallelFiles,
+		"../node_modules/@example/fake/index.d.ts": `
+interface JobDefinition { readonly __id: string; readonly __module: unknown; readonly __exportName: string; readonly __inputCount: number; }
+export declare const Probe: JobDefinition;`,
+	} });
+	assert.match(result.diagnostics.join("\n"), /JobReader requires typeof an exported job declaration/);
+});
+
 console.log("rovy-transformer cases OK");
