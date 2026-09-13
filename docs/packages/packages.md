@@ -1,4 +1,4 @@
-# Packages — core, networking, persistence, UI, and tooling
+# Packages — core, parallel, networking, persistence, UI, and tooling
 
 Rovy ships as distinct packages, mirroring the split between runtime packages and build-time transformer tooling:
 
@@ -27,6 +27,11 @@ additionally import `@rovy/world-inspector`. `rovy-transformer` runs
 silently at build time and rewrites decorated and widget code into the runtime
 calls the packages consume. `rovy-build` owns the project command flow around
 `rbxtsc`, generators, Rojo, and Studio.
+
+CPU-heavy snapshot jobs can use [`@rovy/parallel`](/packages/parallel). It adds a
+bounded Actor pool with typed system/observer injection, while ordinary Rovy
+systems remain synchronous. See the [live graphs](/packages/parallel/verification)
+before choosing worker counts or a serial threshold.
 
 Inside this repo, the shipped packages live in a pnpm workspace at
 `packages/jecs`, `packages/core`, `packages/parallel`, `packages/networking`, `packages/datastore`,
@@ -71,6 +76,19 @@ import { NetClient, NetFunc, netEvent, netFunction } from "@rovy/networking";
 `@netEvent` implies a core `@event`: the transformer emits both `rovy.__event(...)` and `rovyNet.__netEvent(...)`.
 `@netFunction` is non-blocking request/response over the networking transport;
 it does not use Roblox `RemoteFunction`.
+
+## What lives in `@rovy/parallel`
+
+- **Worker definitions** — `job<Inputs, Output, State>()({...})` from the worker-only entry point.
+- **Plugin** — `ParallelPlugin` preloads jobs into one reusable Actor pool per App.
+- **Injected handles** — `JobWriter` submits pooled snapshots; `JobReader` drains results and failures.
+- **Lifecycle** — readiness, external barriers, cancellation, bounded counters and teardown.
+- **Low-level use** — `WorkerPool` accepts explicit ModuleScript/export registrations without ECS entity bookkeeping.
+
+Results return through normal systems and `Commands`; Actors never share a live
+ECS world. Read the [guide](/packages/parallel),
+[event integration example](/packages/parallel/ecs-example), and
+[live results](/packages/parallel/verification).
 
 ## What lives in `@rovy/datastore`
 
@@ -199,6 +217,7 @@ A roblox-ts custom transformer. Pure build-time. It never ships to the game. Dut
 8. Scribe support: lower data, command, and event declarations; validate schema paths and boundaries; and lower injected services to stable external ids.
 9. Vide support: detect `@view` from `@rovy/vide`, reject `match`/event maps, validate `render(...)`, lower render params, hoist view query descriptors, and inject `rovyVide.__view(...)`.
 10. UI support: detect JSDoc `@widget` functions, inject widget registration, wrap them through `RovyUi.__widget(...)`, lower plain/custom and built-in widget calls through `RovyUi.__scope(...)`, lower storage helpers to keyed internals, and lower style sugar.
+11. Parallel support: lower `.job.ts` definitions to stable job IDs, module references and export names; validate input tuples and module boundaries; lower `JobWriter` / `JobReader` injection.
 
 ## How they connect
 

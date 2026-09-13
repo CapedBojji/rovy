@@ -27,6 +27,10 @@ features:
     details: Buffered events with EventReader/EventWriter, event-only observers, and query-level lifecycle monitors (onEnter / onExit / onChange).
   - title: Commands & schedules
     details: Deferred mutations through Commands, custom schedules and system sets, and explicit flush points — ordered, predictable frame logic.
+  - title: Pooled parallel jobs
+    details: Optional @rovy/parallel batches ECS snapshots across reusable Actors. Typed writers and readers fit systems and observers; live graphs show where parallel work helps.
+    link: /packages/parallel
+    linkText: Explore parallel jobs
   - title: Optional packages
     details: Optional @rovy/networking adds @netEvent over generated Blink transport; @rovy/scribe adds scheduled typed access to native Scribe player profiles; @rovy/datastore adds Rovy-owned persistent documents; @rovy/vide adds reactive Vide views; @rovy/ui adds retained class-based UI components; @rovy/imgui adds a function-first immediate-mode widget runtime; @rovy/world-inspector adds a live ECS inspection tool.
 ---
@@ -83,6 +87,7 @@ RunService.Heartbeat.Connect((dt) => app.runSchedule(Update, dt));
 - Setting up a project? See [Installation](/guide/installation).
 - Want to write code immediately? Follow [Your First System](/guide/your-first-system).
 - Learning the model? Browse the [Concepts](/concepts/components) section.
+- Moving expensive snapshot work to Actors? Read [Parallel](/packages/parallel) and explore its [live graphs](/packages/parallel/verification).
 - Building reactive UI? Read [Rovy Vide](/packages/vide).
 - Building retained class-based UI? Read [Rovy UI](/packages/ui).
 - Need debug or tool panels? Read [Rovy ImGui](/packages/imgui).

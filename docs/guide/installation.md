@@ -51,6 +51,17 @@ Install networking only when you use net events:
 npm i @rovy/networking
 ```
 
+Install parallel jobs when you need pooled Actors for ECS snapshots:
+
+```sh
+npm i @rovy/parallel
+```
+
+Keep the package's `out` tree in your Rojo mapping so its prebuilt worker Script
+templates are available. Define jobs in dedicated `.job.ts` modules and enable
+the same transformer as core. See the [parallel guide](/packages/parallel) and
+[live performance graphs](/packages/parallel/verification).
+
 Install datastore only when you need persistent documents:
 
 ```sh
@@ -107,6 +118,7 @@ npm i @rovy/world-inspector
 | `@rovy/core`            | Decorators, macros, types, **and the packaged runtime**        | `import` it and write code                  |
 | `@rovy/jecs`            | Rovy-vendored jecs runtime `@rovy/core` compiles against        | install it; core imports it for you         |
 | `@rovy/networking`      | `@netEvent` authoring surface + runtime handles                | `import` when using net events              |
+| `@rovy/parallel`        | Typed snapshot jobs and a bounded Actor pool                  | Inject `JobWriter` / `JobReader`             |
 | `@rovy/datastore`       | Persistent document declarations + reader/writer/opener handles | `import` when using datastore documents     |
 | `@rovy/scribe`          | Scheduled typed wrapper over native Scribe player profiles     | `import` when using Scribe-managed profiles |
 | `@rovy/vide`            | Reactive Vide view integration for gameplay UI                 | `import` `@view` and `mountView`            |

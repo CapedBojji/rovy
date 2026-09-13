@@ -99,7 +99,15 @@ export default defineConfig({
           { text: "Packages Overview", link: "/packages/packages" },
           { text: "Networking", link: "/packages/networking" },
           { text: "Datastore", link: "/packages/datastore" },
-          { text: "Parallel", link: "/packages/parallel" },
+          {
+            text: "Parallel",
+            collapsed: false,
+            items: [
+              { text: "Guide & API", link: "/packages/parallel" },
+              { text: "Systems, Observers & Events", link: "/packages/parallel/ecs-example" },
+              { text: "Live Results & Graphs", link: "/packages/parallel/verification" },
+            ],
+          },
           {
             text: "Scribe",
             collapsed: true,

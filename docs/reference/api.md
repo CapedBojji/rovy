@@ -653,6 +653,10 @@ and instance-expression syntax like `Workspace/Zombie/HumanoidRootPart`.
 
 ## See also
 
+- [Parallel jobs: API and ownership](/packages/parallel)
+- [Parallel systems, observers and events](/packages/parallel/ecs-example)
+- [Parallel live results and graphs](/packages/parallel/verification)
+
 - [Queries](/concepts/queries.md)
 - [Commands](/concepts/commands.md)
 - [Observers](/concepts/observers.md)

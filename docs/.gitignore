@@ -1,3 +1,5 @@
 .vitepress/dist
 .vitepress/cache
 node_modules
+.vitepress/data/parallel-report.json
+public/parallel/2026-09-13/

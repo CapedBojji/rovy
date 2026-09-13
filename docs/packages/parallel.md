@@ -4,9 +4,33 @@ Pooled parallel Luau jobs for Rovy. Query systems gather values into column
 arrays, Actors process chunks, and ordinary systems apply the results through
 `Commands`. A worker never receives the live ECS world or its component objects.
 
+- [Live results & graphs](/packages/parallel/verification) — explore performance,
+  timing and API checks without a table of numbers.
+- [Systems, observers & events](/packages/parallel/ecs-example) — follow results
+  through command flushes, observers and buffered event readers.
+
 Install `@rovy/parallel` alongside `@rovy/core` and enable `rovy-transformer`.
 The package includes disabled server/client worker templates; preserve its `out`
 tree in your Rojo mapping. No Script source is generated during play.
+
+```sh
+npm i @rovy/parallel
+```
+
+## API at a glance
+
+| API | Role |
+| --- | --- |
+| `job<Inputs, Output, State>()({...})` | Define a non-yielding kernel in a separate `.job.ts` module |
+| `new ParallelPlugin({ jobs, ... })` | Share one fixed Actor pool across this App's jobs |
+| `parallel.ready(seconds)` | Wait for preloading and worker setup, outside ECS execution |
+| `JobWriter<typeof Job>.tryBatch(fill)` | Reserve a pooled batch; return a ticket or `undefined` |
+| `JobReader<typeof Job>.drain(callback)` | Consume successful rows and release borrowed storage |
+| `reader.drainFailures(callback)` | Consume errors, cancellation and timeout outcomes |
+| `parallel.barrier([Job], seconds)` | Wait for captured submissions to settle |
+| `parallel.cancel(ticket)` | Cancel queued work and suppress late running results |
+| `parallel.stats()` / `parallel.destroy()` | Inspect counters and release the pool |
+| `WorkerPool` | Low-level module registrations, batches and polling without ECS bookkeeping |
 
 ## Define a worker
 
@@ -206,6 +230,9 @@ repository's `test/parallel/VERIFICATION.md` includes raw records for 320 timing
 samples and 480 benchmark configurations. Small workloads were slower in
 parallel in these tests; measure your workload and scheduling phase before
 selecting a threshold or worker/chunk settings.
+
+Explore the [interactive results](/packages/parallel/verification) for comparison
+bars, the full worker/chunk sweep, timing budgets and downloadable source records.
 
 Design references: [Weave](https://github.com/artzified/weave),
 [ParallelWorker](https://github.com/MaximumADHD/Roblox-Parallel-Worker),
