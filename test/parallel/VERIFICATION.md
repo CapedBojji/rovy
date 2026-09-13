@@ -2,6 +2,10 @@
 
 Server/client API, failure handling, and timing checks passed in separate code-built test places. All 480 benchmark configurations finished and matched their direct serial ECS output baseline. No package runtime change was required during this verification.
 
+The docs include an interactive version at **Packages → Parallel → Live Results & Graphs**.
+Run `mise exec -- pnpm docs:dev` and open `/rovy/packages/parallel/verification`.
+Bars and downloads regenerate directly from this report's committed records.
+
 ## Evidence
 
 - Engine: Roblox Studio `0.737.0.7371584`; Mac17,8, 18 logical cores, 48 GiB RAM.
