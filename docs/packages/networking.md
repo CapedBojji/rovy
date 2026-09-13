@@ -531,6 +531,18 @@ new NetClientPlugin({ schedule: Update, transport: new ClientRemoteEventTranspor
 new NetServerPlugin({ schedule: Update, transport: new ServerRemoteEventTransport() }).build(app);
 ```
 
+`ServerRemoteEventTransport` accepts an optional inbound capacity, for example
+`new ServerRemoteEventTransport(256)`. Both inbound channels share this limit.
+Overflow drops the newest messages before delivery; `droppedInbound` counts those
+drops over the transport lifetime. The default remains unlimited. Malformed event
+and function request envelopes are rejected. Delivery failures emit a warning and
+do not stop later messages or replay the drained batch. Messages arriving during
+`pump()` wait until the next pump.
+
+Run `mise exec -- pnpm test:networking` for deterministic transport regressions,
+including a 10,000-message flood and recovery. These use simulated Roblox signals
+against the compiled backend; they do not measure live Roblox network throughput.
+
 Normal applications do not construct either plugin: the active generated boundary registers its matching app extension automatically.
 
 ## Sender player context

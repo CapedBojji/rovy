@@ -86,7 +86,14 @@ export class ClientRemoteEventTransport implements NetTransport {
 
 export class ServerRemoteEventTransport implements NetTransport {
 	private ctx?: NetTransportContext;
-	private readonly inbound = new Array<ServerInbound>();
+	private inbound = new Array<ServerInbound>();
+	/** Number of newest messages dropped at capacity during this transport lifetime. */
+	droppedInbound = 0;
+
+	/** Maximum queued inbound messages; overflow drops newest. Defaults to unlimited. */
+	constructor(private readonly maxInboundMessages = math.huge) {
+		assert(maxInboundMessages > 0, "[rovy-net] Inbound capacity must be positive");
+	}
 	private send_ = (_item: NetOutboxItem, _payload: NetPayload): void => {};
 	private sendFunctionResult_ = (
 		_item: NetFunctionResultOutboxItem,
@@ -104,8 +111,14 @@ export class ServerRemoteEventTransport implements NetTransport {
 		const reliableOut = ensureRemote(folder, REMOTES.s2c.reliable);
 		const unreliableOut = ensureRemote(folder, REMOTES.s2c.unreliable);
 		const onServer = (player: Player, ...args: Array<unknown>) => {
+			if (this.inbound.size() >= this.maxInboundMessages) {
+				this.droppedInbound += 1;
+				return;
+			}
+			if (!typeIs(args[0], "string")) return;
 			const tagOrName = args[0] as string;
 			if (tagOrName === FUNCTION_REQUEST_TAG) {
+				if (!typeIs(args[1], "string") || !typeIs(args[2], "table")) return;
 				this.inbound.push({
 					kind: "functionRequest",
 					name: args[1] as string,
@@ -113,6 +126,7 @@ export class ServerRemoteEventTransport implements NetTransport {
 					sender: player,
 				});
 			} else {
+				if (!typeIs(args[1], "table")) return;
 				this.inbound.push({ kind: "event", name: tagOrName, payload: args[1] as NetPayload, sender: player });
 			}
 		};
@@ -137,11 +151,16 @@ export class ServerRemoteEventTransport implements NetTransport {
 	pump(): void {
 		const ctx = this.ctx;
 		if (ctx === undefined) return;
-		for (const message of this.inbound) {
-			if (message.kind === "event") ctx.deliver(message.name, message.payload, message.sender);
-			else ctx.deliverFunctionRequest?.(message.name, message.envelope, message.sender);
+		// Detach before delivery so failures cannot replay this batch.
+		const inbound = this.inbound;
+		this.inbound = [];
+		for (const message of inbound) {
+			const [ok, problem] = pcall(() => {
+				if (message.kind === "event") ctx.deliver(message.name, message.payload, message.sender);
+				else ctx.deliverFunctionRequest?.(message.name, message.envelope, message.sender);
+			});
+			if (!ok) warn(`[rovy-net] Discarded failed inbound message: ${tostring(problem)}`);
 		}
-		this.inbound.clear();
 	}
 }
 
