@@ -24,10 +24,10 @@ function absolutePaths(value) {
 }
 absolutePaths(project);
 const stamp = `${Date.now()}-${process.pid}`;
-project.tree.$attributes = {
+project.tree.ReplicatedStorage.ParallelVerification = { $className: "Folder", $attributes: {
   ParallelBuildStamp: stamp, ParallelSignalMode: signal,
   ParallelProbeSide: side, ParallelBenchmark: process.argv.includes("--benchmark"),
-};
+} };
 project.tree.Workspace.$properties.SignalBehavior = signal;
 const output = join(place, ".build");
 mkdirSync(output, { recursive: true });
@@ -35,4 +35,10 @@ const projectFile = join(output, `${signal}-${side}.project.json`);
 writeFileSync(projectFile, JSON.stringify(project, null, 2) + "\n");
 const placeFile = join(output, `parallel-${signal}-${side}-${stamp}.rbxlx`);
 execFileSync("rojo", ["build", projectFile, "-o", placeFile], { cwd: root, stdio: "inherit" });
+const serialized = readFileSync(placeFile, "utf8");
+const attributes = [...serialized.matchAll(/<BinaryString name="AttributesSerialize">([^<]*)<\/BinaryString>/g)];
+if (!serialized.includes('<string name="Name">ParallelVerification</string>') ||
+    !attributes.some((match) => Buffer.from(match[1], "base64").includes(Buffer.from(stamp)))) {
+  throw new Error("Built place lost its verification metadata");
+}
 console.log(`ROVY_PARALLEL_BUILD ${stamp}\n${placeFile}`);

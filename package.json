@@ -38,7 +38,8 @@
     "docs:preview": "pnpm --filter @rovy/docs preview",
     "build:parallel": "pnpm --filter @rovy/parallel build",
     "test:parallel": "pnpm --filter @rovy/parallel test",
-    "build:parallel-place": "node scripts/build-parallel-place.mjs"
+    "build:parallel-place": "node scripts/build-parallel-place.mjs",
+    "open:parallel-place": "node scripts/open-parallel-place.mjs"
   },
   "devDependencies": {
     "typescript": "5.5.3"

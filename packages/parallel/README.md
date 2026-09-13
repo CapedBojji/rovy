@@ -200,6 +200,13 @@ reusable state; do not assume shared memory is always faster than copied columns
 and NPC/raycast benchmark sweeps. See its README for reproducible commands and
 the distinction between static proof, fake-transport tests, and live Actor proof.
 
+Live verification on 2026-09-13 covered server/client systems, observers,
+buffered events, monitors, failure recovery, and both signal modes. The
+repository's `test/parallel/VERIFICATION.md` includes raw records for 320 timing
+samples and 480 benchmark configurations. Small workloads were slower in
+parallel in these tests; measure your workload and scheduling phase before
+selecting a threshold or worker/chunk settings.
+
 Design references: [Weave](https://github.com/artzified/weave),
 [ParallelWorker](https://github.com/MaximumADHD/Roblox-Parallel-Worker),
 [ActorPool](https://github.com/cameronpcampbell/ActorPool_v4),
