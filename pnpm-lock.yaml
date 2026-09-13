@@ -124,6 +124,24 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  packages/parallel:
+    devDependencies:
+      '@rbxts/compiler-types':
+        specifier: 3.0.0-types.0
+        version: 3.0.0-types.0
+      '@rbxts/types':
+        specifier: ^1.0.920
+        version: 1.0.924
+      '@rovy/core':
+        specifier: workspace:*
+        version: link:../core
+      roblox-ts:
+        specifier: ^3.0.0
+        version: 3.0.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   packages/scribe:
     devDependencies:
       '@rbxts/compiler-types':
@@ -220,6 +238,39 @@ importers:
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  test/parallel:
+    devDependencies:
+      '@rbxts/compiler-types':
+        specifier: 3.0.0-types.0
+        version: 3.0.0-types.0
+      '@rbxts/services':
+        specifier: ^1.5.5
+        version: 1.6.0
+      '@rbxts/t':
+        specifier: ^3.2.1
+        version: 3.2.1
+      '@rbxts/types':
+        specifier: ^1.0.920
+        version: 1.0.924
+      '@rovy/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@rovy/jecs':
+        specifier: workspace:*
+        version: link:../../packages/jecs
+      '@rovy/parallel':
+        specifier: workspace:*
+        version: link:../../packages/parallel
+      roblox-ts:
+        specifier: ^3.0.0
+        version: 3.0.0
+      rovy-transformer:
+        specifier: workspace:*
+        version: link:../../packages/transformer
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

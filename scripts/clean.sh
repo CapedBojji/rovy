@@ -20,6 +20,11 @@ done
 BUILD_DIRS=(
   "$ROOT/build"
   "$ROOT/packages/core/out"
+  "$ROOT/packages/parallel/out"
+  "$ROOT/packages/parallel/worker"
+  "$ROOT/test/parallel/out"
+  "$ROOT/test/parallel/include"
+  "$ROOT/test/parallel/.build"
   "$ROOT/packages/networking/out"
   "$ROOT/packages/ui/out"
   "$ROOT/packages/imgui/out"

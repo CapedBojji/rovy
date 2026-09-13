@@ -7,6 +7,7 @@ Rovy ships as distinct packages, mirroring the split between runtime packages an
 | `@rovy/core`            | Decorators, macros, types, **and the packaged runtime**        | `import` it and write code                                |
 | `@rovy/jecs`            | Rovy-vendored jecs runtime that `@rovy/core` compiles against  | install it; `@rovy/core` imports it for you               |
 | `@rovy/networking`      | Net-event authoring surface and runtime handles                | `import` it when using `@netEvent`                        |
+| `@rovy/parallel` | Pooled parallel Luau jobs | `ParallelPlugin`, `JobWriter`, and `JobReader` |
 | `@rovy/datastore`       | Persistent document declarations and runtime handles           | `import` it when using persistent documents               |
 | `@rovy/scribe`          | Scheduled typed wrapper over native Scribe player profiles     | `import` it when using a Scribe-managed profile           |
 | `@rovy/vide`            | Reactive Vide view integration for gameplay UI                 | `import` `@view`, `mountView`, and `ViewMonitor`          |
@@ -28,7 +29,7 @@ calls the packages consume. `rovy-build` owns the project command flow around
 `rbxtsc`, generators, Rojo, and Studio.
 
 Inside this repo, the shipped packages live in a pnpm workspace at
-`packages/jecs`, `packages/core`, `packages/networking`, `packages/datastore`,
+`packages/jecs`, `packages/core`, `packages/parallel`, `packages/networking`, `packages/datastore`,
 `packages/scribe`,
 `packages/ui`, `packages/imgui`,
 `packages/vide`, `packages/world-inspector`, `packages/transformer`, and

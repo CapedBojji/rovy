@@ -99,6 +99,7 @@ export default defineConfig({
           { text: "Packages Overview", link: "/packages/packages" },
           { text: "Networking", link: "/packages/networking" },
           { text: "Datastore", link: "/packages/datastore" },
+          { text: "Parallel", link: "/packages/parallel" },
           {
             text: "Scribe",
             collapsed: true,

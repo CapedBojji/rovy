@@ -1,0 +1,51 @@
+{
+  "name": "@rovy/parallel",
+  "version": "0.1.0",
+  "description": "Pooled parallel Luau jobs and ECS batch injection for Rovy",
+  "main": "out/init.luau",
+  "types": "out/index.d.ts",
+  "license": "MIT",
+  "scripts": {
+    "build": "pnpm --filter @rovy/core build && rbxtsc && node scripts/package-workers.mjs",
+    "test": "npm run build && zune test test/run"
+  },
+  "files": [
+    "out",
+    "worker",
+    "!out/__typecheck.*",
+    "!**/*.tsbuildinfo"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@rovy/core": "^0.1.0"
+  },
+  "devDependencies": {
+    "@rbxts/compiler-types": "3.0.0-types.0",
+    "@rbxts/types": "^1.0.920",
+    "@rovy/core": "workspace:*",
+    "roblox-ts": "^3.0.0",
+    "typescript": "^5.9.3"
+  },
+  "author": "CapedBojji",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CapedBojji/rovy.git",
+    "directory": "packages/parallel"
+  },
+  "bugs": {
+    "url": "https://github.com/CapedBojji/rovy/issues"
+  },
+  "homepage": "https://capedbojji.github.io/rovy/",
+  "keywords": [
+    "roblox",
+    "roblox-ts",
+    "ecs",
+    "rovy",
+    "parallel",
+    "luau",
+    "actors",
+    "pool"
+  ]
+}

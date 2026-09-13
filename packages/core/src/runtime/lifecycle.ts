@@ -58,6 +58,9 @@ const WARN_SUPPRESS_SECONDS = 10;
 
 export class LifecycleHub {
 	enabled = false;
+	/** Enabled by packages whose waits must never suspend ECS execution. */
+	guardYields = false;
+	private synchronousDepth = 0;
 	private app?: App;
 	private readonly listeners = new Array<Listener>();
 	private readonly queues = new Array<Array<LifecycleRecord>>();
@@ -66,6 +69,19 @@ export class LifecycleHub {
 
 	setApp(app: App): void {
 		this.app = app;
+	}
+
+	assertCanYield(operation: string): void {
+		assert(this.synchronousDepth === 0, `[rovy] ${operation} cannot yield inside ECS execution; wait between schedules`);
+	}
+
+	withSynchronousScope<T>(body: () => T): T {
+		if (!this.guardYields) return body();
+		this.synchronousDepth += 1;
+		const [ok, result] = pcall(body);
+		this.synchronousDepth -= 1;
+		if (!ok) error(tostring(result), 0);
+		return result as T;
 	}
 
 	on(
@@ -119,6 +135,11 @@ export class LifecycleHub {
 	}
 
 	withRunScope(start: Omit<LifecycleRecord, "app" | "world" | "tick">, finish: Omit<LifecycleRecord, "app" | "world" | "tick">, body: () => void): void {
+		if (!this.guardYields) { this.runScopeBody(start, finish, body); return; }
+		this.withSynchronousScope(() => this.runScopeBody(start, finish, body));
+	}
+
+	private runScopeBody(start: Omit<LifecycleRecord, "app" | "world" | "tick">, finish: Omit<LifecycleRecord, "app" | "world" | "tick">, body: () => void): void {
 		if (!this.enabled) {
 			body();
 			return;

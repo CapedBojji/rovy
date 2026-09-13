@@ -48,6 +48,8 @@ export class TransformState {
 	private readonly coreImportCache = new Map<string, CoreImports>();
 	private readonly networkingImportCache = new Map<string, CoreImports>();
 	private readonly datastoreImportCache = new Map<string, CoreImports>();
+	private readonly parallelImportCache = new Map<string, CoreImports>();
+	private readonly parallelWorkerImportCache = new Map<string, CoreImports>();
 	private readonly scribeImportCache = new Map<string, CoreImports>();
 	private readonly uiImportCache = new Map<string, CoreImports>();
 	private readonly retainedUiImportCache = new Map<string, CoreImports>();
@@ -107,6 +109,23 @@ export class TransformState {
 
 	getDatastoreImports(file: ts.SourceFile): CoreImports {
 		return this.getImportsForModule(file, "@rovy/datastore", this.datastoreImportCache);
+	}
+
+	getParallelImports(file: ts.SourceFile): CoreImports {
+		return this.getImportsForModule(file, "@rovy/parallel", this.parallelImportCache);
+	}
+
+	getParallelWorkerImports(file: ts.SourceFile): CoreImports {
+		return this.getImportsForModule(file, "@rovy/parallel/worker", this.parallelWorkerImportCache);
+	}
+
+	resolveParallelWorkerName(file: ts.SourceFile, expression: ts.Expression): string | undefined {
+		const imports = this.getParallelWorkerImports(file);
+		if (ts.isIdentifier(expression)) return imports.named.get(expression.text);
+		if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression)) {
+			if (imports.namespaces.has(expression.expression.text)) return expression.name.text;
+		}
+		return undefined;
 	}
 
 	getScribeImports(file: ts.SourceFile): CoreImports {

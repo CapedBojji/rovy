@@ -79,6 +79,7 @@ RunService.Heartbeat.Connect((dt) => app.runSchedule(Update, dt));
 | `@rovy/vide` | Reactive Vide view integration for gameplay UI |
 | `@rovy/ui` | Retained class-based Roblox UI runtime |
 | `@rovy/imgui` | Function-first widget/render runtime |
+| `@rovy/parallel` | Pooled parallel Luau jobs with typed ECS batch handles |
 | `@rovy/world-inspector` | In-game ECS inspection and editing plugin |
 | `rovy-transformer` | roblox-ts compiler transformer plugin (dev dependency) |
 | `rovy-build` | `rovy` CLI: compile, generate, build, watch, open, start (dev dependency) |
@@ -111,7 +112,7 @@ the project contains `.rovy.plugin.json` monolith plugin roots.
 ## Repository layout
 
 ```
-packages/      jecs, core, networking, datastore, scribe, vide, ui, imgui, world-inspector, transformer, build
+packages/      jecs, core, parallel, networking, datastore, scribe, vide, ui, imgui, world-inspector, transformer, build
 docs/          VitePress documentation site
 ```
 

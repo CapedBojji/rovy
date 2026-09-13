@@ -149,54 +149,56 @@ export class Scheduler {
 
 		this.depth += 1;
 
-		// configured sets in order, then the implicit ungrouped bucket
-		const order: Array<Ctor> = [...def.setOrder];
-		if (def.bySet.has(UNGROUPED)) order.push(UNGROUPED);
+		const [ok, failure] = pcall(() => {
+			// configured sets in order, then the implicit ungrouped bucket
+			const order: Array<Ctor> = [...def.setOrder];
+			if (def.bySet.has(UNGROUPED)) order.push(UNGROUPED);
 
-		for (const setKey of order) {
-			const bucket = def.bySet.get(setKey);
-			if (bucket === undefined || bucket.size() === 0) continue;
-			for (const sr of this.topoSort(bucket)) {
-				if (sr.reg.runIf !== undefined && !sr.reg.runIf()) continue;
-				const runSystem = () => {
-					const resourceScope = this.world.beginResourceScope();
-					const args = resolveParams(sr.reg.params, {
-						world: this.world,
-						commands: this.commands,
-						collectors: this.collectors,
-						externalParams: this.externalParams,
-						locals: sr.locals,
-						resourceScope,
-						queries: this.queries,
-						events: this.events,
-						makeReader: this.makeReader,
-						makeWriter: this.makeWriter,
-						lastRunTick: this.lastRunTick.get(sr.reg.ctor) ?? -1,
-					});
-					sr.instance.run(sr.instance, ...args);
-					this.world.commitResourceScope(resourceScope);
-					this.lastRunTick.set(sr.reg.ctor, this.world.changeTick);
-				};
-				const lifecycle = this.world.lifecycle;
-				if (lifecycle !== undefined) {
-					lifecycle.withRunScope(
-						{ kind: "system_started", ctor: sr.reg.ctor, id: sr.reg.id, name: shortName(sr.reg.id), schedule: sr.reg.schedule },
-						{ kind: "system_finished", ctor: sr.reg.ctor, id: sr.reg.id, name: shortName(sr.reg.id), schedule: sr.reg.schedule },
-						runSystem,
-					);
-				} else {
-					runSystem();
+			for (const setKey of order) {
+				const bucket = def.bySet.get(setKey);
+				if (bucket === undefined || bucket.size() === 0) continue;
+				for (const sr of this.topoSort(bucket)) {
+					if (sr.reg.runIf !== undefined && !sr.reg.runIf()) continue;
+					const runSystem = () => {
+						const resourceScope = this.world.beginResourceScope();
+						const args = resolveParams(sr.reg.params, {
+							world: this.world,
+							commands: this.commands,
+							collectors: this.collectors,
+							externalParams: this.externalParams,
+							locals: sr.locals,
+							resourceScope,
+							queries: this.queries,
+							events: this.events,
+							makeReader: this.makeReader,
+							makeWriter: this.makeWriter,
+							lastRunTick: this.lastRunTick.get(sr.reg.ctor) ?? -1,
+						});
+						sr.instance.run(sr.instance, ...args);
+						this.world.commitResourceScope(resourceScope);
+						this.lastRunTick.set(sr.reg.ctor, this.world.changeTick);
+					};
+					const lifecycle = this.world.lifecycle;
+					if (lifecycle !== undefined) {
+						lifecycle.withRunScope(
+							{ kind: "system_started", ctor: sr.reg.ctor, id: sr.reg.id, name: shortName(sr.reg.id), schedule: sr.reg.schedule },
+							{ kind: "system_finished", ctor: sr.reg.ctor, id: sr.reg.id, name: shortName(sr.reg.id), schedule: sr.reg.schedule },
+							runSystem,
+						);
+					} else {
+						runSystem();
+					}
 				}
+				this.flushCommands(schedule, setKey === UNGROUPED ? undefined : setKey); // set boundary
+				this.notifyFlushListeners();
 			}
-			this.flushCommands(schedule, setKey === UNGROUPED ? undefined : setKey); // set boundary
-			this.notifyFlushListeners();
-		}
 
-		// final flush + reconcile: trailing commands from the last set's
-		// reconcile (e.g. a monitor onEnter despawn) must apply this run, even
-		// when later sets are empty/skipped.
-		this.flushCommands(schedule);
-		this.notifyFlushListeners();
+			// final flush + reconcile: trailing commands from the last set's
+			// reconcile (e.g. a monitor onEnter despawn) must apply this run, even
+			// when later sets are empty/skipped.
+			this.flushCommands(schedule);
+			this.notifyFlushListeners();
+		});
 
 		this.depth -= 1;
 		if (this.depth === 0) {
@@ -208,6 +210,7 @@ export class Scheduler {
 		ctx.schedule = prevSchedule;
 		ctx.dt = prevDt;
 		ctx.rawDt = prevRawDt;
+		if (!ok) error(tostring(failure), 0);
 	}
 
 	private flushCommands(schedule?: Ctor, set?: Ctor): void {

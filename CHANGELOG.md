@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Add `@rovy/parallel`: typed column batches, bounded Actor pooling, worker-local
+  setup, cancellation, explicit barriers, ordered ECS result application, and a
+  low-level WorkerPool API. Add transformer lowering and worker import checks.
+- Add opt-in synchronous execution guards for companion-package waits and
+  restore scheduler context after a system throws.
+- Add isolated parallel correctness/timing fixtures and reproducible NPC/raycast
+  benchmark sweeps. Same-frame completion remains an observation, not a guarantee.
+
 ## 0.1.0 — 2026-09-10
 
 ### Added

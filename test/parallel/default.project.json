@@ -1,0 +1,85 @@
+{
+  "name": "rovy-parallel-proof",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "rbxts_include": {
+        "$path": "include",
+        "node_modules": {
+          "$className": "Folder",
+          "@rbxts": {
+            "$className": "Folder",
+            "t": {
+              "$className": "Folder",
+              "lib": {
+                "$path": "node_modules/@rbxts/t/lib"
+              }
+            },
+            "better-janitor": {
+              "$className": "Folder",
+              "src": {
+                "$path": "../../packages/core/node_modules/@rbxts/better-janitor/src"
+              }
+            },
+            "services": {
+              "$path": "node_modules/@rbxts/services"
+            }
+          },
+          "@rovy": {
+            "$className": "Folder",
+            "jecs": {
+              "$path": "node_modules/@rovy/jecs"
+            },
+            "core": {
+              "$path": "node_modules/@rovy/core"
+            },
+            "parallel": {
+              "$path": "node_modules/@rovy/parallel"
+            }
+          }
+        }
+      },
+      "ParallelProof": {
+        "$path": "out/shared"
+      }
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "ParallelProof": {
+          "$path": "out/client"
+        }
+      }
+    },
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "ParallelProof": {
+        "$path": "out/server"
+      }
+    },
+    "Workspace": {
+      "$className": "Workspace",
+      "$properties": {
+        "SignalBehavior": "Deferred"
+      },
+      "Ground": {
+        "$className": "Part",
+        "$properties": {
+          "Anchored": true,
+          "Size": [
+            2048,
+            1,
+            2048
+          ],
+          "Position": [
+            0,
+            -0.5,
+            0
+          ]
+        }
+      }
+    }
+  }
+}
