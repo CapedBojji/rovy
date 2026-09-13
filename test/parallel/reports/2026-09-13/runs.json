@@ -1,0 +1,359 @@
+{
+  "engine": "0.737.0.7371584",
+  "hardware": {
+    "model": "Mac17,8",
+    "logicalCores": 18,
+    "memoryGiB": 48
+  },
+  "runs": [
+    {
+      "stamp": "1789311949206-33176",
+      "serverOK": true,
+      "clientOK": true,
+      "failures": [],
+      "api": [
+        {
+          "applied": 192,
+          "observers": 192,
+          "stats": {
+            "dispatchedChunks": 32,
+            "dispatchSeconds": 9.95416849036701e-05,
+            "queuedRows": 0,
+            "kernelSeconds": 0.00038187500467756763,
+            "retainedBatches": 0,
+            "completed": 5,
+            "busyWorkers": 0,
+            "workers": 4,
+            "submitted": 5,
+            "staleRows": 98,
+            "cancelled": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "backgroundFrames": 1,
+          "guardChecks": 293,
+          "observerResults": 192,
+          "bufferedEvents": 192,
+          "monitorEntries": 96
+        },
+        {
+          "applied": 192,
+          "observers": 192,
+          "stats": {
+            "dispatchedChunks": 32,
+            "dispatchSeconds": 0.00011716668086592108,
+            "queuedRows": 0,
+            "kernelSeconds": 0.0003741666587302461,
+            "retainedBatches": 0,
+            "completed": 5,
+            "busyWorkers": 0,
+            "workers": 4,
+            "submitted": 5,
+            "staleRows": 98,
+            "cancelled": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "backgroundFrames": 1,
+          "guardChecks": 293,
+          "observerResults": 192,
+          "bufferedEvents": 192,
+          "monitorEntries": 96
+        }
+      ],
+      "timingExcluded": true,
+      "name": "deferred-server-bench",
+      "sourceLog": "0.737.0.7371584_20260913T150609Z_Studio_100df_last.log",
+      "benchmarkRows": 120,
+      "timingRows": 0
+    },
+    {
+      "stamp": "1789312234868-41751",
+      "serverOK": true,
+      "clientOK": true,
+      "failures": [],
+      "api": [
+        {
+          "applied": 192,
+          "observers": 192,
+          "stats": {
+            "dispatchedChunks": 32,
+            "dispatchSeconds": 0.0001203749852720648,
+            "queuedRows": 0,
+            "kernelSeconds": 0.00039883333374746144,
+            "retainedBatches": 0,
+            "completed": 5,
+            "busyWorkers": 0,
+            "workers": 4,
+            "submitted": 5,
+            "staleRows": 98,
+            "cancelled": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "backgroundFrames": 1,
+          "guardChecks": 293,
+          "observerResults": 192,
+          "bufferedEvents": 192,
+          "monitorEntries": 96
+        },
+        {
+          "applied": 192,
+          "observers": 192,
+          "stats": {
+            "dispatchedChunks": 32,
+            "dispatchSeconds": 0.00011645833728834987,
+            "queuedRows": 0,
+            "kernelSeconds": 0.00046324998402269557,
+            "retainedBatches": 0,
+            "completed": 5,
+            "busyWorkers": 0,
+            "workers": 4,
+            "submitted": 5,
+            "staleRows": 98,
+            "cancelled": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "backgroundFrames": 1,
+          "guardChecks": 293,
+          "observerResults": 192,
+          "bufferedEvents": 192,
+          "monitorEntries": 96
+        }
+      ],
+      "timingExcluded": false,
+      "name": "deferred-client",
+      "sourceLog": "0.737.0.7371584_20260913T151052Z_Studio_aa746_last.log",
+      "benchmarkRows": 120,
+      "timingRows": 80
+    },
+    {
+      "stamp": "1789312461102-50755",
+      "serverOK": true,
+      "clientOK": true,
+      "failures": [],
+      "api": [
+        {
+          "applied": 192,
+          "observers": 192,
+          "stats": {
+            "dispatchedChunks": 32,
+            "dispatchSeconds": 7.94166699051857e-05,
+            "queuedRows": 0,
+            "kernelSeconds": 0.0003175833262503147,
+            "retainedBatches": 0,
+            "completed": 5,
+            "busyWorkers": 0,
+            "workers": 4,
+            "submitted": 5,
+            "staleRows": 98,
+            "cancelled": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "backgroundFrames": 1,
+          "guardChecks": 293,
+          "observerResults": 192,
+          "bufferedEvents": 192,
+          "monitorEntries": 96
+        },
+        {
+          "applied": 192,
+          "observers": 192,
+          "stats": {
+            "dispatchedChunks": 32,
+            "dispatchSeconds": 0.0001282499943044968,
+            "queuedRows": 0,
+            "kernelSeconds": 0.0003382499926374294,
+            "retainedBatches": 0,
+            "completed": 5,
+            "busyWorkers": 0,
+            "workers": 4,
+            "submitted": 5,
+            "staleRows": 98,
+            "cancelled": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "backgroundFrames": 1,
+          "guardChecks": 293,
+          "observerResults": 192,
+          "bufferedEvents": 192,
+          "monitorEntries": 96
+        }
+      ],
+      "timingExcluded": false,
+      "name": "immediate-server",
+      "sourceLog": "0.737.0.7371584_20260913T151446Z_Studio_51c2d_last.log",
+      "benchmarkRows": 120,
+      "timingRows": 80
+    },
+    {
+      "stamp": "1789312615131-55639",
+      "serverOK": true,
+      "clientOK": true,
+      "failures": [],
+      "api": [
+        {
+          "applied": 192,
+          "observers": 192,
+          "stats": {
+            "dispatchedChunks": 32,
+            "dispatchSeconds": 7.66249795560725e-05,
+            "queuedRows": 0,
+            "kernelSeconds": 0.00032266667403746396,
+            "retainedBatches": 0,
+            "completed": 5,
+            "busyWorkers": 0,
+            "workers": 4,
+            "submitted": 5,
+            "staleRows": 98,
+            "cancelled": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "backgroundFrames": 1,
+          "guardChecks": 293,
+          "observerResults": 192,
+          "bufferedEvents": 192,
+          "monitorEntries": 96
+        },
+        {
+          "applied": 192,
+          "observers": 192,
+          "stats": {
+            "dispatchedChunks": 32,
+            "dispatchSeconds": 0.00010416666918899864,
+            "queuedRows": 0,
+            "kernelSeconds": 0.0004397083175717853,
+            "retainedBatches": 0,
+            "completed": 5,
+            "busyWorkers": 0,
+            "workers": 4,
+            "submitted": 5,
+            "staleRows": 98,
+            "cancelled": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "backgroundFrames": 1,
+          "guardChecks": 293,
+          "observerResults": 192,
+          "bufferedEvents": 192,
+          "monitorEntries": 96
+        }
+      ],
+      "faults": {
+        "server": {
+          "exhaustion": 1,
+          "kernelErrors": 2,
+          "destructionDuringWork": true,
+          "cancellationAndTimeout": 2,
+          "reuse": true,
+          "callbackErrors": 1
+        },
+        "client": {
+          "exhaustion": 1,
+          "kernelErrors": 2,
+          "destructionDuringWork": true,
+          "cancellationAndTimeout": 2,
+          "reuse": true,
+          "callbackErrors": 1
+        }
+      },
+      "signals": [
+        "ROVY_PARALLEL_SIGNAL server Immediate",
+        "ROVY_PARALLEL_SIGNAL client Immediate"
+      ],
+      "timingExcluded": false,
+      "name": "immediate-client",
+      "sourceLog": "0.737.0.7371584_20260913T151737Z_Studio_08902_last.log",
+      "benchmarkRows": 120,
+      "timingRows": 80
+    },
+    {
+      "stamp": "1789312805473-61030",
+      "serverOK": true,
+      "clientOK": true,
+      "failures": [],
+      "api": [
+        {
+          "applied": 192,
+          "observers": 192,
+          "stats": {
+            "dispatchedChunks": 32,
+            "dispatchSeconds": 0.0001177916637971066,
+            "queuedRows": 0,
+            "kernelSeconds": 0.000424958358053118,
+            "retainedBatches": 0,
+            "completed": 5,
+            "busyWorkers": 0,
+            "workers": 4,
+            "submitted": 5,
+            "staleRows": 98,
+            "cancelled": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "backgroundFrames": 1,
+          "guardChecks": 293,
+          "observerResults": 192,
+          "bufferedEvents": 192,
+          "monitorEntries": 96
+        },
+        {
+          "applied": 192,
+          "observers": 192,
+          "stats": {
+            "dispatchedChunks": 32,
+            "dispatchSeconds": 0.00017362501239404082,
+            "queuedRows": 0,
+            "kernelSeconds": 0.0006009583157720044,
+            "retainedBatches": 0,
+            "completed": 5,
+            "busyWorkers": 0,
+            "workers": 4,
+            "submitted": 5,
+            "staleRows": 98,
+            "cancelled": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "backgroundFrames": 1,
+          "guardChecks": 293,
+          "observerResults": 192,
+          "bufferedEvents": 192,
+          "monitorEntries": 96
+        }
+      ],
+      "faults": {
+        "server": {
+          "exhaustion": 1,
+          "kernelErrors": 2,
+          "destructionDuringWork": true,
+          "cancellationAndTimeout": 2,
+          "reuse": true,
+          "callbackErrors": 1
+        },
+        "client": {
+          "exhaustion": 1,
+          "kernelErrors": 2,
+          "destructionDuringWork": true,
+          "cancellationAndTimeout": 2,
+          "reuse": true,
+          "callbackErrors": 1
+        }
+      },
+      "signals": [
+        "ROVY_PARALLEL_SIGNAL server Deferred",
+        "ROVY_PARALLEL_SIGNAL client Deferred"
+      ],
+      "timingExcluded": false,
+      "name": "deferred-server",
+      "sourceLog": "0.737.0.7371584_20260913T152051Z_Studio_3fbe2_last.log",
+      "benchmarkRows": 0,
+      "timingRows": 80
+    }
+  ]
+}

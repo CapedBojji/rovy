@@ -1,3 +1,4 @@
+import { verification } from "./configuration";
 import { App, Commands, Entity, Query, Res, component, resource, schedule, system } from "@rovy/core";
 import { WorkerPool } from "@rovy/parallel";
 import { HttpService, RunService, Workspace } from "@rbxts/services";
@@ -5,6 +6,7 @@ import { Position } from "./proof";
 import { GroundProbe } from "./ground-probe.job";
 import { NpcScore, scoreNpc } from "./npc-score.job";
 import { FrameProbe } from "./frame-probe.job";
+import { PhaseClock } from "./phase-clock";
 
 @component
 class Answer { constructor(public value: boolean | number) {} }
@@ -56,6 +58,7 @@ function percentile(values: number[], fraction: number): number {
 
 /** Run one side at a time in the isolated place. No native compilation on either baseline. */
 export function runBenchmarks(samples = 20, sizes = [256, 2048, 8192]) {
+	const clock = new PhaseClock();
 	const reports = new Array<object>();
 	for (const kind of ["raycast", "npc"] as const) {
 		for (const rows of sizes) {
@@ -88,7 +91,7 @@ export function runBenchmarks(samples = 20, sizes = [256, 2048, 8192]) {
 					for (let trial = -5; trial < samples; trial++) {
 						const [dt] = RunService.Heartbeat.Wait();
 						if (trial === 0) memoryStart = gcinfo();
-						const frame = RunService.FrameNumber;
+						const frame = clock.frame;
 						const start = os.clock();
 						app.runSchedule(BenchSubmit, dt);
 						const submitted = os.clock();
@@ -102,7 +105,7 @@ export function runBenchmarks(samples = 20, sizes = [256, 2048, 8192]) {
 							waitMs.push((returned - submitted) * 1000);
 							applyMs.push((finish - returned) * 1000);
 							frameMs.push(dt * 1000);
-							if (frame === RunService.FrameNumber) sameFrame++;
+								if (frame === clock.frame) sameFrame++;
 						}
 					}
 					for (let i = 0; i < entities.size(); i++) {
@@ -111,7 +114,7 @@ export function runBenchmarks(samples = 20, sizes = [256, 2048, 8192]) {
 						else assert(value === baseline[i], "parallel result differs from serial ECS baseline");
 					}
 					const report = {
-						kind, rows, ...config, samples, signal: game.GetAttribute("ParallelSignalMode"),
+						kind, rows, ...config, samples, signal: verification.GetAttribute("ParallelSignalMode"),
 						side: RunService.IsServer() ? "server" : "client",
 						p50Ms: percentile(totalMs, 0.5), p95Ms: percentile(totalMs, 0.95),
 						submitP95Ms: percentile(submitMs, 0.95), waitP95Ms: percentile(waitMs, 0.95), applyP95Ms: percentile(applyMs, 0.95),
@@ -122,42 +125,57 @@ export function runBenchmarks(samples = 20, sizes = [256, 2048, 8192]) {
 					print(`ROVY_PARALLEL_BENCH ${HttpService.JSONEncode(report)}`);
 				});
 				pool?.destroy();
-				if (!ok) error(tostring(failure));
+				if (!ok) { clock.destroy(); error(tostring(failure)); }
 			}
 		}
 	}
+	clock.destroy();
 	return reports;
 }
 
 export function runTimingProbe(samples = 20) {
+	const clock = new PhaseClock();
 	const pool = new WorkerPool({ jobs: [FrameProbe], workers: 4, chunkSize: 64 });
 	const results = new Array<object>();
 	const [ok, failure] = pcall(() => {
 		assert(pool.ready(10), "timing workers not ready");
 		for (const operations of [1, 10000]) for (const rows of [1, 257]) {
 			const input = new Array<number>();
-			for (let i = 0; i < rows; i++) input.push(operations);
+			const markers = new Array<Folder>();
+			for (let i = 0; i < rows; i++) { input.push(operations); markers.push(clock.marker); }
 			for (let trial = -3; trial < samples; trial++) {
-				RunService.PreSimulation.Wait();
-				const submitFrame = RunService.FrameNumber;
+				clock.waitPreSimulation();
+				const submitFrame = clock.frame;
+				const submitPhase = clock.phase;
 				const submitTime = os.clock();
-				const ticket = pool.submit(FrameProbe.__id, {columns: [input], count: rows})!;
+				const ticket = pool.submit(FrameProbe.__id, {columns: [input, markers], count: rows})!;
 				assert(ticket !== undefined && pool.wait(ticket, 5).ok, "timing round trip failed");
 				const completeTime = os.clock();
-				const completeFrame = RunService.FrameNumber;
+				const completeFrame = clock.frame;
+				const completePhase = clock.phase;
 				pool.poll(ticket, (result) => {
 					if (trial < 0) return;
-					const first = result.output[0] as { start: number; finish: number; frame: number };
+					let first = result.output[0] as { start: number; finish: number; frame: number; phase: string };
+					let workerFinish = first.finish;
+					for (const value of result.output) {
+						const row = value as typeof first;
+						if (row.start < first.start) first = row;
+						workerFinish = math.max(workerFinish, row.finish);
+					}
 					results.push({trial, operations, rows, submitFrame, completeFrame, workerFrame: first.frame,
-						submitTime, workerStart: first.start, workerFinish: first.finish, completeTime,
-						applyTime: os.clock(), applyFrame: RunService.FrameNumber,
-						signal: game.GetAttribute("ParallelSignalMode"), side: RunService.IsServer() ? "server" : "client"});
+						submitTime, workerStart: first.start, workerFinish, completeTime,
+						applyTime: os.clock(), applyFrame: clock.frame,
+						submitPhase, completePhase, workerPhase: first.phase, applyPhase: clock.phase,
+						signal: verification.GetAttribute("ParallelSignalMode"), side: RunService.IsServer() ? "server" : "client"});
 				});
 			}
 		}
 	});
 	pool.destroy();
+	clock.destroy();
 	if (!ok) error(tostring(failure));
-	print(`ROVY_PARALLEL_TIMING ${HttpService.JSONEncode(results)}`);
+	// One small row per log line avoids Studio's long-message truncation.
+	for (const row of results) print(`ROVY_PARALLEL_TIMING_ROW ${HttpService.JSONEncode(row)}`);
+	print(`ROVY_PARALLEL_TIMING_OK ${results.size()}`);
 	return results;
 }
