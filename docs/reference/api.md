@@ -374,6 +374,9 @@ import {
   NetFunctionReader,
   NetFunctionResponder,
   NetServer,
+  NetI16,
+  NetU16,
+  NetU8,
   netEvent,
   netFunction,
 } from "@rovy/networking";

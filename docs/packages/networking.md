@@ -582,6 +582,9 @@ Initial mapping:
 
 ```txt
 NetId              -> u32
+NetU8               -> u8
+NetU16              -> u16
+NetI16              -> i16
 number             -> f64 by default
 string             -> string
 boolean            -> boolean
@@ -768,6 +771,9 @@ export class NetServer {
 }
 
 export type NetId = number;
+export type NetU8 = number;
+export type NetU16 = number;
+export type NetI16 = number;
 ```
 
 ## Final mental model

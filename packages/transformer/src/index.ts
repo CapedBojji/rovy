@@ -4636,6 +4636,9 @@ function blinkTypeShapeFor(state: TransformState, node: ts.TypeNode, optional: b
 	if (ts.isTypeReferenceNode(node)) {
 		const name = lastTypeName(node.typeName);
 		if (name === "NetId") return { kind: "primitive", text: `u32${suffix}` };
+		if (name === "NetU8") return { kind: "primitive", text: `u8${suffix}` };
+		if (name === "NetU16") return { kind: "primitive", text: `u16${suffix}` };
+		if (name === "NetI16") return { kind: "primitive", text: `i16${suffix}` };
 		if (name === "Array" || name === "ReadonlyArray") {
 			const arg = node.typeArguments?.[0];
 			if (arg) return { kind: "array", element: blinkTypeShapeFor(state, arg, false), suffix };
