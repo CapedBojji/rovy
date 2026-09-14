@@ -57,6 +57,9 @@ import {
 		NetClient,
 		NetEventContext,
 		NetId,
+		NetI16,
+		NetU16,
+		NetU8,
 		NetFunctionReader,
 		NetFunctionResponder,
 		NetFunc,
@@ -386,6 +389,24 @@ class CastAbilityIntent {
 	assert.match(result.printed, /caster: u32/);
 	assert.match(result.printed, /abilityId: string/);
 	assert.match(result.printed, /target: u32\?/);
+});
+
+runCase("netEvent preserves narrow numeric Blink wire types", () => {
+	const result = compileFixture(`
+${header}
+@netEvent({ direction: "serverToClient" })
+class Snapshot {
+	constructor(
+		public generation: NetU16,
+		public positions: ReadonlyArray<NetI16>,
+		public statuses: NetU8[],
+	) {}
+}
+`);
+	assertNoDiagnostics(result, "narrow numeric net fields");
+	assert.match(result.printed, /generation: u16/);
+	assert.match(result.printed, /positions: i16\[\]/);
+	assert.match(result.printed, /statuses: u8\[\]/);
 });
 
 runCase("networking params lower as external package params", () => {

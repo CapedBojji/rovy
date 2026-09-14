@@ -1,6 +1,12 @@
 import type { Ctor } from "@rovy/core";
 
 export type NetId = number;
+/** Unsigned 8-bit Blink wire number. Callers must keep values in 0..255. */
+export type NetU8 = number;
+/** Unsigned 16-bit Blink wire number. Callers must keep values in 0..65,535. */
+export type NetU16 = number;
+/** Signed 16-bit Blink wire number. Callers must keep values in -32,768..32,767. */
+export type NetI16 = number;
 export type NetEventDirection = "clientToServer" | "serverToClient";
 export type NetEventChannel = "reliable" | "unreliable";
 export type NetEventReceiveMode = "send" | "trigger";

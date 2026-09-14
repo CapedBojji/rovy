@@ -13,7 +13,10 @@ import {
 	NetFunctionReader,
 	NetFunctionResponder,
 	NetId,
+	NetI16,
 	NetServer,
+	NetU16,
+	NetU8,
 	netEvent,
 	netFunction,
 	rovyNet,
@@ -33,6 +36,15 @@ class PlayHitEffect {
 	constructor(
 		public target: NetId,
 		public effectId: string,
+	) {}
+}
+
+@netEvent({ direction: "serverToClient", channel: "reliable", receive: "send" })
+class Snapshot {
+	constructor(
+		public generation: NetU16,
+		public positions: NetI16[],
+		public statuses: NetU8[],
 	) {}
 }
 
@@ -84,7 +96,7 @@ const result = compileFixture(source, {
 assertNoDiagnostics(result, "blink integration fixture");
 
 const schemas = [...result.printed.matchAll(/(?:blink|requestBlink|resultBlink): ("(?:[^"\\]|\\.)*")/g)].map((match) => JSON.parse(match[1]));
-assert.equal(schemas.length, 4, "expected four generated Blink event/function declarations");
+assert.equal(schemas.length, 5, "expected five generated Blink event/function declarations");
 
 const temp = result.temp;
 fs.writeFileSync(
@@ -133,6 +145,7 @@ const client = fs.readFileSync(clientOutput, "utf8");
 assert.match(server, /CastAbilityIntent/);
 assert.match(server, /FetchProfileRequest/);
 assert.match(client, /PlayHitEffect/);
+assert.match(client, /Snapshot/);
 assert.match(client, /FetchProfileResult/);
 
 fs.rmSync(temp, { recursive: true, force: true });
