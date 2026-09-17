@@ -607,6 +607,7 @@ Do not hardcode active Rojo project selection into `tsconfig.json`.
 		"placeFile": "game.rbxl",
 		"rbxtscArgs": ["--type", "game"],
 		"rojoBuildArgs": ["build", "default.project.json", "-o", "game.rbxl"],
+		"rojoPort": "auto",
 		"watchOnOpen": true,
 		"generateBlink": true,
 		"environments": {

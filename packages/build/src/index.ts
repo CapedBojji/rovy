@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import cp, { type ChildProcess } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import readline from "node:readline";
 import ts from "typescript";
@@ -8,6 +9,7 @@ import {
   loadRovyBuildConfig,
   type ResolvedRovyBuildConfig,
   type RovyBuildConfigFile,
+  type RovyRojoPort,
 } from "rovy-transformer/dist/rovy-config";
 import {
   preparePartitionedProject,
@@ -30,6 +32,10 @@ type Runner = (
 ) => Promise<void>;
 
 const DEFAULT_PLACE_FILE = "game.rbxl";
+const DEFAULT_ROJO_PROJECT = "default.project.json";
+const DEFAULT_ROJO_PORT = 34872;
+const ROJO_PORT_SCAN_LIMIT = 64;
+const ROJO_PORT_FILE = "rojo.port";
 const DEFAULT_SCRIPT_NAMES = {
   compile: "compile",
   generate: "generate",
@@ -45,11 +51,15 @@ export interface CommandContext {
   readonly run: Runner;
 }
 
+export interface ServeOptions {
+  readonly port?: RovyRojoPort;
+}
+
 export async function runCli(
   argv = process.argv.slice(2),
   context?: Partial<CommandContext>,
 ): Promise<void> {
-  const command = (argv[0] ?? "build") as CommandName;
+  const { command, port } = parseCliArgs(argv);
   const projectDir = context?.projectDir ?? process.cwd();
   const run = context?.run ?? runCommand;
 
@@ -64,13 +74,13 @@ export async function runCli(
       await build({ projectDir, run });
       return;
     case "open":
-      await openProject({ projectDir, run });
+      await openProject({ projectDir, run }, { port });
       return;
     case "watch":
-      await watch({ projectDir, run });
+      await watch({ projectDir, run }, { port });
       return;
     case "start":
-      await start({ projectDir, run });
+      await start({ projectDir, run }, { port });
       return;
     case "stop":
       await stop({ projectDir, run });
@@ -81,6 +91,54 @@ export async function runCli(
     default:
       throw new Error(`unknown rovy-build command: ${command}`);
   }
+}
+
+function parseCliArgs(argv: readonly string[]): {
+  readonly command: CommandName;
+  readonly port?: RovyRojoPort;
+} {
+  let command: CommandName | undefined;
+  let port: RovyRojoPort | undefined;
+  for (let index = 0; index < argv.length; index += 1) {
+    const value = argv[index];
+    if (value === "--port") {
+      port = parsePortValue(argv[index + 1], "--port");
+      index += 1;
+      continue;
+    }
+    if (value.startsWith("--port=")) {
+      port = parsePortValue(value.slice("--port=".length), "--port");
+      continue;
+    }
+    if (command === undefined) {
+      command = value as CommandName;
+      continue;
+    }
+    throw new Error(`unexpected rovy-build argument: ${value}`);
+  }
+  return { command: command ?? "build", port };
+}
+
+function parsePortValue(
+  value: string | undefined,
+  label: string,
+): RovyRojoPort {
+  if (value === undefined || value === "")
+    throw new Error(`${label} expects a port number or 'auto'`);
+  if (value === "auto") return "auto";
+  const port = Number(value);
+  if (!isValidPort(port))
+    throw new Error(`${label} expects a port number or 'auto', got '${value}'`);
+  return port;
+}
+
+function isValidPort(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= 65535
+  );
 }
 
 export async function compile(context: CommandContext): Promise<void> {
@@ -170,7 +228,10 @@ export async function build(context: CommandContext): Promise<void> {
   });
 }
 
-export async function openProject(context: CommandContext): Promise<void> {
+export async function openProject(
+  context: CommandContext,
+  options: ServeOptions = {},
+): Promise<void> {
   const config = readConfig(context.projectDir);
 
   const existingStudioPids = pruneStudioPids(context.projectDir);
@@ -178,13 +239,13 @@ export async function openProject(context: CommandContext): Promise<void> {
   if (existingStudio !== undefined) {
     console.log(`[rovy-build] Studio already open (pid ${existingStudio})`);
     if (config.build.watchOnOpen !== false)
-      await watch(context, { stopStudioOnExit: false });
+      await watch(context, { stopStudioOnExit: false, port: options.port });
     return;
   }
 
   await openStudio(context);
   if (config.build.watchOnOpen !== false)
-    await watch(context, { stopStudioOnExit: true });
+    await watch(context, { stopStudioOnExit: true, port: options.port });
 }
 
 export async function openStudio(context: CommandContext): Promise<void> {
@@ -209,9 +270,12 @@ export async function openStudio(context: CommandContext): Promise<void> {
   }
 }
 
-export async function start(context: CommandContext): Promise<void> {
+export async function start(
+  context: CommandContext,
+  options: ServeOptions = {},
+): Promise<void> {
   await build(context);
-  await openProject(context);
+  await openProject(context, options);
 }
 
 export async function stop(context: CommandContext): Promise<void> {
@@ -222,13 +286,14 @@ export async function stop(context: CommandContext): Promise<void> {
   for (const pid of pids) {
     await killPid(pid, "tracked process");
   }
-  removePid(context.projectDir, "watch.pid");
-  removePid(context.projectDir, "studio.pid");
+  removeStateFile(context.projectDir, "watch.pid");
+  removeStateFile(context.projectDir, "studio.pid");
+  removeStateFile(context.projectDir, ROJO_PORT_FILE);
 }
 
 export async function watch(
   context: CommandContext,
-  options: { readonly stopStudioOnExit?: boolean } = {},
+  options: ServeOptions & { readonly stopStudioOnExit?: boolean } = {},
 ): Promise<void> {
   const config = readConfig(context.projectDir);
   const children: ChildProcess[] = [];
@@ -237,7 +302,8 @@ export async function watch(
     if (isTrackedWatchProcess(pid))
       await killPid(pid, "previous watch process");
   }
-  removePid(context.projectDir, "watch.pid");
+  removeStateFile(context.projectDir, "watch.pid");
+  removeStateFile(context.projectDir, ROJO_PORT_FILE);
   const spawnChild = (
     command: string,
     args: readonly string[],
@@ -270,18 +336,20 @@ export async function watch(
       for (const pid of readPids(context.projectDir, "studio.pid")) {
         await killPid(pid, "Roblox Studio");
       }
-      removePid(context.projectDir, "studio.pid");
+      removeStateFile(context.projectDir, "studio.pid");
     } else {
       pruneStudioPids(context.projectDir);
     }
-    removePid(context.projectDir, "watch.pid");
+    removeStateFile(context.projectDir, "watch.pid");
+    removeStateFile(context.projectDir, ROJO_PORT_FILE);
   };
   const cleanupSync = () => {
     for (const child of children) {
       signalChild(child, "SIGTERM");
     }
     pruneStudioPids(context.projectDir);
-    removePid(context.projectDir, "watch.pid");
+    removeStateFile(context.projectDir, "watch.pid");
+    removeStateFile(context.projectDir, ROJO_PORT_FILE);
   };
   process.once("SIGINT", async () => {
     await cleanup();
@@ -302,8 +370,11 @@ export async function watch(
     ? replaceProjectArg(baseRbxtscArgs, partitioned.projectFile)
     : baseRbxtscArgs;
   const rbxtscWatchArgs = ["-w", ...compiledArgs];
-  const rojoProject = config.environment.rojo ?? "default.project.json";
-  spawnChild("rojo", ["serve", rojoProject]);
+  const rojoProject = config.environment.rojo ?? DEFAULT_ROJO_PROJECT;
+  const serve = await rojoServePlan(config, options.port);
+  spawnChild("rojo", serve.args);
+  writeStateFile(context.projectDir, ROJO_PORT_FILE, `${serve.port}\n`);
+  console.log(`[rovy-build] rojo serving on http://localhost:${serve.port}`);
   if (config.environment.sourcemap) {
     spawnChild("rojo", [
       "sourcemap",
@@ -537,7 +608,8 @@ export async function init(projectDir: string): Promise<void> {
     $schema: "./node_modules/@rovy/core/schema/rovy-build.schema.json",
     placeFile: DEFAULT_PLACE_FILE,
     rbxtscArgs: ["--type", "game"],
-    rojoBuildArgs: ["build", "default.project.json", "-o", DEFAULT_PLACE_FILE],
+    rojoBuildArgs: ["build", DEFAULT_ROJO_PROJECT, "-o", DEFAULT_PLACE_FILE],
+    rojoPort: "auto",
     watchOnOpen: true,
     generateBlink: true,
     ...rovyConfig,
@@ -592,11 +664,108 @@ function rojoBuildArgs(config: ResolvedRovyBuildConfig): string[] {
     ...(config.environment.rojoBuildArgs ??
       config.build.rojoBuildArgs ?? [
       "build",
-      config.environment.rojo ?? "default.project.json",
+      config.environment.rojo ?? DEFAULT_ROJO_PROJECT,
       "-o",
       config.environment.placeFile ?? config.build.placeFile ?? DEFAULT_PLACE_FILE,
     ]),
   ];
+}
+
+export interface RojoServePlan {
+  readonly args: string[];
+  readonly port: number;
+}
+
+/**
+ * Resolve the `rojo serve` command for a project. Port precedence:
+ * `--port` flag, `ROVY_ROJO_PORT`, environment `rojoPort`, build `rojoPort`,
+ * then `auto`.
+ */
+export async function planRojoServe(
+  projectDir: string,
+  port?: RovyRojoPort,
+): Promise<RojoServePlan> {
+  return rojoServePlan(readConfig(projectDir), port);
+}
+
+async function rojoServePlan(
+  config: ResolvedRovyBuildConfig,
+  override: RovyRojoPort | undefined,
+): Promise<RojoServePlan> {
+  const port = await resolveRojoPort(config, override);
+  return {
+    args: [
+      "serve",
+      config.environment.rojo ?? DEFAULT_ROJO_PROJECT,
+      "--port",
+      String(port),
+    ],
+    port,
+  };
+}
+
+async function resolveRojoPort(
+  config: ResolvedRovyBuildConfig,
+  override: RovyRojoPort | undefined,
+): Promise<number> {
+  const requested =
+    override ??
+    envRojoPort() ??
+    configuredRojoPort(config.environment.rojoPort, 'environment "rojoPort"') ??
+    configuredRojoPort(config.build.rojoPort, 'rovy-build "rojoPort"') ??
+    "auto";
+  if (requested !== "auto") {
+    if (await isPortAvailable(requested)) return requested;
+    throw new Error(
+      `rojo port ${requested} is already in use; free it or pass --port auto`,
+    );
+  }
+  const port = await findAvailablePort(DEFAULT_ROJO_PORT, ROJO_PORT_SCAN_LIMIT);
+  if (port === undefined)
+    throw new Error(
+      `no free rojo port between ${DEFAULT_ROJO_PORT} and ${DEFAULT_ROJO_PORT + ROJO_PORT_SCAN_LIMIT - 1}`,
+    );
+  if (port !== DEFAULT_ROJO_PORT)
+    console.log(
+      `[rovy-build] port ${DEFAULT_ROJO_PORT} in use, using ${port} instead`,
+    );
+  return port;
+}
+
+function envRojoPort(): RovyRojoPort | undefined {
+  const raw = process.env.ROVY_ROJO_PORT;
+  if (raw === undefined || raw === "") return undefined;
+  return parsePortValue(raw, "ROVY_ROJO_PORT");
+}
+
+function configuredRojoPort(
+  value: RovyRojoPort | undefined,
+  label: string,
+): RovyRojoPort | undefined {
+  if (value === undefined) return undefined;
+  if (value === "auto" || isValidPort(value)) return value;
+  throw new Error(`${label} must be a port number or "auto"`);
+}
+
+async function findAvailablePort(
+  start: number,
+  limit: number,
+): Promise<number | undefined> {
+  for (let port = start; port < start + limit && port <= 65535; port += 1) {
+    if (await isPortAvailable(port)) return port;
+  }
+  return undefined;
+}
+
+function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once("error", () => resolve(false));
+    server.once("listening", () => {
+      server.close(() => resolve(true));
+    });
+    server.listen(port, "127.0.0.1");
+  });
 }
 
 function ensureRojoBuildOutputDir(
@@ -726,15 +895,20 @@ function stateDir(projectDir: string): string {
   return dir;
 }
 
+function writeStateFile(
+  projectDir: string,
+  name: string,
+  content: string,
+): void {
+  fs.writeFileSync(path.join(stateDir(projectDir), name), content);
+}
+
 function writePid(
   projectDir: string,
   name: string,
   pids: readonly number[],
 ): void {
-  fs.writeFileSync(
-    path.join(stateDir(projectDir), name),
-    `${pids.join("\n")}\n`,
-  );
+  writeStateFile(projectDir, name, `${pids.join("\n")}\n`);
 }
 
 function readPids(projectDir: string, name: string): number[] {
@@ -749,7 +923,7 @@ function readPids(projectDir: string, name: string): number[] {
   }
 }
 
-function removePid(projectDir: string, name: string): void {
+function removeStateFile(projectDir: string, name: string): void {
   fs.rmSync(path.join(stateDir(projectDir), name), { force: true });
 }
 
@@ -766,7 +940,7 @@ function pidAlive(pid: number): boolean {
 function pruneStudioPids(projectDir: string): number[] {
   const pids = readPids(projectDir, "studio.pid").filter(isStudioPid);
   if (pids.length > 0) writePid(projectDir, "studio.pid", pids);
-  else removePid(projectDir, "studio.pid");
+  else removeStateFile(projectDir, "studio.pid");
   return pids;
 }
 

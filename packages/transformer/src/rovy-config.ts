@@ -21,9 +21,12 @@ export interface RovyEditorConfig {
 	readonly runtimeTypeChecks?: boolean;
 }
 
+export type RovyRojoPort = number | "auto";
+
 export interface RovyEnvironmentConfig {
 	readonly debug?: boolean;
 	readonly rojo?: string;
+	readonly rojoPort?: RovyRojoPort;
 	readonly sourcemap?: string;
 	readonly placeFile?: string;
 	readonly rbxtscArgs?: ReadonlyArray<string>;
@@ -40,6 +43,7 @@ export interface RovyEnvironmentConfig {
 interface MutableRovyEnvironmentConfig {
 	debug?: boolean;
 	rojo?: string;
+	rojoPort?: RovyRojoPort;
 	sourcemap?: string;
 	placeFile?: string;
 	rbxtscArgs?: ReadonlyArray<string>;
@@ -67,6 +71,7 @@ export interface RovyBuildScriptNames {
 
 export interface RovyBuildConfigFile extends RovyConfigFile {
 	readonly placeFile?: string;
+	readonly rojoPort?: RovyRojoPort;
 	readonly rbxtscArgs?: ReadonlyArray<string>;
 	readonly rojoBuildArgs?: ReadonlyArray<string>;
 	readonly watchOnOpen?: boolean;
@@ -141,10 +146,13 @@ export function loadRovyBuildConfig(
 	const legacyEnvironment: MutableRovyEnvironmentConfig = {};
 	if (typeof config.debug === "boolean") legacyEnvironment.debug = config.debug;
 	if (typeof config.rojo === "string") legacyEnvironment.rojo = config.rojo;
+	if (typeof config.rojoPort === "number" || config.rojoPort === "auto")
+		legacyEnvironment.rojoPort = config.rojoPort;
 	if (typeof config.sourcemap === "string") legacyEnvironment.sourcemap = config.sourcemap;
 	if (
 		legacyEnvironment.debug === undefined &&
 		legacyEnvironment.rojo === undefined &&
+		legacyEnvironment.rojoPort === undefined &&
 		legacyEnvironment.sourcemap === undefined &&
 		config.boundaries === undefined &&
 		config.editor === undefined &&

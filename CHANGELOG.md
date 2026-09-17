@@ -22,6 +22,12 @@
   completion for the supported default transport.
 - Added the package-neutral core flush-participant API used to commit external
   package work deterministically at every Rovy set boundary.
+- Added Rojo serve port control to `rovy-build`: a `rojoPort` config field
+  (build-level and per environment), the `ROVY_ROJO_PORT` variable, and a
+  `--port <number|auto>` flag on `rovy watch`, `rovy open`, and `rovy start`.
+  `auto` claims the first free port from Rojo's default `34872`, a pinned port
+  that is already in use fails loudly, and the live port is written to
+  `.rovy-build/rojo.port` while watch runs.
 
 ### Changed
 
