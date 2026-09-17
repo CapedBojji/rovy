@@ -1,8 +1,9 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
-const { runCli } = require("../dist/index.js");
+const { planRojoServe, runCli } = require("../dist/index.js");
 
 function tempProject(config = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rovy-build-"));
@@ -30,6 +31,18 @@ function tempProject(config = {}) {
   );
   fs.mkdirSync(path.join(dir, "src"));
   return dir;
+}
+
+function listen(port) {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => resolve(server));
+  });
+}
+
+function close(server) {
+  return new Promise((resolve) => server.close(resolve));
 }
 
 async function capture(argv, dir) {
@@ -121,6 +134,46 @@ async function capture(argv, dir) {
     ],
   ]);
   assert.equal(fs.existsSync(path.join(envOverrideDir, "build")), true);
+
+  const portDir = tempProject({ generateBlink: false, rojoPort: 41234 });
+  assert.deepEqual(await planRojoServe(portDir), {
+    args: ["serve", "default.project.json", "--port", "41234"],
+    port: 41234,
+  });
+  assert.equal((await planRojoServe(portDir, 41235)).port, 41235);
+
+  process.env.ROVY_ROJO_PORT = "41236";
+  assert.equal((await planRojoServe(portDir)).port, 41236);
+  delete process.env.ROVY_ROJO_PORT;
+
+  const envPortDir = tempProject({
+    generateBlink: false,
+    rojoPort: 41234,
+    current: "dev",
+    environments: { dev: { rojo: "default.project.json", rojoPort: "auto" } },
+  });
+  const autoPort = (await planRojoServe(envPortDir)).port;
+  assert.ok(autoPort >= 34872 && autoPort < 34872 + 64, `auto port ${autoPort}`);
+
+  const taken = await listen(autoPort);
+  try {
+    assert.ok((await planRojoServe(envPortDir)).port > autoPort);
+    await assert.rejects(
+      planRojoServe(portDir, autoPort),
+      new RegExp(`rojo port ${autoPort} is already in use`),
+    );
+  } finally {
+    await close(taken);
+  }
+
+  await assert.rejects(
+    runCli(["watch", "--port", "nope"], { projectDir: portDir, run: async () => {} }),
+    /--port expects a port number or 'auto'/,
+  );
+  await assert.rejects(
+    runCli(["build", "--oops"], { projectDir: portDir, run: async () => {} }),
+    /unexpected rovy-build argument: --oops/,
+  );
 
   const initDir = fs.mkdtempSync(path.join(os.tmpdir(), "rovy-build-init-"));
   fs.writeFileSync(

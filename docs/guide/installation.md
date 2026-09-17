@@ -167,6 +167,7 @@ Keep build, environment, Rojo, boundary, and Blink settings in `package.json` un
     "placeFile": "game.rbxl",
     "rbxtscArgs": ["--type", "game"],
     "rojoBuildArgs": ["build", "default.project.json", "-o", "game.rbxl"],
+    "rojoPort": "auto",
     "watchOnOpen": true,
     "generateBlink": true,
     "environments": {
@@ -220,7 +221,7 @@ project-local `node_modules/.bin` is on `PATH`:
 | `rovy compile`  | Runs `rbxtsc` with `rbxtscArgs`, then runs generators unless `generateBlink` is `false`.                                               |
 | `rovy generate` | Runs Rovy generators only. Today that means Blink transport files when networking generation is enabled.                               |
 | `rovy build`    | Runs `rovy compile`, then runs `rojo` with `rojoBuildArgs` to write the configured place file.                                         |
-| `rovy watch`    | Starts `rojo serve`, optional `rojo sourcemap --watch`, and `rbxtsc -w`; also keeps Blink generated files fresh after compile changes. |
+| `rovy watch`    | Starts `rojo serve` on the resolved port, optional `rojo sourcemap --watch`, and `rbxtsc -w`; also keeps Blink generated files fresh after compile changes. |
 | `rovy open`     | Opens `placeFile` in Roblox Studio. If `watchOnOpen` is not `false`, it also starts `rovy watch`.                                      |
 | `rovy start`    | Runs `rovy build`, then `rovy open`. Use this for the normal "build, open Studio, keep watching" loop.                                 |
 | `rovy stop`     | Stops tracked watch and Studio processes from `.rovy-build/*.pid`.                                                                     |
@@ -228,6 +229,23 @@ project-local `node_modules/.bin` is on `PATH`:
 
 `rovy watch` includes an interactive prompt. Type `help` in that prompt for
 available actions: `open`, `compile`, `generate`, `build`, `stop`, and `exit`.
+
+### Rojo serve port
+
+`rovy watch`, `rovy open`, and `rovy start` accept `--port <number|auto>`:
+
+```bash
+rovy start --port 34873   # pin a port
+rovy start --port auto    # first free port from 34872
+```
+
+Precedence is `--port`, then `ROVY_ROJO_PORT`, then `environments.*.rojoPort`,
+then the top-level `rojoPort`, then `auto`. With `auto`, Rovy scans upward from
+Rojo's default `34872` and logs the port it picked, so several places can sync
+at once. A pinned port that is already taken fails with
+`rojo port <n> is already in use; free it or pass --port auto` instead of
+starting somewhere unexpected. While watch runs, the live port is in
+`.rovy-build/rojo.port`.
 
 The older `rovy-build` binary name still points at the same CLI, but examples and
 new docs use `rovy`.

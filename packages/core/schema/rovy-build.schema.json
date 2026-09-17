@@ -24,6 +24,10 @@
 		"rojoBuildArgs": {
 			"$ref": "#/$defs/stringArray"
 		},
+		"rojoPort": {
+			"$ref": "#/$defs/rojoPort",
+			"description": "Port for `rojo serve` during watch/open/start. \"auto\" picks the first free port from 34872."
+		},
 		"watchOnOpen": {
 			"type": "boolean",
 			"description": "Run watch after opening the place file."
@@ -65,6 +69,10 @@
 				"rojo": {
 					"type": "string",
 					"description": "Path to the Rojo project file."
+				},
+				"rojoPort": {
+					"$ref": "#/$defs/rojoPort",
+					"description": "Environment-specific port for `rojo serve`. \"auto\" picks the first free port from 34872."
 				},
 				"sourcemap": {
 					"type": "string",
@@ -149,6 +157,18 @@
 			"items": {
 				"type": "string"
 			}
+		},
+		"rojoPort": {
+			"anyOf": [
+				{
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 65535
+				},
+				{
+					"const": "auto"
+				}
+			]
 		}
 	}
 }

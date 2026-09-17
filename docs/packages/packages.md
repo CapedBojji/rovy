@@ -319,6 +319,7 @@ Then keep build, environment, Rojo, boundary, and Blink settings in `package.jso
     "placeFile": "game.rbxl",
     "rbxtscArgs": ["--type", "game"],
     "rojoBuildArgs": ["build", "default.project.json", "-o", "game.rbxl"],
+    "rojoPort": "auto",
     "watchOnOpen": true,
     "generateBlink": true,
     "environments": {
@@ -383,7 +384,7 @@ Typical package scripts:
 | `rovy compile`  | Partitions monolithic plugin roots, runs `rbxtsc`, installs stable facades, then runs generation unless disabled.        |
 | `rovy generate` | Runs Rovy generators only. Blink generation writes `out/shared/net/generated/*` when enabled.                           |
 | `rovy build`    | Runs `compile`, then `rojo` with `rojoBuildArgs` to create `placeFile`.                                                 |
-| `rovy watch`    | Starts Rojo and `rbxtsc -w`; refreshes plugin partitions/facades and Blink outputs as source changes.                   |
+| `rovy watch`    | Starts Rojo and `rbxtsc -w` on the resolved Rojo port; refreshes plugin partitions/facades and Blink outputs as source changes. |
 | `rovy open`     | Opens `placeFile` in Studio; starts watch too unless `watchOnOpen` is `false`.                                          |
 | `rovy start`    | Runs `build`, then `open`.                                                                                              |
 | `rovy stop`     | Kills tracked watch/Studio processes from `.rovy-build/*.pid`.                                                          |
@@ -397,14 +398,23 @@ Important config fields:
 | `placeFile`                 | Place file path opened by `open` / `start`.                         |
 | `rbxtscArgs`                | Extra args passed to `rbxtsc`; most games use `["--type", "game"]`. |
 | `rojoBuildArgs`             | Args passed to `rojo` during `rovy build`.                          |
+| `rojoPort`                  | Port for `rojo serve`; a number pins it, `"auto"` takes the first free port from `34872`. |
 | `watchOnOpen`               | Whether `rovy open` also starts watch mode.                         |
 | `generateBlink`             | Whether compile/watch should run Blink generation.                  |
 | `environments.*.rojo`       | Rojo project used by watch, sourcemap, and path lowering.           |
+| `environments.*.rojoPort`   | Environment-specific override of `rojoPort`.                        |
 | `environments.*.boundaries` | Source roots for server/client/shared boundary checks.              |
 | `environments.*.net`        | Networking transport and Blink settings.                            |
 
 Set `ROVY_ENV=prod` or another environment name to select a different
 `environments` entry for one command.
+
+The Rojo serve port resolves in this order: the `--port` flag on
+`rovy watch` / `rovy open` / `rovy start`, `ROVY_ROJO_PORT`,
+`environments.*.rojoPort`, `rojoPort`, then `auto`. A pinned number that is
+already in use fails with a clear error instead of starting on a surprise port;
+`auto` scans upward from `34872`. The live port is written to
+`.rovy-build/rojo.port` while watch runs.
 
 ## Macro / decorator stubs (transformer-not-run guard)
 

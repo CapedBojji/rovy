@@ -9,6 +9,12 @@
   restore scheduler context after a system throws.
 - Add isolated parallel correctness/timing fixtures and reproducible NPC/raycast
   benchmark sweeps. Same-frame completion remains an observation, not a guarantee.
+- Add Rojo serve port control to `rovy-build`: a `rojoPort` config field
+  (build-level and per environment), the `ROVY_ROJO_PORT` variable, and a
+  `--port <number|auto>` flag on `rovy watch`, `rovy open`, and `rovy start`.
+  `auto` claims the first free port from Rojo's default `34872`, a pinned port
+  that is already in use fails loudly, and the live port is written to
+  `.rovy-build/rojo.port` while watch runs.
 
 ## 0.1.0 — 2026-09-10
 
