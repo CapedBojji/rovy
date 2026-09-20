@@ -464,4 +464,77 @@ export class SharedClock {}
 	fs.rmSync(root, { recursive: true, force: true });
 }
 
+function pluginProject() {
+	const root = fixture(`
+declare function shared(target: object): void;
+declare function component(target: object): void;
+@shared
+@component
+export class SharedClock {}
+export class ClientTick {}
+export class ServerTick {}
+`);
+	fs.mkdirSync(path.join(root, "node_modules"), { recursive: true });
+	return root;
+}
+
+function stagedNodeModules(root) {
+	return path.join(root, ".rovy-build", "node_modules");
+}
+
+function resolvedLink(link) {
+	return path.resolve(path.dirname(link), fs.readlinkSync(link));
+}
+
+{
+	const root = pluginProject();
+	const first = preparePartitionedProject(root);
+	assert(first, "plugin project should partition");
+	const second = preparePartitionedProject(root);
+	assert(second, "repeated preparation should succeed");
+	assert.equal(fs.existsSync(stagedNodeModules(root)), true);
+	assert.equal(resolvedLink(stagedNodeModules(root)), path.resolve(root, "node_modules"));
+	fs.rmSync(root, { recursive: true, force: true });
+}
+
+{
+	const root = pluginProject();
+	preparePartitionedProject(root);
+	const link = stagedNodeModules(root);
+	const before = fs.lstatSync(link);
+	preparePartitionedProject(root);
+	const after = fs.lstatSync(link);
+	assert.equal(after.ino, before.ino);
+	assert.equal(resolvedLink(link), path.resolve(root, "node_modules"));
+	fs.rmSync(root, { recursive: true, force: true });
+}
+
+{
+	const root = pluginProject();
+	const link = stagedNodeModules(root);
+	fs.mkdirSync(path.dirname(link), { recursive: true });
+	fs.symlinkSync(path.join(root, "wrong"), link, "junction");
+	preparePartitionedProject(root);
+	assert.equal(resolvedLink(link), path.resolve(root, "node_modules"));
+	fs.rmSync(root, { recursive: true, force: true });
+}
+
+{
+	const root = pluginProject();
+	const tsconfig = JSON.parse(fs.readFileSync(path.join(root, "tsconfig.json"), "utf8"));
+	tsconfig.compilerOptions.rootDir = ".";
+	fs.writeFileSync(path.join(root, "tsconfig.json"), JSON.stringify(tsconfig));
+	const ghost = path.join(root, ".rovy-build", "partitioned-src", "ghost");
+	fs.mkdirSync(ghost, { recursive: true });
+	fs.writeFileSync(path.join(ghost, ".rovy.plugin.json"), "{}\n");
+	fs.writeFileSync(path.join(ghost, "index.ts"), "export class Ghost {}\n");
+	const prepared = preparePartitionedProject(root);
+	assert(prepared, "state-directory plugin markers should be ignored");
+	assert.deepEqual(
+		prepared.plugins.map((plugin) => plugin.relativeRoot),
+		["src/plugins/combat"],
+	);
+	fs.rmSync(root, { recursive: true, force: true });
+}
+
 console.log("partition tests OK");

@@ -30,6 +30,11 @@ type Runner = (
   args?: readonly string[],
   options?: cp.SpawnOptions,
 ) => Promise<void>;
+type Spawner = (
+  command: string,
+  args?: readonly string[],
+  options?: cp.SpawnOptions,
+) => ChildProcess;
 
 const DEFAULT_PLACE_FILE = "game.rbxl";
 const DEFAULT_ROJO_PROJECT = "default.project.json";
@@ -49,6 +54,7 @@ const DEFAULT_SCRIPT_NAMES = {
 export interface CommandContext {
   readonly projectDir: string;
   readonly run: Runner;
+  readonly spawn?: Spawner;
 }
 
 export interface ServeOptions {
@@ -62,28 +68,33 @@ export async function runCli(
   const { command, port } = parseCliArgs(argv);
   const projectDir = context?.projectDir ?? process.cwd();
   const run = context?.run ?? runCommand;
+  const resolved: CommandContext = {
+    projectDir,
+    run,
+    spawn: context?.spawn,
+  };
 
   switch (command) {
     case "compile":
-      await compile({ projectDir, run });
+      await compile(resolved);
       return;
     case "generate":
-      await generate({ projectDir, run });
+      await generate(resolved);
       return;
     case "build":
-      await build({ projectDir, run });
+      await build(resolved);
       return;
     case "open":
-      await openProject({ projectDir, run }, { port });
+      await openProject(resolved, { port });
       return;
     case "watch":
-      await watch({ projectDir, run }, { port });
+      await watch(resolved, { port });
       return;
     case "start":
-      await start({ projectDir, run }, { port });
+      await start(resolved, { port });
       return;
     case "stop":
-      await stop({ projectDir, run });
+      await stop(resolved);
       return;
     case "init":
       await init(projectDir);
@@ -304,13 +315,17 @@ export async function watch(
   }
   removeStateFile(context.projectDir, "watch.pid");
   removeStateFile(context.projectDir, ROJO_PORT_FILE);
+  const spawnImpl =
+    context.spawn ??
+    ((command, args = [], options = {}) =>
+      cp.spawn(command, [...args], options));
   const spawnChild = (
     command: string,
     args: readonly string[],
     options: cp.SpawnOptions = {},
   ) => {
     console.log(`[rovy-build] ${command} ${args.join(" ")}`);
-    const child = cp.spawn(command, [...args], {
+    const child = spawnImpl(command, [...args], {
       cwd: context.projectDir,
       stdio: "inherit",
       shell: process.platform === "win32",
@@ -342,6 +357,9 @@ export async function watch(
     }
     removeStateFile(context.projectDir, "watch.pid");
     removeStateFile(context.projectDir, ROJO_PORT_FILE);
+    process.removeListener("SIGINT", onSigint);
+    process.removeListener("SIGTERM", onSigterm);
+    process.removeListener("exit", cleanupSync);
   };
   const cleanupSync = () => {
     for (const child of children) {
@@ -351,14 +369,16 @@ export async function watch(
     removeStateFile(context.projectDir, "watch.pid");
     removeStateFile(context.projectDir, ROJO_PORT_FILE);
   };
-  process.once("SIGINT", async () => {
+  const onSigint = async () => {
     await cleanup();
     process.exit(0);
-  });
-  process.once("SIGTERM", async () => {
+  };
+  const onSigterm = async () => {
     await cleanup();
     process.exit(0);
-  });
+  };
+  process.once("SIGINT", onSigint);
+  process.once("SIGTERM", onSigterm);
   process.once("exit", cleanupSync);
 
   const baseRbxtscArgs = rbxtscArgs(config);
@@ -370,6 +390,24 @@ export async function watch(
     ? replaceProjectArg(baseRbxtscArgs, partitioned.projectFile)
     : baseRbxtscArgs;
   const rbxtscWatchArgs = ["-w", ...compiledArgs];
+  const compiler = spawnChild("rbxtsc", rbxtscWatchArgs, {
+    stdio: ["inherit", "pipe", "pipe"],
+    env: partitioned
+      ? {
+          ...process.env,
+          ROVY_PARTITION_STAGING_ROOT: partitioned.stagingRoot,
+          ROVY_PARTITION_SOURCE_ROOT: partitioned.sourceRoot,
+        }
+      : process.env,
+  });
+  try {
+    await waitForInitialCompilerResult(compiler);
+    partitioned?.finalize();
+    if (config.build.generateBlink !== false) await generate(context);
+  } catch (error) {
+    await cleanup();
+    throw error;
+  }
   const rojoProject = config.environment.rojo ?? DEFAULT_ROJO_PROJECT;
   const serve = await rojoServePlan(config, options.port);
   spawnChild("rojo", serve.args);
@@ -384,15 +422,6 @@ export async function watch(
       config.environment.sourcemap,
     ]);
   }
-  spawnChild("rbxtsc", rbxtscWatchArgs, {
-    env: partitioned
-      ? {
-          ...process.env,
-          ROVY_PARTITION_STAGING_ROOT: partitioned.stagingRoot,
-          ROVY_PARTITION_SOURCE_ROOT: partitioned.sourceRoot,
-        }
-      : process.env,
-  });
   writePid(
     context.projectDir,
     "watch.pid",
@@ -447,10 +476,10 @@ export async function watch(
           );
         }
       }
-      partitioned.finalize();
     }
     const nextBuildInfo = fileMtime(tsBuildInfoPath(context.projectDir));
     if (nextBuildInfo !== 0 && nextBuildInfo !== lastBuildInfo) {
+      partitioned?.finalize();
       lastBuildInfo = nextBuildInfo;
       void maybeGenerate();
       return;
@@ -472,6 +501,33 @@ export async function watch(
   });
 }
 
+function waitForInitialCompilerResult(child: ChildProcess): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let complete = false;
+    let recentOutput = "";
+    const forwardOutput = (chunk: string | Buffer) => {
+      const text = String(chunk);
+      process.stdout.write(text);
+      recentOutput = `${recentOutput}${text}`.slice(-4096);
+      if (/Found \d+ errors\./.test(recentOutput)) {
+        complete = true;
+        resolve();
+      }
+    };
+    child.stdout?.on("data", forwardOutput);
+    child.stderr?.on("data", forwardOutput);
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      if (!complete)
+        reject(
+          new Error(
+            `rbxtsc watch exited before its initial compilation completed (code ${code})`,
+          ),
+        );
+    });
+  });
+}
+
 function sourceTreeStamp(sourceRoot: string, stagingRoot: string): number {
   let stamp = 0;
   const visit = (directory: string): void => {
@@ -485,7 +541,13 @@ function sourceTreeStamp(sourceRoot: string, stagingRoot: string): number {
       )
         continue;
       if (entry.isDirectory()) visit(target);
-      else if (entry.isFile()) stamp = Math.max(stamp, fileMtime(target));
+      else if (
+        entry.isFile() &&
+        (entry.name.endsWith(".ts") ||
+          entry.name.endsWith(".tsx") ||
+          entry.name === ".rovy.plugin.json")
+      )
+        stamp = Math.max(stamp, fileMtime(target));
     }
   };
   if (fs.existsSync(sourceRoot)) visit(sourceRoot);

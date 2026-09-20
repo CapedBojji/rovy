@@ -92,7 +92,8 @@ export function preparePartitionedProject(projectDir: string, projectFile = "tsc
 		parsed.options.rootDir ?? commonSourceDirectory(parsed.fileNames, path.dirname(absoluteProject)),
 	);
 	const outDir = path.resolve(path.dirname(absoluteProject), parsed.options.outDir ?? "out");
-	const pluginRoots = findPluginRoots(sourceRoot, outDir);
+	const stateDir = path.join(projectDir, ".rovy-build");
+	const pluginRoots = findPluginRoots(sourceRoot, outDir, stateDir);
 	if (pluginRoots.length === 0) return undefined;
 
 	const checker = program.getTypeChecker();
@@ -102,7 +103,6 @@ export function preparePartitionedProject(projectDir: string, projectFile = "tsc
 		throw new Error(`Rovy plugin partition failed:\n${diagnostics.map((message) => `  - ${message}`).join("\n")}`);
 	}
 
-	const stateDir = path.join(projectDir, ".rovy-build");
 	const stagingRoot = path.join(stateDir, "partitioned-src");
 	fs.rmSync(stagingRoot, { recursive: true, force: true });
 	copySourceTree(sourceRoot, stagingRoot, outDir, stateDir);
@@ -110,8 +110,7 @@ export function preparePartitionedProject(projectDir: string, projectFile = "tsc
 
 	fs.mkdirSync(stateDir, { recursive: true });
 	const stagedNodeModules = path.join(stateDir, "node_modules");
-	fs.rmSync(stagedNodeModules, { recursive: true, force: true });
-	fs.symlinkSync(path.join(projectDir, "node_modules"), stagedNodeModules, "junction");
+	ensureDirectorySymlink(path.join(projectDir, "node_modules"), stagedNodeModules);
 	for (const projectName of ["package.json"]) {
 		const source = path.join(projectDir, projectName);
 		const destination = path.join(stateDir, projectName);
@@ -179,6 +178,24 @@ export function preparePartitionedProject(projectDir: string, projectFile = "tsc
 		plugins,
 		finalize: () => finalizePartitionOutput(analyses, outDir),
 	};
+}
+
+function ensureDirectorySymlink(source: string, destination: string): void {
+	try {
+		const target = path.resolve(path.dirname(destination), fs.readlinkSync(destination));
+		if (target === path.resolve(source)) return;
+	} catch {}
+	const temporary = `${destination}.tmp-${process.pid}-${Date.now()}`;
+	fs.rmSync(temporary, { recursive: true, force: true });
+	fs.symlinkSync(source, temporary, "junction");
+	try {
+		fs.renameSync(temporary, destination);
+	} catch {
+		fs.rmSync(destination, { recursive: true, force: true });
+		fs.renameSync(temporary, destination);
+	} finally {
+		fs.rmSync(temporary, { recursive: true, force: true });
+	}
 }
 
 function analyzePlugin(
@@ -1062,10 +1079,16 @@ function copySourceTree(sourceRoot: string, stagingRoot: string, outDir: string,
 	visit(sourceRoot, stagingRoot);
 }
 
-function findPluginRoots(sourceRoot: string, outDir: string): string[] {
+function findPluginRoots(sourceRoot: string, outDir: string, stateDir: string): string[] {
 	const roots: string[] = [];
 	const visit = (directory: string): void => {
-		if (isWithin(directory, outDir) || path.basename(directory) === "node_modules" || path.basename(directory) === ".git") return;
+		if (
+			isWithin(directory, outDir) ||
+			isWithin(directory, stateDir) ||
+			path.basename(directory) === "node_modules" ||
+			path.basename(directory) === ".git"
+		)
+			return;
 		if (fs.existsSync(path.join(directory, PLUGIN_MARKER))) roots.push(directory);
 		for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
 			if (entry.isDirectory()) visit(path.join(directory, entry.name));
