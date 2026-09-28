@@ -455,6 +455,7 @@ local function newInstance(className)
 		LayoutOrder = 0,
 		AbsolutePosition = newVector2(0, 0),
 		AbsoluteSize = newVector2(100, 100),
+		CanvasPosition = newVector2(0, 0),
 		Visible = true,
 	}, FakeInstance)
 	table.insert(allInstances, instance)

@@ -41,8 +41,8 @@ RovyUi.start(root, () => {
 ## Widget catalog
 
 Windows, child windows, modals, popups, and portals; buttons, checkboxes, radio
-buttons, toggles, selectable and clickable labels, headings, separators, and
-spacers; sliders, drag values, text inputs, combo boxes, progress bars, and
+buttons, toggles, tabs and managed tab bars, selectable and clickable labels,
+headings, separators, and spacers; sliders, drag values, text inputs, combo boxes, progress bars, and
 collapsing headers; tables with rows, cells, and a table explorer; an editable
 image widget with an RGBA draw buffer; a Bezier curve editor; and a demo window.
 

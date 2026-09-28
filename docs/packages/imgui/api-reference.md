@@ -92,6 +92,8 @@ checkbox
 toggle
 radioButton
 selectableLabel
+tab
+tabBar
 clickableLabel
 label
 heading

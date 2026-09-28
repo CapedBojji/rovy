@@ -13,6 +13,7 @@ import { row } from "./row";
 import { space } from "./space";
 import { radioButton } from "./radio-button";
 import { selectableLabel } from "./selectable-label";
+import { tabBar } from "./tab-bar";
 import { comboBox } from "./combo-box";
 import { dragValue } from "./drag-value";
 import { progressBar } from "./progress-bar";
@@ -141,7 +142,6 @@ function createEditableImageDemoBuffer(): EditableImageBuffer {
 
 /** @widget */
 export const demoWindow = widget((): void => {
-	const [activeTab, setActiveTab] = __useState("demo:activeTab", "Gallery");
 	const [themeMode, setThemeMode] = __useState<"dark" | "light">("demo:themeMode", "dark");
 
 	const [clickCount, setClickCount] = __useState("demo:clickCount", 0);
@@ -352,14 +352,13 @@ export const demoWindow = widget((): void => {
 			heading("Demo Window");
 			separator();
 
+			const activeTab = tabBar({ tabs: [
+				{ id: "Gallery", label: "Gallery" },
+				{ id: "Demos", label: "Demos" },
+			] }).selected();
+
 			row({ padding: 6 }, () => {
-				for (const tabName of ["Gallery", "Demos"]) {
-					const captured = tabName;
-					if (selectableLabel(tabName, { selected: activeTab === tabName }).clicked()) {
-						setActiveTab(captured);
-					}
-				}
-				label("  Theme:");
+				label("Theme:");
 				for (const mode of ["dark", "light"] as const) {
 					const captured = mode;
 					if (selectableLabel(mode, { selected: themeMode === mode }).clicked()) {
