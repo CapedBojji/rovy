@@ -70,6 +70,7 @@ packages/imgui/src/
     checkbox.ts           radio-button.ts      toggle.ts
     label.ts              clickable-label.ts   selectable-label.ts
     heading.ts            separator.ts         space.ts
+    tab.ts                tab-bar.ts
     row.ts                window.ts            child-window.ts
     modal.ts              popup.ts             portal.ts
     slider.ts             drag-value.ts        input.ts

@@ -39,6 +39,8 @@ import { button } from "./widgets/button";
 import { checkbox } from "./widgets/checkbox";
 import { radioButton } from "./widgets/radio-button";
 import { selectableLabel } from "./widgets/selectable-label";
+import { tab } from "./widgets/tab";
+import { tabBar } from "./widgets/tab-bar";
 import { toggle } from "./widgets/toggle";
 import { clickableLabel } from "./widgets/clickable-label";
 import { label } from "./widgets/label";
@@ -81,6 +83,9 @@ export * from "./widgets/button";
 export * from "./widgets/checkbox";
 export * from "./widgets/radio-button";
 export * from "./widgets/selectable-label";
+export { tab } from "./widgets/tab";
+export type { TabOptions, TabHandle } from "./widgets/tab";
+export * from "./widgets/tab-bar";
 export * from "./widgets/toggle";
 export * from "./widgets/clickable-label";
 export * from "./widgets/label";
@@ -160,6 +165,8 @@ export const rovyUi = {
 	portal,
 	radioButton,
 	selectableLabel,
+	tab,
+	tabBar,
 	comboBox,
 	dragValue,
 	progressBar,

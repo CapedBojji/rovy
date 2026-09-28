@@ -172,6 +172,96 @@ for (const option of options) {
 }
 ```
 
+## Tabs
+
+```ts
+tab(text: string, options?: TabOptions): TabHandle
+tabBar(options: TabBarOptions, children?: (selected: string) => void): TabBarHandle
+```
+
+```ts
+interface TabOptions {
+	selected?: boolean;
+	disabled?: boolean;
+	minimumWidth?: number;
+}
+
+interface TabHandle {
+	selected(): boolean;
+	clicked(): boolean;
+}
+
+interface TabItem {
+	id: string;
+	label: string;
+	disabled?: boolean;
+}
+
+interface TabBarOptions {
+	tabs: ReadonlyArray<TabItem>;
+	selected?: string;
+	initial?: string;
+	padding?: number;
+	minimumWidth?: number;
+	scrollX?: boolean;
+}
+
+interface TabBarHandle {
+	selected(): string | undefined;
+	changed(): boolean;
+}
+```
+
+`tabBar` manages selection internally unless `selected` is supplied. IDs must be
+unique and stable; labels can change or tabs can reorder without losing selection.
+The first enabled tab is the default, or the fallback when the selected tab is
+removed or disabled. Empty bars and bars with all tabs disabled have no selection.
+
+```ts
+RovyUi.tabBar({
+	tabs: [
+		{ id: "entities", label: "Entities" },
+		{ id: "resources", label: "Resources" },
+		{ id: "network", label: "Network", disabled: true },
+	],
+}, (selected) => {
+	if (selected === "entities") renderEntities();
+	else renderResources();
+});
+```
+
+The optional content callback runs only for the selected tab, in a scope keyed
+by its ID. Inactive content is pruned; keep data that should survive switching
+in the caller's state. Alternatively, use the returned `selected()` to render
+content yourself.
+
+For external selection, adopt the returned value after user input or a fallback:
+
+```ts
+const tabs = RovyUi.tabBar({ tabs: debugTabs, selected: selectedTab });
+if (tabs.changed()) selectedTab = tabs.selected();
+```
+
+User input takes precedence for one frame so callers can adopt the new ID.
+Otherwise `selected` drives the next frame. `changed()` is consumed once per
+frame, is false on the initial render, and reports effective selection changes.
+
+Labels retain measured text width plus 10 px padding per side. Tabs use existing
+style tokens for text, hover and selection backgrounds, plus `accentColor` for
+the active underline. `padding` defaults to 4 px. Horizontal overflow scrolling
+is enabled by default; set `scrollX: false` for a fixed row.
+
+Clicking a managed tab gives it GUI selection focus. With a tab focused,
+Left/Right wrap across enabled tabs and Home/End select the first/last enabled
+tab. Navigation ignores processed input, hidden bars, and bars covered by another
+GUI. Keyboard selection scrolls the target into view. Touch uses normal button
+activation. Standalone `tab` leaves selection and navigation to the caller.
+
+Design references: egui's [selectable value pattern](https://docs.rs/egui/latest/egui/struct.Ui.html#method.selectable_value)
+and egui_dock's [tab styling](https://docs.rs/egui_dock/latest/egui_dock/style/struct.TabStyle.html).
+These widgets implement selection tabs; docking, reordering, and close buttons
+are not included.
+
 ## Text And Decoration
 
 ```ts
