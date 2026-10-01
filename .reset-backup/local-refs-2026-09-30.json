@@ -1,0 +1,41 @@
+{
+  "source_repo": "CapedBojji/rovy",
+  "branches": [
+    {
+      "name": "fix-rovy-watch-blink-race",
+      "sha": "60850c7c277902ce9c926b03dc01d21407f99c9a"
+    },
+    {
+      "name": "main",
+      "sha": "66a4fd95530da2a42d34cd076ee44039bde749b0"
+    },
+    {
+      "name": "review-rovy-imgui-debug-widgets",
+      "sha": "b10f638b8e2f727c2c07459951fa7f43658c204f"
+    },
+    {
+      "name": "rovy-port-config",
+      "sha": "95a63bb6eb6d993e1004d962439d07db9af4f889"
+    }
+  ],
+  "tags": [
+    {
+      "name": "rescue/bad-rebase",
+      "object_sha": "f55e29dc6576ed00306f444a3124528aef0deb4d",
+      "commit_sha": "f55e29dc6576ed00306f444a3124528aef0deb4d"
+    },
+    {
+      "name": "rescue/pre-pull",
+      "object_sha": "bc7c31e58c1e94d63f9d31b9975defd2ad485484",
+      "commit_sha": "bc7c31e58c1e94d63f9d31b9975defd2ad485484",
+      "covered_by_github_commit": "60850c7c277902ce9c926b03dc01d21407f99c9a"
+    }
+  ],
+  "history_backups": [
+    {
+      "tag": "rescue/bad-rebase",
+      "remote_branch": "backup/reset-2026-09-30/rovy/tag-rescue-bad-rebase",
+      "verified_sha": "f55e29dc6576ed00306f444a3124528aef0deb4d"
+    }
+  ]
+}
